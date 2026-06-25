@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* ----------------------------------------------------------------------------
+   Mash Potato — design tokens (LOCKED). Defined in @theme so Tailwind v4
+   generates matching utilities: bg-surface, text-teal, border-line,
+   font-display, font-mono, etc.
+---------------------------------------------------------------------------- */
+@theme {
+  /* Surfaces */
+  --color-bg: #15121b;
+  --color-surface: #1e1926;
+  --color-surface-2: #271f31;
+  --color-line: #352b42;
+
+  /* Text */
+  --color-text: #f3eee5;
+  --color-muted: #9c93ab;
+
+  /* Score system */
+  --color-gold: #e7b24e; /* personal / your weighted score */
+  --color-teal: #51c5be; /* group / the "Mashed" consensus  */
+  --color-coral: #e07a5f; /* low scores / divergence         */
+
+  /* Type */
+  --font-display: "Fraunces", ui-serif, Georgia, serif; /* display + big scores */
+  --font-body: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif; /* UI / body */
+  --font-mono: "Space Mono", ui-monospace, SFMono-Regular, monospace; /* numeric readouts */
+}
+
+/* ---- Base ---- */
+html {
+  background-color: var(--color-bg);
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Locked requirement: honor reduced-motion everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
