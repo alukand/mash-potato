@@ -20,6 +20,7 @@
   --color-gold: #e7b24e; /* personal / your weighted score */
   --color-teal: #51c5be; /* group / the "Mashed" consensus  */
   --color-coral: #e07a5f; /* low scores / divergence         */
+  --color-lime: #c9d14e; /* top of the 1->10 score ramp     */
 
   /* Type */
   --font-display: "Fraunces", ui-serif, Georgia, serif; /* display + big scores */
@@ -36,12 +37,45 @@ html {
 body {
   margin: 0;
   min-height: 100dvh;
-  background-color: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
+  background-color: var(--color-bg);
+  /* Subtle atmosphere so the flat dark surface has depth. */
+  background-image:
+    radial-gradient(
+      115% 75% at 50% -12%,
+      color-mix(in oklab, var(--color-teal) 12%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      90% 55% at 108% 3%,
+      color-mix(in oklab, var(--color-gold) 9%, transparent),
+      transparent 55%
+    );
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+/* Numeric readouts sit still when they animate/update. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Staggered entrance — neutralised for reduced-motion by the guard below. */
+@keyframes mp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.mp-rise {
+  animation: mp-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
 /* Locked requirement: honor reduced-motion everywhere. */
