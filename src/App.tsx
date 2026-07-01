@@ -15,29 +15,47 @@ import { BottomNav } from './components/BottomNav'
 // Sample-data home screen. Numbers come from the tested scoring core
 // (src/lib/scoring.ts); still no backend — Supabase wiring is a later milestone.
 
-const AVATAR_COLORS = ['#e7b24e', '#51c5be', '#e07a5f', '#9c93ab']
+const AVATAR_COLORS: Record<string, string> = {
+  you: '#e7b24e',
+  mara: '#51c5be',
+  devin: '#e07a5f',
+  sam: '#9c93ab',
+}
+
+/** Position of a 1..10 score along the plot track, as a percentage. */
+const pct = (score: number) => ((score - 1) / 9) * 100
 
 function App() {
   const locked = sampleScorecards.filter((s) => s.locked)
   const result = analyze(sampleScorecards, sampleWeights)
   const youWeighted =
     result.perMember.find((m) => m.memberId === CURRENT_MEMBER_ID)?.weighted ?? null
+  const delta =
+    youWeighted !== null && result.mashed !== null ? youWeighted - result.mashed : null
   const weightTotal = CATEGORY_IDS.reduce((sum, id) => sum + sampleWeights[id], 0)
 
-  const categories = CATEGORY_IDS.map((id) => ({
-    id,
-    label: CATEGORY_LABELS[id],
-    weightPct: Math.round((sampleWeights[id] / weightTotal) * 100),
-    mean: categoryStat(id, locked)?.mean ?? 0,
-  }))
+  const leaderboard = [...result.perMember].sort((a, b) => b.weighted - a.weighted)
 
-  const clash = result.mostContested
+  const categories = CATEGORY_IDS.map((id) => {
+    const stat = categoryStat(id, locked)
+    return {
+      id,
+      label: CATEGORY_LABELS[id],
+      weightPct: Math.round((sampleWeights[id] / weightTotal) * 100),
+      mean: stat?.mean ?? 0,
+      min: stat?.min ?? 0,
+      max: stat?.max ?? 0,
+      dots: locked.map((s) => ({ memberId: s.memberId, score: s.scores[id] })),
+    }
+  })
+
   const aligned = result.mostUnited
+  const clash = result.mostContested
   const outlier = result.outlier
 
   return (
     <div className="min-h-dvh">
-      <div className="mx-auto w-full max-w-[480px] px-5 pb-28">
+      <div className="mx-auto w-full max-w-[480px] px-5 pb-32">
         {/* ---- Header ---- */}
         <header className="flex items-center justify-between pt-7 pb-5">
           <div className="flex items-center gap-2.5">
@@ -52,12 +70,12 @@ function App() {
             </div>
           </div>
           <div className="flex -space-x-2">
-            {sampleMembers.map((m, i) => (
+            {sampleMembers.map((m) => (
               <span
                 key={m.id}
                 title={m.name}
-                className="grid h-8 w-8 place-items-center rounded-full border-2 border-bg font-mono text-[11px] font-bold text-bg"
-                style={{ backgroundColor: AVATAR_COLORS[i % AVATAR_COLORS.length] }}
+                className="grid h-7 w-7 place-items-center rounded-full border-2 border-bg font-mono text-[10px] font-bold text-bg"
+                style={{ backgroundColor: AVATAR_COLORS[m.id] ?? '#9c93ab' }}
               >
                 {m.name.charAt(0)}
               </span>
@@ -65,139 +83,161 @@ function App() {
           </div>
         </header>
 
-        {/* ---- Hero: the Mashed consensus ---- */}
+        {/* ---- Hero: title + Mashed ring + member leaderboard ---- */}
         <section
-          className="mp-rise rounded-[26px] border border-line p-6 shadow-[0_20px_45px_-28px_rgba(0,0,0,0.95)]"
+          className="mp-rise rounded-[26px] border border-line/70 p-6 shadow-[0_20px_45px_-28px_rgba(0,0,0,0.95)]"
           style={{ backgroundImage: 'linear-gradient(to bottom, var(--color-surface), #1b1622)' }}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted">
-                {sampleTitle.mediaType === 'movie' ? 'Film' : 'TV'} · {sampleTitle.year}
-              </p>
-              <h2 className="mt-1 font-display text-[26px] font-semibold leading-tight">
+          <div className="flex items-start gap-4">
+            {/* Poster placeholder until TMDB metadata lands (later milestone). */}
+            <div
+              aria-hidden
+              className="grid h-[84px] w-14 shrink-0 place-items-center rounded-xl font-display text-2xl font-semibold text-bg"
+              style={{ backgroundImage: 'linear-gradient(160deg, #E7B24E, #E07A5F)' }}
+            >
+              {sampleTitle.name.charAt(0)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
+                  {sampleTitle.mediaType === 'movie' ? 'Film' : 'TV'} · {sampleTitle.year}
+                </p>
+                <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-teal">
+                  <span className="h-1.5 w-1.5 rounded-full bg-teal" />
+                  Revealed
+                </span>
+              </div>
+              <h2 className="mt-1.5 font-display text-[27px] font-semibold leading-[1.05]">
                 {sampleTitle.name}
               </h2>
             </div>
-            <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-teal">
-              <span className="h-1.5 w-1.5 rounded-full bg-teal" />
-              Revealed
+          </div>
+
+          <div className="mt-6 flex items-center gap-4">
+            <ScoreRing value={result.mashed} size={150} stroke={11} />
+            <ul className="flex min-w-0 flex-1 flex-col gap-1">
+              {leaderboard.map((m) => {
+                const isYou = m.memberId === CURRENT_MEMBER_ID
+                return (
+                  <li
+                    key={m.memberId}
+                    className={`flex items-center justify-between rounded-lg px-2 py-1.5 ${
+                      isYou ? 'bg-gold/10' : ''
+                    }`}
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: AVATAR_COLORS[m.memberId] ?? '#9c93ab' }}
+                      />
+                      <span
+                        className={`truncate text-[13px] ${isYou ? 'font-semibold text-gold' : ''}`}
+                      >
+                        {isYou ? 'You' : memberName(m.memberId)}
+                      </span>
+                    </span>
+                    <span
+                      className={`tabular font-mono text-[13px] ${
+                        isYou ? 'font-semibold text-gold' : 'text-muted'
+                      }`}
+                    >
+                      {formatScore(m.weighted)}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+
+          <div className="mt-5 flex items-center justify-between border-t border-line/60 pt-4 font-mono text-[10px] uppercase tracking-[0.14em]">
+            <span className="text-muted">
+              Spread <span className="text-text">{formatScore(result.spread)}</span>
+            </span>
+            <span className="text-gold">
+              You {delta === null ? '—' : `${delta >= 0 ? '+' : '−'}${formatScore(Math.abs(delta))}`} vs group
+            </span>
+            <span className="text-muted">
+              <span className="text-text">
+                {result.lockedCount}/{result.totalCount}
+              </span>{' '}
+              locked
             </span>
           </div>
-
-          <div className="mt-5 flex justify-center">
-            <ScoreRing value={result.mashed} />
-          </div>
-
-          {/* You vs the group */}
-          <div className="mt-6">
-            <div className="mb-2 flex items-center justify-between font-mono text-[11px]">
-              <span className="text-gold">You {formatScore(youWeighted)}</span>
-              <span className="text-muted">Spread {formatScore(result.spread)}</span>
-              <span className="text-teal">Group {formatScore(result.mashed)}</span>
-            </div>
-            <div className="relative h-1.5 rounded-full bg-surface-2">
-              <span
-                className="absolute -top-[5px] h-4 w-4 -translate-x-1/2 rounded-full border-2 border-surface bg-teal"
-                style={{ left: `${(result.mashed ?? 0) * 10}%` }}
-              />
-              <span
-                className="absolute -top-[5px] h-4 w-4 -translate-x-1/2 rounded-full border-2 border-surface bg-gold"
-                style={{ left: `${(youWeighted ?? 0) * 10}%` }}
-              />
-            </div>
-          </div>
         </section>
 
-        {/* ---- The Reveal: agreement vs clash (the moat) ---- */}
-        <section
-          className="mp-rise mt-4 rounded-[26px] border border-line bg-surface p-5"
-          style={{ animationDelay: '80ms' }}
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+        {/* ---- The Reveal: disagreement as a headline (the moat) ---- */}
+        {aligned && clash && (
+          <section className="mp-rise mt-8 px-1" style={{ animationDelay: '80ms' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-teal">
               The Reveal
             </p>
-            <span className="font-mono text-[10px] text-muted">where you landed</span>
-          </div>
-
-          <div className="flex flex-col gap-2.5">
-            <div className="flex items-center gap-3 rounded-2xl bg-surface-2 p-3.5">
-              <span className="h-9 w-1 shrink-0 rounded-full bg-teal" />
-              <div className="flex-1">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-muted">
-                  Most aligned
-                </p>
-                <p className="mt-0.5 font-display text-lg font-semibold leading-tight text-teal">
-                  {aligned ? CATEGORY_LABELS[aligned.category] : '—'}
-                </p>
-              </div>
-              <span className="font-mono text-xs text-muted">
-                range {aligned ? aligned.range : '—'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3 rounded-2xl bg-surface-2 p-3.5">
-              <span className="h-9 w-1 shrink-0 rounded-full bg-coral" />
-              <div className="flex-1">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-muted">
-                  Most clash
-                </p>
-                <p className="mt-0.5 font-display text-lg font-semibold leading-tight text-coral">
-                  {clash ? CATEGORY_LABELS[clash.category] : '—'}
+            <h3 className="mt-2.5 font-display text-[25px] font-medium leading-[1.25]">
+              United on <span className="text-teal">{CATEGORY_LABELS[aligned.category]}</span> —
+              split over <span className="text-coral">{CATEGORY_LABELS[clash.category]}</span>.
+            </h3>
+            <p className="mt-2 font-mono text-[11px] text-muted">
+              agreement range {aligned.range} · clash range {clash.range}
+            </p>
+            {outlier && (
+              <div className="mt-4 flex items-center gap-2.5">
+                <span
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full font-mono text-[11px] font-bold text-bg"
+                  style={{ backgroundColor: AVATAR_COLORS[outlier.memberId] ?? '#9c93ab' }}
+                >
+                  {memberName(outlier.memberId).charAt(0)}
+                </span>
+                <p className="text-[13px] leading-snug text-muted">
+                  <span className="font-semibold text-text">{memberName(outlier.memberId)}</span>{' '}
+                  broke away — scored {CATEGORY_LABELS[outlier.category]}{' '}
+                  <span className="tabular font-mono text-gold">{outlier.score}</span> against the
+                  group's <span className="tabular font-mono">{formatScore(outlier.mean)}</span>
                 </p>
               </div>
-              <span className="font-mono text-xs text-muted">
-                range {clash ? clash.range : '—'}
-              </span>
-            </div>
-          </div>
+            )}
+          </section>
+        )}
 
-          {outlier && (
-            <div className="mt-3 flex items-center gap-2.5 rounded-2xl border border-line bg-surface-2/40 px-3.5 py-2.5">
-              <span
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-full font-mono text-[11px] font-bold text-bg"
-                style={{ backgroundColor: '#e07a5f' }}
-              >
-                {memberName(outlier.memberId).charAt(0)}
-              </span>
-              <p className="text-[13px] leading-snug text-muted">
-                <span className="font-semibold text-text">{memberName(outlier.memberId)}</span>{' '}
-                broke away on {CATEGORY_LABELS[outlier.category]} —{' '}
-                <span className="tabular font-mono text-gold">{outlier.score}</span> vs group{' '}
-                <span className="tabular font-mono">{formatScore(outlier.mean)}</span>
-              </p>
-            </div>
-          )}
-        </section>
-
-        {/* ---- Category breakdown (group avg score + weight) ---- */}
-        <section className="mp-rise mt-4" style={{ animationDelay: '160ms' }}>
+        {/* ---- Category dot plot: every member's score, per category ---- */}
+        <section className="mp-rise mt-7" style={{ animationDelay: '160ms' }}>
           <div className="mb-3 flex items-baseline justify-between px-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
               Category breakdown
             </p>
-            <p className="font-mono text-[10px] text-muted">score · weight</p>
+            <p className="font-mono text-[10px] text-muted">1 – 10</p>
           </div>
-          <div className="rounded-[26px] border border-line bg-surface px-3">
+          <div className="rounded-[26px] border border-line bg-surface px-4 pb-1 pt-1">
             <ul>
               {categories.map((c, i) => (
                 <li
                   key={c.id}
-                  className={`flex items-center gap-3 py-3.5 ${i > 0 ? 'border-t border-line/60' : ''}`}
+                  className={`flex items-center gap-3 py-3.5 ${i > 0 ? 'border-t border-line/50' : ''}`}
                 >
-                  <div className="w-[104px] shrink-0">
-                    <p className="text-sm font-medium leading-tight">{c.label}</p>
-                    <p className="font-mono text-[10px] text-muted">weight {c.weightPct}%</p>
+                  <div className="w-[96px] shrink-0">
+                    <p className="text-[13px] font-medium leading-tight">{c.label}</p>
+                    <p className="mt-0.5 font-mono text-[10px] text-muted">weight {c.weightPct}%</p>
                   </div>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${c.mean * 10}%`, backgroundColor: scoreColor(c.mean) }}
+                  <div className="relative h-5 flex-1">
+                    <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-line/50" />
+                    <span
+                      className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full bg-line/80"
+                      style={{ left: `${pct(c.min)}%`, width: `${pct(c.max) - pct(c.min)}%` }}
+                    />
+                    {c.dots.map((d) => (
+                      <span
+                        key={d.memberId}
+                        className={`absolute top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full ${
+                          d.memberId === CURRENT_MEMBER_ID ? 'bg-gold' : 'bg-muted'
+                        }`}
+                        style={{ left: `${pct(d.score)}%` }}
+                      />
+                    ))}
+                    <span
+                      className="absolute top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-teal"
+                      style={{ left: `${pct(c.mean)}%` }}
                     />
                   </div>
                   <span
-                    className="tabular w-8 text-right font-mono text-sm font-semibold"
+                    className="tabular w-8 shrink-0 text-right font-mono text-[13px] font-semibold"
                     style={{ color: scoreColor(c.mean) }}
                   >
                     {c.mean.toFixed(1)}
@@ -205,11 +245,22 @@ function App() {
                 </li>
               ))}
             </ul>
+            <div className="flex items-center gap-4 border-t border-line/50 px-1 pb-3 pt-3 font-mono text-[10px] text-muted">
+              <span className="flex items-center gap-1.5">
+                <span className="h-[7px] w-[7px] rounded-full bg-gold" /> you
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-[7px] w-[7px] rounded-full bg-muted" /> others
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-[3px] rounded-full bg-teal" /> group mean
+              </span>
+            </div>
           </div>
         </section>
 
         <p
-          className="mp-rise mt-6 text-center font-mono text-[10px] text-muted"
+          className="mp-rise mt-7 text-center font-mono text-[10px] text-muted"
           style={{ animationDelay: '220ms' }}
         >
           M2 · sample data · scoring core + Supabase schema in place

@@ -67,7 +67,10 @@ export function ScoreRing({
         />
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className="tabular font-display text-[60px] font-semibold leading-none text-teal">
+        <span
+          className="tabular font-display font-semibold leading-none text-teal"
+          style={{ fontSize: Math.round(size * 0.31) }}
+        >
           {formatScore(value)}
         </span>
         <span className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.35em] text-teal">
