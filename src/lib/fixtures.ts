@@ -50,3 +50,28 @@ export const CURRENT_MEMBER_ID = 'you'
 export function memberName(id: string): string {
   return sampleMembers.find((m) => m.id === id)?.name ?? id
 }
+
+/** Presentation colour per member (sample-only; real avatars come later). */
+const AVATAR_COLORS: Record<string, string> = {
+  you: '#e7b24e',
+  mara: '#51c5be',
+  devin: '#e07a5f',
+  sam: '#9c93ab',
+}
+
+export function memberColor(id: string): string {
+  return AVATAR_COLORS[id] ?? '#9c93ab'
+}
+
+/** A second title with a session still BLIND — what the Rate screen scores. */
+export const sampleBlindTitle: SampleTitle = {
+  name: 'Past Lives',
+  year: 2023,
+  mediaType: 'movie',
+}
+
+/**
+ * Who has already locked in on the blind session (lock STATUS is safe to
+ * show; the scores themselves stay hidden until the reveal).
+ */
+export const blindLockedMemberIds = ['mara', 'devin']

@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
 
+export type TabId = 'home' | 'rate' | 'group'
+
 interface TabDef {
-  id: string
+  id: TabId
   label: string
   icon: ReactNode
 }
@@ -40,9 +42,13 @@ const TABS: TabDef[] = [
   },
 ]
 
-// Floating pill nav — static for now (Home is the only screen).
-export function BottomNav() {
-  const active = 'home'
+interface BottomNavProps {
+  active: TabId
+  onSelect: (tab: TabId) => void
+}
+
+// Floating pill nav.
+export function BottomNav({ active, onSelect }: BottomNavProps) {
   return (
     <nav
       className="fixed inset-x-5 z-20 mx-auto flex max-w-[400px] items-center gap-1 rounded-full border border-line p-1.5 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.9)] backdrop-blur-xl"
@@ -57,6 +63,7 @@ export function BottomNav() {
           <button
             key={tab.id}
             type="button"
+            onClick={() => onSelect(tab.id)}
             aria-current={isActive ? 'page' : undefined}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-[11px] font-semibold transition-colors ${
               isActive ? 'bg-teal/10 text-teal' : 'text-muted hover:text-text'
