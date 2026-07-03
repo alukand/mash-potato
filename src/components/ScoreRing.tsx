@@ -9,9 +9,10 @@ interface ScoreRingProps {
   stroke?: number
 }
 
-// The signature Mashed gauge: a teal arc that fills to the consensus score,
-// with the big number (Fraunces, teal) centred inside. The arc animates in on
-// mount; the global reduced-motion guard makes that instant when requested.
+// The signature Mashed gauge: a teal arc that fills to the consensus score
+// while the number counts up beneath it. Both effects collapse to an instant
+// jump under prefers-reduced-motion (the arc via the global CSS guard, the
+// count-up explicitly here).
 export function ScoreRing({
   value,
   max = 10,
@@ -24,12 +25,36 @@ export function ScoreRing({
   const fraction = Math.max(0, Math.min(1, (value ?? 0) / max))
   const target = circumference * (1 - fraction)
 
-  // Start empty, then animate to the target offset after mount.
+  // Arc: start empty, then animate to the target offset after mount.
   const [offset, setOffset] = useState(circumference)
   useEffect(() => {
     const id = requestAnimationFrame(() => setOffset(target))
     return () => cancelAnimationFrame(id)
   }, [target])
+
+  // Number: count up 0 -> value in sync with the arc.
+  const [shown, setShown] = useState<number | null>(value === null ? null : 0)
+  useEffect(() => {
+    if (value === null) {
+      setShown(null)
+      return
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setShown(value)
+      return
+    }
+    const start = performance.now()
+    const duration = 1100
+    let raf = 0
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setShown(value * eased)
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value])
 
   return (
     <div
@@ -38,7 +63,13 @@ export function ScoreRing({
       role="img"
       aria-label={`Mashed score ${formatScore(value)} out of ${max}`}
     >
-      <svg width={size} height={size} className="-rotate-90">
+      {/* soft glow behind the arc */}
+      <span
+        aria-hidden
+        className="absolute inset-3 rounded-full blur-2xl"
+        style={{ backgroundColor: 'color-mix(in oklab, var(--color-teal) 17%, transparent)' }}
+      />
+      <svg width={size} height={size} className="relative -rotate-90">
         <defs>
           <linearGradient id="mp-ring" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0" stopColor="#6FE3DB" />
@@ -71,7 +102,7 @@ export function ScoreRing({
           className="tabular font-display font-semibold leading-none text-teal"
           style={{ fontSize: Math.round(size * 0.31) }}
         >
-          {formatScore(value)}
+          {formatScore(shown)}
         </span>
         <span className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.35em] text-teal">
           {label}

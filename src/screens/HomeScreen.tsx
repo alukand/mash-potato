@@ -47,18 +47,16 @@ export function HomeScreen() {
   return (
     <>
       {/* ---- Hero: title + Mashed ring + member leaderboard ---- */}
-      <section
-        className="mp-rise rounded-[26px] border border-line/70 p-6 shadow-[0_20px_45px_-28px_rgba(0,0,0,0.95)]"
-        style={{ backgroundImage: 'linear-gradient(to bottom, var(--color-surface), #1b1622)' }}
-      >
+      <section className="mp-rise mp-card rounded-[26px] p-6">
         <div className="flex items-start gap-4">
           {/* Poster placeholder until TMDB metadata lands (later milestone). */}
           <div
             aria-hidden
-            className="grid h-[84px] w-14 shrink-0 place-items-center rounded-xl font-display text-2xl font-semibold text-bg"
+            className="relative grid h-[84px] w-14 shrink-0 place-items-center overflow-hidden rounded-xl font-display text-2xl font-semibold text-bg"
             style={{ backgroundImage: 'linear-gradient(160deg, #E7B24E, #E07A5F)' }}
           >
             {sampleTitle.name.charAt(0)}
+            <span className="mp-poster-grain" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
@@ -131,12 +129,21 @@ export function HomeScreen() {
       {/* ---- The Reveal: disagreement as a headline (the moat) ---- */}
       {aligned && clash && (
         <section className="mp-rise mt-8 px-1" style={{ animationDelay: '80ms' }}>
+          <div
+            aria-hidden
+            className="mb-5 h-px w-full"
+            style={{
+              background:
+                'linear-gradient(90deg, color-mix(in oklab, var(--color-teal) 45%, transparent), var(--color-line) 40%, transparent)',
+            }}
+          />
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-teal">
             The Reveal
           </p>
-          <h3 className="mt-2.5 font-display text-[25px] font-medium leading-[1.25]">
-            United on <span className="text-teal">{CATEGORY_LABELS[aligned.category]}</span> —
-            split over <span className="text-coral">{CATEGORY_LABELS[clash.category]}</span>.
+          <h3 className="mt-2.5 font-display text-[27px] font-medium leading-[1.22]">
+            United on{' '}
+            <span className="italic text-teal">{CATEGORY_LABELS[aligned.category]}</span> — split
+            over <span className="italic text-coral">{CATEGORY_LABELS[clash.category]}</span>.
           </h3>
           <p className="mt-2 font-mono text-[11px] text-muted">
             agreement range {aligned.range} · clash range {clash.range}
@@ -168,7 +175,7 @@ export function HomeScreen() {
           </p>
           <p className="font-mono text-[10px] text-muted">1 – 10</p>
         </div>
-        <div className="rounded-[26px] border border-line bg-surface px-4 pb-1 pt-1">
+        <div className="mp-card rounded-[26px] px-4 pb-1 pt-1">
           <ul>
             {categories.map((c, i) => (
               <li

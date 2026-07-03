@@ -21,7 +21,7 @@ export function GroupScreen() {
         <p className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           Members
         </p>
-        <div className="rounded-[26px] border border-line bg-surface px-4">
+        <div className="mp-card rounded-[26px] px-4">
           <ul>
             {sampleMembers.map((m, i) => {
               const isYou = m.id === CURRENT_MEMBER_ID
@@ -60,7 +60,7 @@ export function GroupScreen() {
           </p>
           <p className="font-mono text-[10px] text-muted">what counts, and how much</p>
         </div>
-        <div className="rounded-[26px] border border-line bg-surface px-4">
+        <div className="mp-card rounded-[26px] px-4">
           <ul>
             {CATEGORY_IDS.map((id, i) => {
               const weightPct = Math.round((sampleWeights[id] / weightTotal) * 100)
@@ -74,8 +74,11 @@ export function GroupScreen() {
                   </span>
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
                     <div
-                      className="h-full rounded-full bg-teal/70"
-                      style={{ width: `${(sampleWeights[id] / maxWeight) * 100}%` }}
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${(sampleWeights[id] / maxWeight) * 100}%`,
+                        backgroundImage: 'linear-gradient(90deg, #3FA9A2, #6FE3DB)',
+                      }}
                     />
                   </div>
                   <span className="tabular w-9 shrink-0 text-right font-mono text-[13px] text-muted">

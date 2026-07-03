@@ -66,7 +66,9 @@ export function BottomNav({ active, onSelect }: BottomNavProps) {
             onClick={() => onSelect(tab.id)}
             aria-current={isActive ? 'page' : undefined}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-[11px] font-semibold transition-colors ${
-              isActive ? 'bg-teal/10 text-teal' : 'text-muted hover:text-text'
+              isActive
+                ? 'bg-teal/10 text-teal shadow-[inset_0_0_0_1px_rgba(81,197,190,0.25),0_0_16px_-6px_rgba(81,197,190,0.55)]'
+                : 'text-muted hover:text-text'
             }`}
           >
             {tab.icon}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import { memberWeightedScore, formatScore, CATEGORY_LABELS, CATEGORY_IDS } from '../lib/scoring'
 import type { CategoryScores } from '../lib/scoring'
 import { scoreColor } from '../lib/scoreColor'
@@ -38,17 +39,15 @@ export function RateScreen() {
   return (
     <>
       {/* ---- Title being scored ---- */}
-      <section
-        className="mp-rise rounded-[26px] border border-line/70 p-6 shadow-[0_20px_45px_-28px_rgba(0,0,0,0.95)]"
-        style={{ backgroundImage: 'linear-gradient(to bottom, var(--color-surface), #1b1622)' }}
-      >
+      <section className="mp-rise mp-card rounded-[26px] p-6">
         <div className="flex items-start gap-4">
           <div
             aria-hidden
-            className="grid h-[84px] w-14 shrink-0 place-items-center rounded-xl font-display text-2xl font-semibold text-bg"
+            className="relative grid h-[84px] w-14 shrink-0 place-items-center overflow-hidden rounded-xl font-display text-2xl font-semibold text-bg"
             style={{ backgroundImage: 'linear-gradient(160deg, #51C5BE, #3E7CB8)' }}
           >
             {sampleBlindTitle.name.charAt(0)}
+            <span className="mp-poster-grain" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
@@ -98,7 +97,7 @@ export function RateScreen() {
 
       {/* ---- The five category sliders ---- */}
       <section className="mp-rise mt-4" style={{ animationDelay: '80ms' }}>
-        <div className="rounded-[26px] border border-line bg-surface px-5 py-1">
+        <div className="mp-card rounded-[26px] px-5 py-1">
           {CATEGORY_IDS.map((id, i) => {
             const value = scores[id]
             const color = scoreColor(value)
@@ -129,8 +128,10 @@ export function RateScreen() {
                   onChange={(e) =>
                     setScores((prev) => ({ ...prev, [id]: Number(e.target.value) }))
                   }
-                  className="mt-2.5 h-6 w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                  style={{ accentColor: color }}
+                  className="mp-slider mt-1.5"
+                  style={
+                    { '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties
+                  }
                 />
               </div>
             )
@@ -162,7 +163,8 @@ export function RateScreen() {
           <button
             type="button"
             onClick={() => setLocked(true)}
-            className="mt-4 w-full rounded-full bg-gold py-3.5 text-[14px] font-bold text-bg transition-transform active:scale-[0.98]"
+            className="mt-4 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
+            style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
           >
             Lock in your scores
           </button>
