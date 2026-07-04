@@ -1,10 +1,10 @@
 -- Proves THE ONE RULE: a member can read others' scores only once the session
 -- is 'revealed'. Run with: npx supabase test db   (needs the local stack up).
 
-begin;
-select plan(6);
-
 create extension if not exists pgtap with schema extensions;
+
+begin;
+select plan(7);
 
 -- ---- seed as the test superuser (RLS bypassed) ----
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
@@ -71,7 +71,10 @@ select is(
 
 -- ================= reveal (as Ana) =================
 set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
-select public.reveal_session('66666666-6666-6666-6666-666666666666');
+select lives_ok(
+  $$select public.reveal_session('66666666-6666-6666-6666-666666666666')$$,
+  'the owner can reveal the session'
+);
 
 -- ================= assertions: REVEALED =================
 set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
@@ -88,14 +91,18 @@ select is(
   2, 'revealed: Ben sees the whole group');
 
 -- Even after reveal, Ben cannot modify Ana's row (write stays self-only).
-select is(
-  (with up as (
-     update public.member_scores set story = 1
-       where member_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-         and session_id = '66666666-6666-6666-6666-666666666666'
-       returning 1)
-   select count(*)::int from up),
-  0, 'revealed: Ben still cannot modify Ana''s row');
+-- (results_eq so the data-modifying CTE executes at top level.)
+select results_eq(
+  $$
+  with up as (
+    update public.member_scores set story = 1
+      where member_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        and session_id = '66666666-6666-6666-6666-666666666666'
+      returning 1)
+  select count(*)::int from up
+  $$,
+  $$values (0)$$,
+  'revealed: Ben still cannot modify Ana''s row');
 
 select * from finish();
 rollback;

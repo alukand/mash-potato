@@ -285,6 +285,18 @@ create policy sessions_update_owner_or_creator on public.reveal_sessions
   using (public.is_group_owner(group_id) or created_by = (select auth.uid()))
   with check (public.is_group_owner(group_id) or created_by = (select auth.uid()));
 
+-- =====================================================================  grants
+-- Baseline access for the PostgREST role. RLS (below/above) is the security
+-- boundary — these grants just let `authenticated` reach the tables at all.
+-- `anon` deliberately gets NOTHING: every feature of this app requires login.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant execute on all functions in schema public to authenticated;
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to authenticated;
+alter default privileges in schema public
+  grant execute on functions to authenticated;
+
 -- member_scores — THE BLIND RULE --------------------------------------------
 -- (1) Always read your OWN scorecard.
 create policy scores_select_own on public.member_scores
