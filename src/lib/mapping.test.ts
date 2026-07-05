@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { toDbCategory, fromDbCategory, weightsFromRows } from './mapping'
+import {
+  toDbCategory,
+  fromDbCategory,
+  weightsFromRows,
+  scoresFromRow,
+  scoresToRow,
+  scorecardFromRow,
+} from './mapping'
 import { CATEGORY_IDS } from './scoring'
+import type { CategoryScores } from './scoring'
 
 describe('category mapping', () => {
   it('maps the one differing id both ways', () => {
@@ -41,5 +49,36 @@ describe('weightsFromRows', () => {
       pacing: 20,
       scoreSound: 20,
     })
+  })
+})
+
+describe('score row mapping', () => {
+  const scores: CategoryScores = {
+    story: 9,
+    acting: 8,
+    cinematography: 10,
+    pacing: 6,
+    scoreSound: 7,
+  }
+
+  it('round-trips CategoryScores through DB columns', () => {
+    expect(scoresFromRow(scoresToRow(scores))).toEqual(scores)
+  })
+
+  it('maps score_sound to scoreSound', () => {
+    expect(scoresToRow(scores).score_sound).toBe(7)
+    expect(
+      scoresFromRow({ story: 1, acting: 1, cinematography: 1, pacing: 1, score_sound: 4 })
+        .scoreSound,
+    ).toBe(4)
+  })
+
+  it('builds a MemberScorecard from a full row', () => {
+    const card = scorecardFromRow({
+      member_id: 'user-1',
+      locked: true,
+      ...scoresToRow(scores),
+    })
+    expect(card).toEqual({ memberId: 'user-1', locked: true, scores })
   })
 })

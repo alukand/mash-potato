@@ -138,15 +138,29 @@ function App() {
 
         {/* key remounts the screen on tab change so the entrance plays again */}
         <main key={tab}>
-          {tab === 'home' && <HomeScreen />}
-          {tab === 'rate' && <RateScreen />}
+          {tab === 'home' && (
+            <HomeScreen
+              group={group}
+              members={members}
+              userId={session.user.id}
+              onStartSession={() => setTab('rate')}
+            />
+          )}
+          {tab === 'rate' && (
+            <RateScreen
+              group={group}
+              members={members}
+              userId={session.user.id}
+              onGoHome={() => setTab('home')}
+            />
+          )}
           {tab === 'group' && (
             <GroupScreen group={group} members={members} userId={session.user.id} />
           )}
         </main>
 
         <p className="mt-7 text-center font-mono text-[10px] text-muted">
-          M4 · auth &amp; group live · sessions still sample data
+          M5 · sessions live · the reveal is real
         </p>
       </div>
 

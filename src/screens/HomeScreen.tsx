@@ -1,38 +1,188 @@
+import { useCallback, useEffect, useState } from 'react'
 import { analyze, categoryStat, formatScore, CATEGORY_LABELS, CATEGORY_IDS } from '../lib/scoring'
+import type { MemberScorecard, RubricWeights } from '../lib/scoring'
 import { scoreColor } from '../lib/scoreColor'
 import {
-  sampleScorecards,
-  sampleWeights,
-  sampleTitle,
-  memberName,
-  memberColor,
-  CURRENT_MEMBER_ID,
-} from '../lib/fixtures'
+  fetchAllScorecards,
+  fetchLatestSession,
+  fetchLockStatus,
+  fetchWeights,
+  onSessionChange,
+} from '../lib/api'
+import type { GroupInfo, MemberInfo, SessionInfo } from '../lib/api'
+import { colorForMember } from '../lib/palette'
 import { ScoreRing } from '../components/ScoreRing'
+import { Logo } from '../components/Logo'
 
-// The latest REVEALED session: the Mashed result + where the group split.
-// All numbers come from the tested scoring core over sample fixtures.
+interface HomeScreenProps {
+  group: GroupInfo
+  members: MemberInfo[]
+  userId: string
+  onStartSession: () => void
+}
+
+// The group's latest session, live. Blind sessions show lock progress only;
+// the moment the reveal fires (realtime), the full Mashed layout drops in.
 
 /** Position of a 1..10 score along the plot track, as a percentage. */
 const pct = (score: number) => ((score - 1) / 9) * 100
 
-export function HomeScreen() {
-  const locked = sampleScorecards.filter((s) => s.locked)
-  const result = analyze(sampleScorecards, sampleWeights)
-  const youWeighted =
-    result.perMember.find((m) => m.memberId === CURRENT_MEMBER_ID)?.weighted ?? null
+export function HomeScreen({ group, members, userId, onStartSession }: HomeScreenProps) {
+  const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
+  const [scorecards, setScorecards] = useState<MemberScorecard[]>([])
+  const [weights, setWeights] = useState<RubricWeights | null>(null)
+  const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      const s = await fetchLatestSession(group.id)
+      setSession(s)
+      if (!s) return
+      if (s.state === 'revealed') {
+        const [cards, w] = await Promise.all([fetchAllScorecards(s.id), fetchWeights(group.id)])
+        setScorecards(cards)
+        setWeights(w)
+      } else {
+        setLockStatus(await fetchLockStatus(s.id))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Load failed')
+    }
+  }, [group.id])
+
+  useEffect(() => {
+    void load()
+    const unsubscribe = onSessionChange(group.id, () => void load())
+    return unsubscribe
+  }, [load, group.id])
+
+  const memberName = (id: string) =>
+    id === userId
+      ? 'You'
+      : (members.find((m) => m.userId === id)?.displayName ?? 'Member')
+
+  if (error) {
+    return (
+      <p role="alert" className="mp-rise py-10 text-center text-[13px] text-coral">
+        {error}
+      </p>
+    )
+  }
+
+  if (session === undefined) {
+    return <p className="mp-rise py-10 text-center text-[13px] text-muted">Loading…</p>
+  }
+
+  // ---- no sessions yet ----------------------------------------------------
+  if (session === null) {
+    return (
+      <section className="mp-rise mp-card rounded-[26px] p-8 text-center">
+        <Logo className="mx-auto h-12 w-12" />
+        <h2 className="mt-4 font-display text-[24px] font-semibold leading-tight">
+          Nothing mashed yet
+        </h2>
+        <p className="mx-auto mt-2 max-w-[280px] text-[13px] leading-snug text-muted">
+          Pick a film or show, score it blind together, and reveal where {group.name} agrees —
+          and where it doesn't.
+        </p>
+        <button
+          type="button"
+          onClick={onStartSession}
+          className="mt-6 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
+          style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
+        >
+          Start your first session
+        </button>
+      </section>
+    )
+  }
+
+  // ---- blind session in progress -------------------------------------------
+  if (session.state === 'blind') {
+    const lockedIds = new Set(lockStatus.filter((l) => l.locked).map((l) => l.memberId))
+    const iAmIn = lockedIds.has(userId)
+    return (
+      <section className="mp-rise mp-card rounded-[26px] p-6">
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
+            Scoring in progress
+          </p>
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-gold/30 bg-gold/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-gold">
+            <span className="h-1.5 w-1.5 rounded-full bg-gold" />
+            Blind
+          </span>
+        </div>
+        <h2 className="mt-2 font-display text-[27px] font-semibold leading-[1.05]">
+          {session.titleName}
+        </h2>
+        <p className="mt-1 font-mono text-xs text-muted">
+          {session.mediaType === 'movie' ? 'Film' : 'TV'}
+          {session.titleYear ? ` · ${session.titleYear}` : ''}
+        </p>
+
+        <div className="mt-6 flex items-center justify-between rounded-2xl bg-surface-2 px-4 py-3.5">
+          <div className="flex -space-x-1.5">
+            {members.map((m) => (
+              <span
+                key={m.userId}
+                title={m.displayName}
+                className={`grid h-7 w-7 place-items-center rounded-full border-2 border-surface font-mono text-[10px] font-bold ${
+                  lockedIds.has(m.userId) ? 'text-bg' : 'text-muted'
+                }`}
+                style={{
+                  backgroundColor: lockedIds.has(m.userId)
+                    ? colorForMember(members, m.userId)
+                    : 'var(--color-surface)',
+                }}
+              >
+                {m.displayName.charAt(0).toUpperCase()}
+              </span>
+            ))}
+          </div>
+          <p className="tabular font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+            {lockedIds.size}/{members.length} locked
+          </p>
+        </div>
+
+        <p className="mt-4 text-[13px] leading-snug text-muted">
+          Scores stay hidden until the reveal — then everything drops at once.
+        </p>
+        {!iAmIn && (
+          <button
+            type="button"
+            onClick={onStartSession}
+            className="mt-4 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
+            style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
+          >
+            Score it now
+          </button>
+        )}
+      </section>
+    )
+  }
+
+  // ---- revealed: the Mashed result -----------------------------------------
+  const locked = scorecards.filter((s) => s.locked)
+  if (weights === null || locked.length === 0) {
+    return <p className="mp-rise py-10 text-center text-[13px] text-muted">Loading…</p>
+  }
+
+  const result = analyze(scorecards, weights)
+  const youWeighted = result.perMember.find((m) => m.memberId === userId)?.weighted ?? null
   const delta =
     youWeighted !== null && result.mashed !== null ? youWeighted - result.mashed : null
-  const weightTotal = CATEGORY_IDS.reduce((sum, id) => sum + sampleWeights[id], 0)
-
-  const leaderboard = [...result.perMember].sort((a, b) => b.weighted - a.weighted)
+  const weightTotal = CATEGORY_IDS.reduce((sum, id) => sum + weights[id], 0)
+  const leaderboard = [...result.perMember]
+    .filter((m) => m.locked)
+    .sort((a, b) => b.weighted - a.weighted)
 
   const categories = CATEGORY_IDS.map((id) => {
     const stat = categoryStat(id, locked)
     return {
       id,
       label: CATEGORY_LABELS[id],
-      weightPct: Math.round((sampleWeights[id] / weightTotal) * 100),
+      weightPct: weightTotal > 0 ? Math.round((weights[id] / weightTotal) * 100) : 0,
       mean: stat?.mean ?? 0,
       min: stat?.min ?? 0,
       max: stat?.max ?? 0,
@@ -49,19 +199,19 @@ export function HomeScreen() {
       {/* ---- Hero: title + Mashed ring + member leaderboard ---- */}
       <section className="mp-rise mp-card rounded-[26px] p-6">
         <div className="flex items-start gap-4">
-          {/* Poster placeholder until TMDB metadata lands (later milestone). */}
           <div
             aria-hidden
             className="relative grid h-[84px] w-14 shrink-0 place-items-center overflow-hidden rounded-xl font-display text-2xl font-semibold text-bg"
             style={{ backgroundImage: 'linear-gradient(160deg, #E7B24E, #E07A5F)' }}
           >
-            {sampleTitle.name.charAt(0)}
+            {session.titleName.charAt(0)}
             <span className="mp-poster-grain" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-                {sampleTitle.mediaType === 'movie' ? 'Film' : 'TV'} · {sampleTitle.year}
+                {session.mediaType === 'movie' ? 'Film' : 'TV'}
+                {session.titleYear ? ` · ${session.titleYear}` : ''}
               </p>
               <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-teal">
                 <span className="h-1.5 w-1.5 rounded-full bg-teal" />
@@ -69,7 +219,7 @@ export function HomeScreen() {
               </span>
             </div>
             <h2 className="mt-1.5 font-display text-[27px] font-semibold leading-[1.05]">
-              {sampleTitle.name}
+              {session.titleName}
             </h2>
           </div>
         </div>
@@ -78,7 +228,7 @@ export function HomeScreen() {
           <ScoreRing value={result.mashed} size={150} stroke={11} />
           <ul className="flex min-w-0 flex-1 flex-col gap-1">
             {leaderboard.map((m) => {
-              const isYou = m.memberId === CURRENT_MEMBER_ID
+              const isYou = m.memberId === userId
               return (
                 <li
                   key={m.memberId}
@@ -89,12 +239,12 @@ export function HomeScreen() {
                   <span className="flex min-w-0 items-center gap-2">
                     <span
                       className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: memberColor(m.memberId) }}
+                      style={{ backgroundColor: colorForMember(members, m.memberId) }}
                     />
                     <span
                       className={`truncate text-[13px] ${isYou ? 'font-semibold text-gold' : ''}`}
                     >
-                      {isYou ? 'You' : memberName(m.memberId)}
+                      {memberName(m.memberId)}
                     </span>
                   </span>
                   <span
@@ -115,7 +265,9 @@ export function HomeScreen() {
             Spread <span className="text-text">{formatScore(result.spread)}</span>
           </span>
           <span className="text-gold">
-            You {delta === null ? '—' : `${delta >= 0 ? '+' : '−'}${formatScore(Math.abs(delta))}`} vs group
+            You{' '}
+            {delta === null ? '—' : `${delta >= 0 ? '+' : '−'}${formatScore(Math.abs(delta))}`} vs
+            group
           </span>
           <span className="text-muted">
             <span className="text-text">
@@ -152,9 +304,9 @@ export function HomeScreen() {
             <div className="mt-4 flex items-center gap-2.5">
               <span
                 className="grid h-7 w-7 shrink-0 place-items-center rounded-full font-mono text-[11px] font-bold text-bg"
-                style={{ backgroundColor: memberColor(outlier.memberId) }}
+                style={{ backgroundColor: colorForMember(members, outlier.memberId) }}
               >
-                {memberName(outlier.memberId).charAt(0)}
+                {memberName(outlier.memberId).charAt(0).toUpperCase()}
               </span>
               <p className="text-[13px] leading-snug text-muted">
                 <span className="font-semibold text-text">{memberName(outlier.memberId)}</span>{' '}
@@ -196,7 +348,7 @@ export function HomeScreen() {
                     <span
                       key={d.memberId}
                       className={`absolute top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full ${
-                        d.memberId === CURRENT_MEMBER_ID ? 'bg-gold' : 'bg-muted'
+                        d.memberId === userId ? 'bg-gold' : 'bg-muted'
                       }`}
                       style={{ left: `${pct(d.score)}%` }}
                     />
@@ -227,6 +379,17 @@ export function HomeScreen() {
             </span>
           </div>
         </div>
+      </section>
+
+      {/* ---- Next session ---- */}
+      <section className="mp-rise mt-6 text-center" style={{ animationDelay: '220ms' }}>
+        <button
+          type="button"
+          onClick={onStartSession}
+          className="rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+        >
+          Start the next session →
+        </button>
       </section>
     </>
   )

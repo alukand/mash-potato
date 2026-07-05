@@ -104,6 +104,16 @@ begin
   end;
 end $$;
 
+-- lock flags (and only lock flags) are visible to members while blind
+do $$
+declare c int;
+begin
+  select count(*) into c
+    from public.session_lock_status('66666666-6666-6666-6666-666666666666');
+  if c <> 2 then raise exception 'FAIL 4b (blind): members should see both lock flags (rows=%)', c; end if;
+  raise notice 'PASS 4b (blind): members see who has locked — flags only';
+end $$;
+
 -- ================= reveal (as Ana) =================
 set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
 select public.reveal_session('66666666-6666-6666-6666-666666666666');
@@ -173,6 +183,15 @@ begin
   raise notice 'PASS 9 (outsider): a non-member sees no scores and no sessions, even revealed';
 end $$;
 
+do $$
+declare c int;
+begin
+  select count(*) into c
+    from public.session_lock_status('66666666-6666-6666-6666-666666666666');
+  if c <> 0 then raise exception 'FAIL 9b (outsider): Cara got % lock-status rows', c; end if;
+  raise notice 'PASS 9b (outsider): a non-member gets no lock status';
+end $$;
+
 -- hardening: a revealed session can never go back to blind
 set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
 
@@ -192,6 +211,6 @@ begin
   end;
 end $$;
 
-do $$ begin raise notice '=== ALL 10 ASSERTIONS PASSED — the blind rule holds ==='; end $$;
+do $$ begin raise notice '=== ALL 12 ASSERTIONS PASSED — the blind rule holds ==='; end $$;
 
 rollback;

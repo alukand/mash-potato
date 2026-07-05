@@ -3,9 +3,9 @@
 // only ever holds the anon key + the user's JWT.
 
 import { supabase } from './supabase'
-import type { RubricWeights } from './scoring'
+import type { CategoryScores, MemberScorecard, RubricWeights } from './scoring'
 import { CATEGORY_IDS } from './scoring'
-import { toDbCategory, weightsFromRows } from './mapping'
+import { toDbCategory, weightsFromRows, scoresFromRow, scoresToRow, scorecardFromRow } from './mapping'
 
 export interface GroupInfo {
   id: string
@@ -103,4 +103,160 @@ export async function saveWeights(groupId: string, weights: RubricWeights) {
   }))
   const { error } = await supabase.from('rubric_weights').upsert(rows)
   if (error) throw new Error(error.message)
+}
+
+// ---- sessions -----------------------------------------------------------
+
+export interface SessionInfo {
+  id: string
+  state: 'blind' | 'revealed'
+  createdBy: string | null
+  titleName: string
+  titleYear: number | null
+  mediaType: 'movie' | 'tv'
+}
+
+export interface NewTitle {
+  name: string
+  year: number | null
+  mediaType: 'movie' | 'tv'
+}
+
+/** The group's most recent session (blind or revealed), or null. */
+export async function fetchLatestSession(groupId: string): Promise<SessionInfo | null> {
+  const { data, error } = await supabase
+    .from('reveal_sessions')
+    .select('id, state, created_by, titles(name, year, media_type)')
+    .eq('group_id', groupId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (error) throw new Error(error.message)
+  const row = data?.[0]
+  if (!row?.titles) return null
+  return {
+    id: row.id,
+    state: row.state,
+    createdBy: row.created_by,
+    titleName: row.titles.name,
+    titleYear: row.titles.year,
+    mediaType: row.titles.media_type,
+  }
+}
+
+/** Create a manually-entered title + a blind session for it. */
+export async function createSession(
+  groupId: string,
+  userId: string,
+  title: NewTitle,
+): Promise<SessionInfo> {
+  const { data: titleRow, error: titleError } = await supabase
+    .from('titles')
+    .insert({ name: title.name, year: title.year, media_type: title.mediaType })
+    .select('id')
+    .single()
+  if (titleError) throw new Error(titleError.message)
+
+  const { data, error } = await supabase
+    .from('reveal_sessions')
+    .insert({ group_id: groupId, title_id: titleRow.id, created_by: userId })
+    .select('id, state, created_by')
+    .single()
+  if (error) throw new Error(error.message)
+  return {
+    id: data.id,
+    state: data.state,
+    createdBy: data.created_by,
+    titleName: title.name,
+    titleYear: title.year,
+    mediaType: title.mediaType,
+  }
+}
+
+/** Flip a blind session to revealed (owner or creator; enforced in the RPC). */
+export async function revealSession(sessionId: string) {
+  const { error } = await supabase.rpc('reveal_session', { p_session_id: sessionId })
+  if (error) throw new Error(error.message)
+}
+
+// ---- scores -------------------------------------------------------------
+
+export interface MyScore {
+  scores: CategoryScores
+  locked: boolean
+}
+
+/** My scorecard for a session (always visible to me), or null. */
+export async function fetchMyScore(sessionId: string, userId: string): Promise<MyScore | null> {
+  const { data, error } = await supabase
+    .from('member_scores')
+    .select('story, acting, cinematography, pacing, score_sound, locked')
+    .eq('session_id', sessionId)
+    .eq('member_id', userId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) return null
+  return { scores: scoresFromRow(data), locked: data.locked }
+}
+
+/** Write my scorecard. RLS: self-only, and only while the session is blind. */
+export async function saveMyScore(
+  sessionId: string,
+  userId: string,
+  scores: CategoryScores,
+  locked: boolean,
+) {
+  const { error } = await supabase.from('member_scores').upsert(
+    { session_id: sessionId, member_id: userId, locked, ...scoresToRow(scores) },
+    { onConflict: 'session_id,member_id' },
+  )
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Everyone's scorecards. Before the reveal RLS returns only your own row;
+ * after it, the whole group. The blind rule lives server-side.
+ */
+export async function fetchAllScorecards(sessionId: string): Promise<MemberScorecard[]> {
+  const { data, error } = await supabase
+    .from('member_scores')
+    .select('member_id, locked, story, acting, cinematography, pacing, score_sound')
+    .eq('session_id', sessionId)
+  if (error) throw new Error(error.message)
+  return (data ?? []).map(scorecardFromRow)
+}
+
+/** Who has locked in (flags only — scores stay hidden while blind). */
+export async function fetchLockStatus(
+  sessionId: string,
+): Promise<{ memberId: string; locked: boolean }[]> {
+  const { data, error } = await supabase.rpc('session_lock_status', {
+    p_session_id: sessionId,
+  })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((row) => ({ memberId: row.member_id, locked: row.locked }))
+}
+
+// ---- realtime -----------------------------------------------------------
+
+/**
+ * Fire `onChange` whenever one of the group's reveal sessions changes —
+ * that's the Reveal drop. Returns an unsubscribe function.
+ */
+export function onSessionChange(groupId: string, onChange: () => void): () => void {
+  const channel = supabase
+    .channel(`reveal-${groupId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'reveal_sessions',
+        filter: `group_id=eq.${groupId}`,
+      },
+      onChange,
+    )
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
 }

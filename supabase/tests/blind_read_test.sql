@@ -4,7 +4,7 @@
 create extension if not exists pgtap with schema extensions;
 
 begin;
-select plan(7);
+select plan(9);
 
 -- ---- seed as the test superuser (RLS bypassed) ----
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
@@ -12,7 +12,9 @@ values
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '00000000-0000-0000-0000-000000000000',
    'authenticated', 'authenticated', 'ana@test.dev', '{"display_name":"Ana"}', now(), now()),
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '00000000-0000-0000-0000-000000000000',
-   'authenticated', 'authenticated', 'ben@test.dev', '{"display_name":"Ben"}', now(), now());
+   'authenticated', 'authenticated', 'ben@test.dev', '{"display_name":"Ben"}', now(), now()),
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'cara@test.dev', '{"display_name":"Cara"}', now(), now());
 -- (the on_auth_user_created trigger created their profiles)
 
 -- A shared title (titles are a global cache).
@@ -68,6 +70,22 @@ select is(
   (select count(*)::int from public.member_scores
      where session_id = '66666666-6666-6666-6666-666666666666'),
   1, 'blind: Ben sees only his own row');
+
+-- Lock flags (and ONLY lock flags) are visible to members while blind.
+select results_eq(
+  $$select member_id, locked
+      from public.session_lock_status('66666666-6666-6666-6666-666666666666')
+      order by member_id$$,
+  $$values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, true),
+           ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'::uuid, true)$$,
+  'blind: members can see who has locked (flags only, no scores)');
+
+-- An authenticated outsider gets nothing from the lock-status helper.
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+select is_empty(
+  $$select * from public.session_lock_status('66666666-6666-6666-6666-666666666666')$$,
+  'blind: a non-member gets no lock status');
+set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
 
 -- ================= reveal (as Ana) =================
 set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';

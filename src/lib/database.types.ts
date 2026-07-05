@@ -259,7 +259,7 @@ export type Database = {
           media_type: Database["public"]["Enums"]["media_type"]
           name: string
           poster_path: string | null
-          tmdb_id: number
+          tmdb_id: number | null
           year: number | null
         }
         Insert: {
@@ -268,7 +268,7 @@ export type Database = {
           media_type: Database["public"]["Enums"]["media_type"]
           name: string
           poster_path?: string | null
-          tmdb_id: number
+          tmdb_id?: number | null
           year?: number | null
         }
         Update: {
@@ -277,7 +277,7 @@ export type Database = {
           media_type?: Database["public"]["Enums"]["media_type"]
           name?: string
           poster_path?: string | null
-          tmdb_id?: number
+          tmdb_id?: number | null
           year?: number | null
         }
         Relationships: []
@@ -309,6 +309,13 @@ export type Database = {
       }
       session_group_id: { Args: { p_session_id: string }; Returns: string }
       session_is_revealed: { Args: { p_session_id: string }; Returns: boolean }
+      session_lock_status: {
+        Args: { p_session_id: string }
+        Returns: {
+          locked: boolean
+          member_id: string
+        }[]
+      }
     }
     Enums: {
       category_id:
