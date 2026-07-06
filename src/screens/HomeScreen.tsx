@@ -8,6 +8,7 @@ import {
   fetchLockStatus,
   fetchWeights,
   onSessionChange,
+  posterUrl,
 } from '../lib/api'
 import type { GroupInfo, MemberInfo, SessionInfo } from '../lib/api'
 import { colorForMember } from '../lib/palette'
@@ -204,7 +205,15 @@ export function HomeScreen({ group, members, userId, onStartSession }: HomeScree
             className="relative grid h-[84px] w-14 shrink-0 place-items-center overflow-hidden rounded-xl font-display text-2xl font-semibold text-bg"
             style={{ backgroundImage: 'linear-gradient(160deg, #E7B24E, #E07A5F)' }}
           >
-            {session.titleName.charAt(0)}
+            {session.posterPath ? (
+              <img
+                src={posterUrl(session.posterPath)}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : (
+              session.titleName.charAt(0)
+            )}
             <span className="mp-poster-grain" />
           </div>
           <div className="min-w-0 flex-1">

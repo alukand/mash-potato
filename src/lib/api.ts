@@ -114,19 +114,23 @@ export interface SessionInfo {
   titleName: string
   titleYear: number | null
   mediaType: 'movie' | 'tv'
+  posterPath: string | null
 }
 
 export interface NewTitle {
   name: string
   year: number | null
   mediaType: 'movie' | 'tv'
+  /** Set when the title was picked from TMDB search; null for manual entry. */
+  tmdbId: number | null
+  posterPath: string | null
 }
 
 /** The group's most recent session (blind or revealed), or null. */
 export async function fetchLatestSession(groupId: string): Promise<SessionInfo | null> {
   const { data, error } = await supabase
     .from('reveal_sessions')
-    .select('id, state, created_by, titles(name, year, media_type)')
+    .select('id, state, created_by, titles(name, year, media_type, poster_path)')
     .eq('group_id', groupId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -140,25 +144,66 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
     titleName: row.titles.name,
     titleYear: row.titles.year,
     mediaType: row.titles.media_type,
+    posterPath: row.titles.poster_path,
   }
 }
 
-/** Create a manually-entered title + a blind session for it. */
+/**
+ * Find-or-create the title row. TMDB picks are deduped on (tmdb_id,
+ * media_type); manual entries always insert (titles has no update policy,
+ * so upsert-on-conflict is not an option — insert races just re-select).
+ */
+async function ensureTitle(title: NewTitle): Promise<string> {
+  if (title.tmdbId !== null) {
+    const { data: existing, error: findError } = await supabase
+      .from('titles')
+      .select('id')
+      .eq('tmdb_id', title.tmdbId)
+      .eq('media_type', title.mediaType)
+      .maybeSingle()
+    if (findError) throw new Error(findError.message)
+    if (existing) return existing.id
+  }
+
+  const { data, error } = await supabase
+    .from('titles')
+    .insert({
+      name: title.name,
+      year: title.year,
+      media_type: title.mediaType,
+      tmdb_id: title.tmdbId,
+      poster_path: title.posterPath,
+    })
+    .select('id')
+    .single()
+  if (error) {
+    // unique (tmdb_id, media_type): someone inserted it first — reuse theirs
+    if (error.code === '23505' && title.tmdbId !== null) {
+      const { data: raced, error: retryError } = await supabase
+        .from('titles')
+        .select('id')
+        .eq('tmdb_id', title.tmdbId)
+        .eq('media_type', title.mediaType)
+        .single()
+      if (retryError) throw new Error(retryError.message)
+      return raced.id
+    }
+    throw new Error(error.message)
+  }
+  return data.id
+}
+
+/** Create (or reuse) the title + start a blind session for it. */
 export async function createSession(
   groupId: string,
   userId: string,
   title: NewTitle,
 ): Promise<SessionInfo> {
-  const { data: titleRow, error: titleError } = await supabase
-    .from('titles')
-    .insert({ name: title.name, year: title.year, media_type: title.mediaType })
-    .select('id')
-    .single()
-  if (titleError) throw new Error(titleError.message)
+  const titleId = await ensureTitle(title)
 
   const { data, error } = await supabase
     .from('reveal_sessions')
-    .insert({ group_id: groupId, title_id: titleRow.id, created_by: userId })
+    .insert({ group_id: groupId, title_id: titleId, created_by: userId })
     .select('id, state, created_by')
     .single()
   if (error) throw new Error(error.message)
@@ -169,7 +214,33 @@ export async function createSession(
     titleName: title.name,
     titleYear: title.year,
     mediaType: title.mediaType,
+    posterPath: title.posterPath,
   }
+}
+
+// ---- TMDB search (proxied through an Edge Function; key stays server-side) --
+
+export interface TmdbResult {
+  tmdbId: number
+  name: string
+  year: number | null
+  posterPath: string | null
+}
+
+export async function searchTitles(
+  query: string,
+  mediaType: 'movie' | 'tv',
+): Promise<TmdbResult[]> {
+  const { data, error } = await supabase.functions.invoke('tmdb-search', {
+    body: { query, mediaType },
+  })
+  if (error) throw new Error(error.message)
+  return (data as { results: TmdbResult[] }).results ?? []
+}
+
+/** Public TMDB CDN url for a poster (no key required for images). */
+export function posterUrl(posterPath: string, size: 'w92' | 'w185' = 'w185'): string {
+  return `https://image.tmdb.org/t/p/${size}${posterPath}`
 }
 
 /** Flip a blind session to revealed (owner or creator; enforced in the RPC). */

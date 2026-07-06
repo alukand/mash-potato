@@ -45,6 +45,20 @@ never the service_role key or the TMDB key; those go through Edge Functions).
 - `supabase/migrations/` — schema + RLS as versioned SQL.
 - `supabase/tests/blind_read_test.sql` — pgTAP proof of the blind rule.
 
+## TMDB
+
+Title search is proxied through the `tmdb-search` Edge Function — the TMDB
+key lives in `supabase/functions/.env` locally (see `.env.example` there) or
+`supabase secrets` when hosted, and never ships in the client. This product
+uses the TMDB API but is not endorsed or certified by TMDB.
+
+## Releasing
+
+See [docs/RELEASING.md](docs/RELEASING.md) for the TestFlight path (hosted
+Supabase → Apple Developer → Xcode upload) and the Play internal-testing
+equivalent. `ios/` and `android/` are both generated and synced via
+`npm run sync`.
+
 ## The one rule that must not be wrong
 
 Blind scores are enforced **server-side** via Supabase RLS: a member can read

@@ -10,10 +10,12 @@ import {
   fetchMyScore,
   fetchWeights,
   onSessionChange,
+  posterUrl,
   revealSession,
   saveMyScore,
+  searchTitles,
 } from '../lib/api'
-import type { GroupInfo, MemberInfo, SessionInfo } from '../lib/api'
+import type { GroupInfo, MemberInfo, SessionInfo, TmdbResult } from '../lib/api'
 import { colorForMember } from '../lib/palette'
 
 interface RateScreenProps {
@@ -52,6 +54,37 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
   const [titleName, setTitleName] = useState('')
   const [titleYear, setTitleYear] = useState('')
   const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie')
+  const [results, setResults] = useState<TmdbResult[]>([])
+  const [picked, setPicked] = useState<TmdbResult | null>(null)
+  const [searching, setSearching] = useState(false)
+
+  // Debounced TMDB search (through the Edge Function) as the user types.
+  useEffect(() => {
+    const query = titleName.trim()
+    if (picked || query.length < 2) {
+      setResults([])
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    let stale = false
+    const timer = setTimeout(() => {
+      searchTitles(query, mediaType)
+        .then((r) => {
+          if (!stale) setResults(r)
+        })
+        .catch(() => {
+          if (!stale) setResults([])
+        })
+        .finally(() => {
+          if (!stale) setSearching(false)
+        })
+    }, 350)
+    return () => {
+      stale = true
+      clearTimeout(timer)
+    }
+  }, [titleName, mediaType, picked])
 
   const load = useCallback(async () => {
     try {
@@ -98,13 +131,29 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
     setBusy(true)
     setError(null)
     try {
-      await createSession(group.id, userId, {
-        name: titleName.trim(),
-        year: titleYear ? Number(titleYear) : null,
-        mediaType,
-      })
+      await createSession(
+        group.id,
+        userId,
+        picked
+          ? {
+              name: picked.name,
+              year: picked.year,
+              mediaType,
+              tmdbId: picked.tmdbId,
+              posterPath: picked.posterPath,
+            }
+          : {
+              name: titleName.trim(),
+              year: titleYear ? Number(titleYear) : null,
+              mediaType,
+              tmdbId: null,
+              posterPath: null,
+            },
+      )
       setTitleName('')
       setTitleYear('')
+      setPicked(null)
+      setResults([])
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the session')
@@ -172,7 +221,10 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                 <button
                   key={m}
                   type="button"
-                  onClick={() => setMediaType(m)}
+                  onClick={() => {
+                    setMediaType(m)
+                    setPicked(null)
+                  }}
                   className={`flex-1 rounded-full py-2 text-[12px] font-semibold transition-colors ${
                     mediaType === m ? 'bg-teal/10 text-teal' : 'text-muted'
                   }`}
@@ -181,26 +233,109 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                 </button>
               ))}
             </div>
-            <div className="flex flex-col gap-3">
-              <input
-                type="text"
-                required
-                maxLength={200}
-                placeholder="Title — e.g. Past Lives"
-                value={titleName}
-                onChange={(e) => setTitleName(e.target.value)}
-                className={inputClass}
-              />
-              <input
-                type="number"
-                min={1870}
-                max={2200}
-                placeholder="Year (optional)"
-                value={titleYear}
-                onChange={(e) => setTitleYear(e.target.value)}
-                className={inputClass}
-              />
-            </div>
+
+            {picked ? (
+              <div className="flex items-center gap-3 rounded-2xl border border-teal/30 bg-teal/5 p-3">
+                {picked.posterPath ? (
+                  <img
+                    src={posterUrl(picked.posterPath, 'w92')}
+                    alt=""
+                    className="h-[60px] w-10 shrink-0 rounded-lg object-cover"
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="grid h-[60px] w-10 shrink-0 place-items-center rounded-lg font-display text-lg font-semibold text-bg"
+                    style={{ backgroundImage: 'linear-gradient(160deg, #51C5BE, #3E7CB8)' }}
+                  >
+                    {picked.name.charAt(0)}
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-semibold">{picked.name}</p>
+                  <p className="font-mono text-[11px] text-muted">
+                    {mediaType === 'movie' ? 'Film' : 'TV'}
+                    {picked.year ? ` · ${picked.year}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPicked(null)}
+                  className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-[10px] uppercase tracking-wide text-muted transition-colors hover:text-text"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  maxLength={200}
+                  placeholder={`Search ${mediaType === 'movie' ? 'films' : 'TV shows'}…`}
+                  value={titleName}
+                  onChange={(e) => setTitleName(e.target.value)}
+                  className={inputClass}
+                />
+                {searching && (
+                  <p className="mt-2 px-1 font-mono text-[10px] text-muted">searching…</p>
+                )}
+                {results.length > 0 && (
+                  <ul className="mt-2 overflow-hidden rounded-2xl border border-line bg-surface-2">
+                    {results.map((r, i) => (
+                      <li key={`${r.tmdbId}`}>
+                        <button
+                          type="button"
+                          onClick={() => setPicked(r)}
+                          className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface ${
+                            i > 0 ? 'border-t border-line/50' : ''
+                          }`}
+                        >
+                          {r.posterPath ? (
+                            <img
+                              src={posterUrl(r.posterPath, 'w92')}
+                              alt=""
+                              className="h-12 w-8 shrink-0 rounded-md object-cover"
+                            />
+                          ) : (
+                            <span
+                              aria-hidden
+                              className="grid h-12 w-8 shrink-0 place-items-center rounded-md bg-line font-display text-sm font-semibold text-bg"
+                            >
+                              {r.name.charAt(0)}
+                            </span>
+                          )}
+                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                            {r.name}
+                          </span>
+                          <span className="tabular shrink-0 font-mono text-[11px] text-muted">
+                            {r.year ?? '—'}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {titleName.trim().length >= 2 && !searching && (
+                  <div className="mt-3 flex flex-col gap-3">
+                    <input
+                      type="number"
+                      min={1870}
+                      max={2200}
+                      placeholder="Year (only if using it as typed)"
+                      value={titleYear}
+                      onChange={(e) => setTitleYear(e.target.value)}
+                      className={inputClass}
+                    />
+                    {results.length === 0 && (
+                      <p className="px-1 text-[12px] text-muted">
+                        No matches — starting will use "{titleName.trim()}" as typed.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
             {error && (
               <p role="alert" className="mt-3 text-[12px] leading-snug text-coral">
                 {error}
@@ -208,7 +343,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
             )}
             <button
               type="submit"
-              disabled={busy || titleName.trim().length === 0}
+              disabled={busy || (!picked && titleName.trim().length === 0)}
               className="mt-4 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98] disabled:opacity-60"
               style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
             >
@@ -216,8 +351,16 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
             </button>
           </form>
           <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
-            Everyone scores blind. Search-powered titles (TMDB) arrive in a later milestone — for
-            now, type it in.
+            Everyone scores blind. Search powered by{' '}
+            <a
+              href="https://www.themoviedb.org"
+              target="_blank"
+              rel="noreferrer"
+              className="text-teal"
+            >
+              TMDB
+            </a>
+            .
           </p>
         </section>
       </>
@@ -241,7 +384,15 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
             className="relative grid h-[84px] w-14 shrink-0 place-items-center overflow-hidden rounded-xl font-display text-2xl font-semibold text-bg"
             style={{ backgroundImage: 'linear-gradient(160deg, #51C5BE, #3E7CB8)' }}
           >
-            {session.titleName.charAt(0)}
+            {session.posterPath ? (
+              <img
+                src={posterUrl(session.posterPath)}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : (
+              session.titleName.charAt(0)
+            )}
             <span className="mp-poster-grain" />
           </div>
           <div className="min-w-0 flex-1">
