@@ -1,9 +1,12 @@
-// TMDB search proxy. The TMDB key lives HERE (server-side secret) — never in
-// the client binary. Callers must be signed in (verify_jwt is on by default),
-// so this is not an open relay.
+// TMDB proxy. The TMDB key lives HERE (server-side secret) — never in the
+// client binary. Callers must be signed in (verify_jwt is on by default), so
+// this is not an open relay.
 //
-// POST { query: string, mediaType: 'movie' | 'tv' }
-// ->   { results: [{ tmdbId, name, year, posterPath }] }
+// One function, three ops (routed on `op`, default 'search' for back-compat):
+//   { op?: 'search', query, mediaType }        -> { results: TmdbResult[] }
+//   { op: 'detail', tmdbId, mediaType }         -> { detail: TitleDetail | null }
+//   { op: 'browse', feed, mediaType }           -> { results: TmdbResult[] }
+// where mediaType is 'movie' | 'tv' and feed is 'trending' | 'popular'.
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -18,13 +21,129 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-interface TmdbMovie {
+const TMDB = 'https://api.themoviedb.org/3'
+
+interface TmdbListItem {
   id: number
   title?: string
   name?: string
   release_date?: string
   first_air_date?: string
   poster_path?: string | null
+}
+
+// A search/browse row — the compact shape the client's TmdbResult expects.
+function mapListItem(r: TmdbListItem) {
+  const date = r.release_date ?? r.first_air_date ?? ''
+  const year = /^\d{4}/.test(date) ? Number(date.slice(0, 4)) : null
+  return {
+    tmdbId: r.id,
+    name: r.title ?? r.name ?? 'Untitled',
+    year,
+    posterPath: r.poster_path ?? null,
+  }
+}
+
+type MediaType = 'movie' | 'tv'
+
+function normalizeMediaType(value: unknown): MediaType {
+  return value === 'tv' ? 'tv' : 'movie'
+}
+
+async function tmdbFetch(path: string, apiKey: string, params: Record<string, string> = {}) {
+  const search = new URLSearchParams({ api_key: apiKey, language: 'en-US', ...params })
+  const res = await fetch(`${TMDB}${path}?${search.toString()}`)
+  return res
+}
+
+// ---- op: search ----------------------------------------------------------
+async function handleSearch(body: Record<string, unknown>, apiKey: string): Promise<Response> {
+  const query = String(body.query ?? '').trim()
+  const mediaType = normalizeMediaType(body.mediaType)
+  if (query.length < 2 || query.length > 200) return json({ results: [] })
+
+  const res = await tmdbFetch(`/search/${mediaType}`, apiKey, {
+    query,
+    include_adult: 'false',
+    page: '1',
+  })
+  if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
+  const data = (await res.json()) as { results?: TmdbListItem[] }
+  return json({ results: (data.results ?? []).slice(0, 8).map(mapListItem) })
+}
+
+// ---- op: browse (trending / popular shelves) -----------------------------
+async function handleBrowse(body: Record<string, unknown>, apiKey: string): Promise<Response> {
+  const mediaType = normalizeMediaType(body.mediaType)
+  const feed = body.feed === 'popular' ? 'popular' : 'trending'
+  const path = feed === 'popular' ? `/${mediaType}/popular` : `/trending/${mediaType}/week`
+
+  const res = await tmdbFetch(path, apiKey, { page: '1' })
+  if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
+  const data = (await res.json()) as { results?: TmdbListItem[] }
+  return json({ results: (data.results ?? []).slice(0, 14).map(mapListItem) })
+}
+
+// ---- op: detail (full page for one title) --------------------------------
+interface TmdbDetail {
+  id: number
+  title?: string
+  name?: string
+  overview?: string
+  release_date?: string
+  first_air_date?: string
+  poster_path?: string | null
+  backdrop_path?: string | null
+  vote_average?: number
+  vote_count?: number
+  runtime?: number | null
+  episode_run_time?: number[]
+  number_of_seasons?: number | null
+  genres?: { id: number; name: string }[]
+  credits?: {
+    cast?: { name?: string; character?: string; profile_path?: string | null }[]
+  }
+}
+
+async function handleDetail(body: Record<string, unknown>, apiKey: string): Promise<Response> {
+  const tmdbId = Number(body.tmdbId)
+  const mediaType = normalizeMediaType(body.mediaType)
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return json({ error: 'invalid tmdbId' }, 400)
+
+  const res = await tmdbFetch(`/${mediaType}/${tmdbId}`, apiKey, {
+    append_to_response: 'credits',
+  })
+  if (res.status === 404) return json({ detail: null })
+  if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
+  const d = (await res.json()) as TmdbDetail
+
+  const date = d.release_date ?? d.first_air_date ?? ''
+  const year = /^\d{4}/.test(date) ? Number(date.slice(0, 4)) : null
+  const runtimeMinutes =
+    mediaType === 'movie'
+      ? (d.runtime ?? null)
+      : (d.episode_run_time && d.episode_run_time.length > 0 ? d.episode_run_time[0] : null)
+
+  const detail = {
+    tmdbId: d.id,
+    mediaType,
+    name: d.title ?? d.name ?? 'Untitled',
+    year,
+    overview: d.overview ?? '',
+    genres: (d.genres ?? []).map((g) => g.name),
+    runtimeMinutes,
+    seasons: mediaType === 'tv' ? (d.number_of_seasons ?? null) : null,
+    tmdbRating: typeof d.vote_average === 'number' ? Math.round(d.vote_average * 10) / 10 : null,
+    voteCount: d.vote_count ?? 0,
+    posterPath: d.poster_path ?? null,
+    backdropPath: d.backdrop_path ?? null,
+    cast: (d.credits?.cast ?? []).slice(0, 8).map((c) => ({
+      name: c.name ?? '',
+      character: c.character ?? '',
+      profilePath: c.profile_path ?? null,
+    })),
+  }
+  return json({ detail })
 }
 
 Deno.serve(async (req) => {
@@ -40,40 +159,22 @@ Deno.serve(async (req) => {
     return json({ error: 'TMDB_API_KEY is not configured' }, 500)
   }
 
-  let query = ''
-  let mediaType: 'movie' | 'tv' = 'movie'
+  let body: Record<string, unknown>
   try {
-    const body = await req.json()
-    query = String(body.query ?? '').trim()
-    mediaType = body.mediaType === 'tv' ? 'tv' : 'movie'
+    body = (await req.json()) as Record<string, unknown>
   } catch {
     return json({ error: 'invalid JSON body' }, 400)
   }
-  if (query.length < 2 || query.length > 200) {
-    return json({ results: [] })
+
+  const op = body.op ?? 'search'
+  switch (op) {
+    case 'search':
+      return handleSearch(body, apiKey)
+    case 'browse':
+      return handleBrowse(body, apiKey)
+    case 'detail':
+      return handleDetail(body, apiKey)
+    default:
+      return json({ error: `unknown op: ${String(op)}` }, 400)
   }
-
-  const url =
-    `https://api.themoviedb.org/3/search/${mediaType}` +
-    `?query=${encodeURIComponent(query)}&include_adult=false&language=en-US&page=1` +
-    `&api_key=${apiKey}`
-
-  const tmdbRes = await fetch(url)
-  if (!tmdbRes.ok) {
-    return json({ error: `TMDB responded ${tmdbRes.status}` }, 502)
-  }
-  const data = (await tmdbRes.json()) as { results?: TmdbMovie[] }
-
-  const results = (data.results ?? []).slice(0, 8).map((r) => {
-    const date = r.release_date ?? r.first_air_date ?? ''
-    const year = /^\d{4}/.test(date) ? Number(date.slice(0, 4)) : null
-    return {
-      tmdbId: r.id,
-      name: r.title ?? r.name ?? 'Untitled',
-      year,
-      posterPath: r.poster_path ?? null,
-    }
-  })
-
-  return json({ results })
 })
