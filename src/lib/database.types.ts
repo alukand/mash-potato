@@ -252,6 +252,39 @@ export type Database = {
           },
         ]
       }
+      saved_titles: {
+        Row: {
+          created_at: string
+          title_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          title_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          title_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_titles_title_id_fkey"
+            columns: ["title_id"]
+            isOneToOne: false
+            referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "saved_titles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       titles: {
         Row: {
           created_at: string

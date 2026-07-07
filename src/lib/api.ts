@@ -44,18 +44,17 @@ export async function signOut() {
 
 // ---- groups -----------------------------------------------------------
 
-/** The user's first group (single-group UX for now), or null if none. */
-export async function fetchMyGroup(userId: string): Promise<GroupInfo | null> {
+/** Every group the user belongs to, oldest membership first. */
+export async function fetchMyGroups(userId: string): Promise<GroupInfo[]> {
   const { data, error } = await supabase
     .from('group_members')
     .select('role, groups(id, name)')
     .eq('user_id', userId)
     .order('joined_at', { ascending: true })
-    .limit(1)
   if (error) throw new Error(error.message)
-  const row = data?.[0]
-  if (!row?.groups) return null
-  return { id: row.groups.id, name: row.groups.name, role: row.role }
+  return (data ?? [])
+    .filter((row) => row.groups)
+    .map((row) => ({ id: row.groups!.id, name: row.groups!.name, role: row.role }))
 }
 
 /** Create a group; triggers add the owner membership + seed the rubric. */
@@ -232,15 +231,76 @@ export async function searchTitles(
   mediaType: 'movie' | 'tv',
 ): Promise<TmdbResult[]> {
   const { data, error } = await supabase.functions.invoke('tmdb-search', {
-    body: { query, mediaType },
+    body: { op: 'search', query, mediaType },
   })
   if (error) throw new Error(error.message)
   return (data as { results: TmdbResult[] }).results ?? []
 }
 
-/** Public TMDB CDN url for a poster (no key required for images). */
-export function posterUrl(posterPath: string, size: 'w92' | 'w185' = 'w185'): string {
+export type BrowseFeed = 'trending' | 'popular'
+
+// Discover shelves change slowly; cache each (feed, mediaType) for the app
+// session so tab revisits are instant. TTL keeps it from going stale mid-use.
+const BROWSE_TTL_MS = 10 * 60 * 1000
+const browseCache = new Map<string, { at: number; results: TmdbResult[] }>()
+
+export async function fetchBrowse(
+  feed: BrowseFeed,
+  mediaType: 'movie' | 'tv',
+): Promise<TmdbResult[]> {
+  const key = `${feed}:${mediaType}`
+  const hit = browseCache.get(key)
+  if (hit && Date.now() - hit.at < BROWSE_TTL_MS) return hit.results
+
+  const { data, error } = await supabase.functions.invoke('tmdb-search', {
+    body: { op: 'browse', feed, mediaType },
+  })
+  if (error) throw new Error(error.message)
+  const results = (data as { results: TmdbResult[] }).results ?? []
+  browseCache.set(key, { at: Date.now(), results })
+  return results
+}
+
+/** Full TMDB metadata for one title's detail page. */
+export interface TitleDetail {
+  tmdbId: number
+  mediaType: 'movie' | 'tv'
+  name: string
+  year: number | null
+  overview: string
+  genres: string[]
+  runtimeMinutes: number | null
+  seasons: number | null
+  tmdbRating: number | null
+  voteCount: number
+  posterPath: string | null
+  backdropPath: string | null
+  cast: { name: string; character: string; profilePath: string | null }[]
+}
+
+/** Full details for one TMDB title, or null if TMDB has no such id. */
+export async function fetchTitleDetail(
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+): Promise<TitleDetail | null> {
+  const { data, error } = await supabase.functions.invoke('tmdb-search', {
+    body: { op: 'detail', tmdbId, mediaType },
+  })
+  if (error) throw new Error(error.message)
+  return (data as { detail: TitleDetail | null }).detail ?? null
+}
+
+/** Public TMDB CDN url for a poster/profile image (no key required). */
+export function posterUrl(
+  posterPath: string,
+  size: 'w92' | 'w185' | 'w342' = 'w185',
+): string {
   return `https://image.tmdb.org/t/p/${size}${posterPath}`
+}
+
+/** Public TMDB CDN url for a wide backdrop image. */
+export function backdropUrl(backdropPath: string, size: 'w780' | 'w1280' = 'w780'): string {
+  return `https://image.tmdb.org/t/p/${size}${backdropPath}`
 }
 
 /** Flip a blind session to revealed (owner or creator; enforced in the RPC). */
@@ -305,6 +365,145 @@ export async function fetchLockStatus(
   })
   if (error) throw new Error(error.message)
   return (data ?? []).map((row) => ({ memberId: row.member_id, locked: row.locked }))
+}
+
+// ---- saved titles ("my list") -------------------------------------------
+
+export interface SavedTitle {
+  titleId: string
+  tmdbId: number | null
+  mediaType: 'movie' | 'tv'
+  name: string
+  year: number | null
+  posterPath: string | null
+  savedAt: string
+}
+
+/** The user's saved titles, most recently saved first. */
+export async function fetchMySavedTitles(userId: string): Promise<SavedTitle[]> {
+  const { data, error } = await supabase
+    .from('saved_titles')
+    .select('created_at, titles(id, tmdb_id, media_type, name, year, poster_path)')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? [])
+    .filter((row) => row.titles)
+    .map((row) => ({
+      titleId: row.titles!.id,
+      tmdbId: row.titles!.tmdb_id,
+      mediaType: row.titles!.media_type,
+      name: row.titles!.name,
+      year: row.titles!.year,
+      posterPath: row.titles!.poster_path,
+      savedAt: row.created_at,
+    }))
+}
+
+/**
+ * The titles-row id for a TMDB title IF the user has saved it, else null.
+ * Two hops: the title may not be cached yet (nobody has saved/scored it).
+ */
+export async function fetchSavedTitleId(
+  userId: string,
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+): Promise<string | null> {
+  const { data: title, error: titleError } = await supabase
+    .from('titles')
+    .select('id')
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .maybeSingle()
+  if (titleError) throw new Error(titleError.message)
+  if (!title) return null
+
+  const { data: saved, error: savedError } = await supabase
+    .from('saved_titles')
+    .select('title_id')
+    .eq('user_id', userId)
+    .eq('title_id', title.id)
+    .maybeSingle()
+  if (savedError) throw new Error(savedError.message)
+  return saved ? title.id : null
+}
+
+/** Save a title to the user's list (idempotent). Returns the titles-row id. */
+export async function saveTitle(userId: string, title: NewTitle): Promise<string> {
+  const titleId = await ensureTitle(title)
+  const { error } = await supabase
+    .from('saved_titles')
+    .insert({ user_id: userId, title_id: titleId })
+  // Already saved — the (user_id, title_id) PK collides; treat as success.
+  if (error && error.code !== '23505') throw new Error(error.message)
+  return titleId
+}
+
+/** Remove a title from the user's list. */
+export async function unsaveTitle(userId: string, titleId: string): Promise<void> {
+  const { error } = await supabase
+    .from('saved_titles')
+    .delete()
+    .eq('user_id', userId)
+    .eq('title_id', titleId)
+  if (error) throw new Error(error.message)
+}
+
+// ---- cross-group history for a title -------------------------------------
+
+export interface TitleHistoryEntry {
+  sessionId: string
+  groupId: string
+  groupName: string
+  revealedAt: string | null
+  scorecards: MemberScorecard[]
+  weights: RubricWeights
+}
+
+/**
+ * Every REVEALED session for this TMDB title across the caller's groups, with
+ * the scorecards + rubric needed to compute each group's Mashed score. RLS
+ * trims sessions to the caller's groups, and being revealed it exposes the full
+ * scorecards — the blind rule is never bent, only revealed history is read.
+ */
+export async function fetchTitleHistory(
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+): Promise<TitleHistoryEntry[]> {
+  const { data: title, error: titleError } = await supabase
+    .from('titles')
+    .select('id')
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .maybeSingle()
+  if (titleError) throw new Error(titleError.message)
+  if (!title) return []
+
+  const { data: sessions, error: sessionsError } = await supabase
+    .from('reveal_sessions')
+    .select('id, group_id, revealed_at, groups(name)')
+    .eq('title_id', title.id)
+    .eq('state', 'revealed')
+    .order('revealed_at', { ascending: false })
+  if (sessionsError) throw new Error(sessionsError.message)
+  const rows = sessions ?? []
+  if (rows.length === 0) return []
+
+  // Weights are per group — fetch each distinct group once.
+  const groupIds = [...new Set(rows.map((r) => r.group_id))]
+  const weightsByGroup = new Map<string, RubricWeights>(
+    await Promise.all(groupIds.map(async (id) => [id, await fetchWeights(id)] as const)),
+  )
+  const scorecardsBySession = await Promise.all(rows.map((r) => fetchAllScorecards(r.id)))
+
+  return rows.map((r, i) => ({
+    sessionId: r.id,
+    groupId: r.group_id,
+    groupName: r.groups?.name ?? 'Group',
+    revealedAt: r.revealed_at,
+    scorecards: scorecardsBySession[i],
+    weights: weightsByGroup.get(r.group_id)!,
+  }))
 }
 
 // ---- realtime -----------------------------------------------------------

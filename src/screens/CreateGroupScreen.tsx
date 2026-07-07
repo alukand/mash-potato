@@ -7,13 +7,16 @@ import { Logo } from '../components/Logo'
 interface CreateGroupScreenProps {
   userId: string
   onCreated: (group: GroupInfo) => void
+  /** When present, this screen was pushed from within the app (Profile →
+   *  "create another group") rather than shown as the first-run gate. */
+  onBack?: () => void
 }
 
 // First-run: name the group. Creating it also seeds membership (owner) and
 // an equal-weight rubric via DB triggers. Joining someone else's group needs
 // an invite mechanism — a later milestone.
 
-export function CreateGroupScreen({ userId, onCreated }: CreateGroupScreenProps) {
+export function CreateGroupScreen({ userId, onCreated, onBack }: CreateGroupScreenProps) {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -77,11 +80,11 @@ export function CreateGroupScreen({ userId, onCreated }: CreateGroupScreenProps)
 
         <button
           type="button"
-          onClick={() => void signOut()}
+          onClick={() => (onBack ? onBack() : void signOut())}
           className="mp-rise mx-auto mt-6 block font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
           style={{ animationDelay: '160ms' }}
         >
-          Not you? Sign out
+          {onBack ? 'Back' : 'Not you? Sign out'}
         </button>
       </div>
     </div>

@@ -13,10 +13,10 @@ import {
   posterUrl,
   revealSession,
   saveMyScore,
-  searchTitles,
 } from '../lib/api'
 import type { GroupInfo, MemberInfo, SessionInfo, TmdbResult } from '../lib/api'
 import { colorForMember } from '../lib/palette'
+import { useTmdbSearch } from '../hooks/useTmdbSearch'
 
 interface RateScreenProps {
   group: GroupInfo
@@ -54,37 +54,11 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
   const [titleName, setTitleName] = useState('')
   const [titleYear, setTitleYear] = useState('')
   const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie')
-  const [results, setResults] = useState<TmdbResult[]>([])
   const [picked, setPicked] = useState<TmdbResult | null>(null)
-  const [searching, setSearching] = useState(false)
 
-  // Debounced TMDB search (through the Edge Function) as the user types.
-  useEffect(() => {
-    const query = titleName.trim()
-    if (picked || query.length < 2) {
-      setResults([])
-      setSearching(false)
-      return
-    }
-    setSearching(true)
-    let stale = false
-    const timer = setTimeout(() => {
-      searchTitles(query, mediaType)
-        .then((r) => {
-          if (!stale) setResults(r)
-        })
-        .catch(() => {
-          if (!stale) setResults([])
-        })
-        .finally(() => {
-          if (!stale) setSearching(false)
-        })
-    }, 350)
-    return () => {
-      stale = true
-      clearTimeout(timer)
-    }
-  }, [titleName, mediaType, picked])
+  // Debounced TMDB search (through the Edge Function); paused once a result is
+  // picked. Shared with Discover via the hook.
+  const { results, searching } = useTmdbSearch(titleName, mediaType, !picked)
 
   const load = useCallback(async () => {
     try {
@@ -153,7 +127,6 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
       setTitleName('')
       setTitleYear('')
       setPicked(null)
-      setResults([])
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the session')

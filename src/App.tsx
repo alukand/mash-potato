@@ -1,21 +1,36 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
-import { fetchMyGroup, fetchMembers } from './lib/api'
+import { fetchMyGroups, fetchMembers } from './lib/api'
 import type { GroupInfo, MemberInfo } from './lib/api'
-import { AVATAR_PALETTE } from './lib/palette'
+import { pickActiveGroup, readStoredGroupId, storeGroupId } from './lib/activeGroup'
+import { AVATAR_PALETTE, colorForMember } from './lib/palette'
 import { Logo } from './components/Logo'
 import { BottomNav } from './components/BottomNav'
 import type { TabId } from './components/BottomNav'
 import { AuthScreen } from './screens/AuthScreen'
 import { CreateGroupScreen } from './screens/CreateGroupScreen'
 import { HomeScreen } from './screens/HomeScreen'
+import { DiscoverScreen } from './screens/DiscoverScreen'
 import { RateScreen } from './screens/RateScreen'
 import { GroupScreen } from './screens/GroupScreen'
+import { ProfileScreen } from './screens/ProfileScreen'
+import { TitleDetailScreen } from './screens/TitleDetailScreen'
 
-// App shell: auth gate -> group bootstrap -> tabbed app.
-// Group tab is fully live; Home/Rate still run on sample sessions until the
-// sessions/scores milestone.
+// App shell: auth gate -> group bootstrap -> tabbed app, with a lightweight
+// view-stack (no router) so a title's detail page, the profile, or a
+// create-group form can open over any tab and pop back.
+
+// A view pushed over the tabs. Tapping a bottom tab clears the whole stack.
+type StackView =
+  | { kind: 'title'; tmdbId: number; mediaType: 'movie' | 'tv' }
+  | { kind: 'profile' }
+  | { kind: 'createGroup' }
+
+function stackKey(v: StackView): string {
+  if (v.kind === 'title') return `title:${v.tmdbId}:${v.mediaType}`
+  return v.kind
+}
 
 function Splash({ note }: { note?: string }) {
   return (
@@ -32,35 +47,49 @@ function Splash({ note }: { note?: string }) {
 
 function App() {
   const [tab, setTab] = useState<TabId>('home')
-  // undefined = still resolving; null = signed out / no group
+  // undefined = still resolving; null = signed out / no groups
   const [session, setSession] = useState<Session | null | undefined>(undefined)
-  const [group, setGroup] = useState<GroupInfo | null | undefined>(undefined)
+  const [groups, setGroups] = useState<GroupInfo[] | undefined>(undefined)
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [members, setMembers] = useState<MemberInfo[]>([])
+  const [stack, setStack] = useState<StackView[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+
+  // The active group: the stored/selected one, else the oldest, else null.
+  const group =
+    groups && groups.length > 0
+      ? (groups.find((g) => g.id === activeGroupId) ?? groups[0])
+      : null
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s)
       setTab('home')
+      setStack([])
     })
     return () => sub.subscription.unsubscribe()
   }, [])
 
   useEffect(() => {
     if (!session) {
-      setGroup(undefined)
+      setGroups(undefined)
+      setActiveGroupId(null)
       setMembers([])
       setLoadError(null)
       return
     }
     let cancelled = false
-    setGroup(undefined)
-    fetchMyGroup(session.user.id)
-      .then((g) => !cancelled && setGroup(g))
+    setGroups(undefined)
+    fetchMyGroups(session.user.id)
+      .then((gs) => {
+        if (cancelled) return
+        setGroups(gs)
+        setActiveGroupId(pickActiveGroup(gs, readStoredGroupId())?.id ?? null)
+      })
       .catch((err) => {
         if (cancelled) return
-        setLoadError(err instanceof Error ? err.message : 'Could not load your group')
+        setLoadError(err instanceof Error ? err.message : 'Could not load your groups')
       })
     return () => {
       cancelled = true
@@ -80,6 +109,28 @@ function App() {
       cancelled = true
     }
   }, [group])
+
+  function openTitle(tmdbId: number, mediaType: 'movie' | 'tv') {
+    setStack((s) => [...s, { kind: 'title', tmdbId, mediaType }])
+    window.scrollTo(0, 0)
+  }
+  function pushView(view: StackView) {
+    setStack((s) => [...s, view])
+    window.scrollTo(0, 0)
+  }
+  function popView() {
+    setStack((s) => s.slice(0, -1))
+  }
+  function selectTab(next: TabId) {
+    setStack([])
+    setTab(next)
+  }
+  function switchGroup(id: string) {
+    setActiveGroupId(id)
+    storeGroupId(id)
+    setStack([])
+    setTab('home')
+  }
 
   if (loadError) {
     return (
@@ -101,70 +152,142 @@ function App() {
 
   if (session === undefined) return <Splash />
   if (session === null) return <AuthScreen />
-  if (group === undefined) return <Splash note="finding your crew" />
-  if (group === null) {
-    return <CreateGroupScreen userId={session.user.id} onCreated={setGroup} />
+  if (groups === undefined) return <Splash note="finding your crew" />
+  if (!group) {
+    // First run: no groups yet. Shown as the gate (sign-out escape hatch).
+    return (
+      <CreateGroupScreen
+        userId={session.user.id}
+        onCreated={(g) => {
+          setGroups([g])
+          setActiveGroupId(g.id)
+          storeGroupId(g.id)
+        }}
+      />
+    )
   }
+
+  const userId = session.user.id
+  const me = members.find((m) => m.userId === userId)
+  const myName = me?.displayName ?? 'You'
+  const top = stack[stack.length - 1]
 
   return (
     <div className="min-h-dvh">
-      <div className="mx-auto w-full max-w-[480px] px-5 pb-32">
-        {/* ---- Header (live group) ---- */}
-        <header className="flex items-center justify-between pt-7 pb-5">
-          <div className="flex items-center gap-2.5">
-            <Logo className="h-9 w-9" />
-            <div className="min-w-0">
-              <h1 className="truncate font-display text-[26px] font-semibold leading-none tracking-tight">
-                {group.name}
-              </h1>
-              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
-                Mash Potato · {members.length || 1} member{members.length === 1 ? '' : 's'}
-              </p>
+      {top ? (
+        <div className="mx-auto w-full max-w-[480px] pb-32">
+          <div key={stackKey(top)} className="mp-rise">
+            {top.kind === 'title' && (
+              <TitleDetailScreen
+                tmdbId={top.tmdbId}
+                mediaType={top.mediaType}
+                group={group}
+                userId={userId}
+                onBack={popView}
+                onStartedSession={() => {
+                  setStack([])
+                  setTab('rate')
+                }}
+              />
+            )}
+            {top.kind === 'profile' && (
+              <ProfileScreen
+                userId={userId}
+                displayName={myName}
+                groups={groups}
+                activeGroupId={group.id}
+                onSwitchGroup={switchGroup}
+                onCreateGroup={() => pushView({ kind: 'createGroup' })}
+                onOpenTitle={openTitle}
+                onBack={popView}
+              />
+            )}
+            {top.kind === 'createGroup' && (
+              <CreateGroupScreen
+                userId={userId}
+                onBack={popView}
+                onCreated={(g) => {
+                  setGroups((prev) => [...(prev ?? []), g])
+                  setActiveGroupId(g.id)
+                  storeGroupId(g.id)
+                  setStack([])
+                  setTab('home')
+                }}
+              />
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mx-auto w-full max-w-[480px] px-5 pb-32">
+          {/* ---- Header (active group) ---- */}
+          <header className="flex items-center justify-between pt-7 pb-5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <Logo className="h-9 w-9" />
+              <div className="min-w-0">
+                <h1 className="truncate font-display text-[26px] font-semibold leading-none tracking-tight">
+                  {group.name}
+                </h1>
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
+                  Mash Potato · {members.length || 1} member{members.length === 1 ? '' : 's'}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex shrink-0 -space-x-2">
-            {members.map((m, i) => (
-              <span
-                key={m.userId}
-                title={m.displayName}
-                className="grid h-7 w-7 place-items-center rounded-full border-2 border-bg font-mono text-[10px] font-bold text-bg"
-                style={{ backgroundColor: AVATAR_PALETTE[i % AVATAR_PALETTE.length] }}
+            <div className="flex shrink-0 items-center gap-2.5">
+              <div className="flex -space-x-2">
+                {members.map((m, i) => (
+                  <span
+                    key={m.userId}
+                    title={m.displayName}
+                    className="grid h-7 w-7 place-items-center rounded-full border-2 border-bg font-mono text-[10px] font-bold text-bg"
+                    style={{ backgroundColor: AVATAR_PALETTE[i % AVATAR_PALETTE.length] }}
+                  >
+                    {m.displayName.charAt(0).toUpperCase()}
+                  </span>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => pushView({ kind: 'profile' })}
+                aria-label="Your profile"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[11px] font-bold text-bg ring-2 ring-teal/70 transition-transform active:scale-95"
+                style={{ backgroundColor: colorForMember(members, userId) }}
               >
-                {m.displayName.charAt(0).toUpperCase()}
-              </span>
-            ))}
-          </div>
-        </header>
+                {myName.charAt(0).toUpperCase()}
+              </button>
+            </div>
+          </header>
 
-        {/* key remounts the screen on tab change so the entrance plays again */}
-        <main key={tab}>
-          {tab === 'home' && (
-            <HomeScreen
-              group={group}
-              members={members}
-              userId={session.user.id}
-              onStartSession={() => setTab('rate')}
-            />
-          )}
-          {tab === 'rate' && (
-            <RateScreen
-              group={group}
-              members={members}
-              userId={session.user.id}
-              onGoHome={() => setTab('home')}
-            />
-          )}
-          {tab === 'group' && (
-            <GroupScreen group={group} members={members} userId={session.user.id} />
-          )}
-        </main>
+          {/* key remounts the screen on tab OR group change so entrances replay */}
+          <main key={`${tab}:${group.id}`}>
+            {tab === 'home' && (
+              <HomeScreen
+                group={group}
+                members={members}
+                userId={userId}
+                onStartSession={() => setTab('rate')}
+              />
+            )}
+            {tab === 'discover' && <DiscoverScreen onOpenTitle={openTitle} />}
+            {tab === 'rate' && (
+              <RateScreen
+                group={group}
+                members={members}
+                userId={userId}
+                onGoHome={() => setTab('home')}
+              />
+            )}
+            {tab === 'group' && (
+              <GroupScreen group={group} members={members} userId={userId} />
+            )}
+          </main>
 
-        <p className="mt-7 text-center font-mono text-[10px] text-muted">
-          M5 · sessions live · the reveal is real
-        </p>
-      </div>
+          <p className="mt-7 text-center font-mono text-[10px] text-muted">
+            M5 · sessions live · the reveal is real
+          </p>
+        </div>
+      )}
 
-      <BottomNav active={tab} onSelect={setTab} />
+      <BottomNav active={tab} onSelect={selectTab} />
     </div>
   )
 }

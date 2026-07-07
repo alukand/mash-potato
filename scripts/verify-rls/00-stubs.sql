@@ -21,6 +21,17 @@ $$;
 create schema if not exists auth;
 create schema if not exists extensions;
 
+-- Supabase ships an (initially empty) publication named supabase_realtime; the
+-- sessions_live migration adds a table to it. Provide an empty one so that
+-- migration's `alter publication ... add table` replays on vanilla Postgres.
+do $$
+begin
+  if not exists (select from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+end
+$$;
+
 create table if not exists auth.users (
   id uuid primary key,
   instance_id uuid,

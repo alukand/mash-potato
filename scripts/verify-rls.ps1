@@ -39,6 +39,7 @@ Get-ChildItem (Join-Path $repo "supabase\migrations\*.sql") | Sort-Object Name |
 
 Invoke-Sql "API-role grants" (Join-Path $repo "scripts\verify-rls\20-grants.sql")
 Invoke-Sql "BLIND-RULE TEST" (Join-Path $repo "scripts\verify-rls\30-blind-rule-test.sql")
+Invoke-Sql "SAVED-TITLES TEST" (Join-Path $repo "scripts\verify-rls\40-saved-titles-test.sql")
 
 Write-Host ""
 Write-Host "RLS verification complete - the blind rule holds." -ForegroundColor Green
