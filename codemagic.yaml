@@ -50,8 +50,12 @@ workflows:
       - name: Fetch (creating if missing) signing files, set up keychain
         script: |
           keychain initialize
+          # Create/reuse the distribution certificate from the private key stored
+          # as the secure CERTIFICATE_PRIVATE_KEY variable, and create the
+          # App Store provisioning profile if it doesn't exist yet.
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
             --create
           keychain add-certificates
           xcode-project use-profiles
