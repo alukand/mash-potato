@@ -25,7 +25,7 @@ workflows:
       app_store_connect: "Mash Potato"
     environment:
       vars:
-        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_PROJECT: "ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
         BUNDLE_ID: "com.mashpotato.app"
         APP_APPLE_ID: 6788610092 # Apple ID of the App Store Connect record
@@ -33,7 +33,7 @@ workflows:
         - mashpotato_env
       node: 22 # Capacitor 8 CLI requires Node >= 22
       xcode: latest
-      cocoapods: default
+      # Capacitor 8 uses Swift Package Manager, not CocoaPods — no pods step.
     scripts:
       - name: Install npm dependencies
         script: npm ci
@@ -47,9 +47,6 @@ workflows:
         script: |
           npm run build
           npx cap sync ios
-      - name: Install CocoaPods dependencies
-        script: |
-          cd ios/App && pod install
       - name: Fetch (creating if missing) signing files, set up keychain
         script: |
           keychain initialize
@@ -65,7 +62,7 @@ workflows:
       - name: Build the signed .ipa
         script: |
           xcode-project build-ipa \
-            --workspace "$XCODE_WORKSPACE" \
+            --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME"
     artifacts:
       - build/ios/ipa/*.ipa
