@@ -2,11 +2,15 @@
 // client binary. Callers must be signed in (verify_jwt is on by default), so
 // this is not an open relay.
 //
-// One function, three ops (routed on `op`, default 'search' for back-compat):
-//   { op?: 'search', query, mediaType }        -> { results: TmdbResult[] }
-//   { op: 'detail', tmdbId, mediaType }         -> { detail: TitleDetail | null }
-//   { op: 'browse', feed, mediaType }           -> { results: TmdbResult[] }
-// where mediaType is 'movie' | 'tv' and feed is 'trending' | 'popular'.
+// One function, several ops (routed on `op`, default 'search' for back-compat):
+//   { op?: 'search', query, mediaType }         -> { results: TmdbResult[] }
+//   { op: 'detail', tmdbId, mediaType }          -> { detail: TitleDetail | null }
+//   { op: 'browse', feed, mediaType }            -> { results: TmdbResult[] }
+//   { op: 'genres', mediaType }                  -> { genres: {id,name}[] }
+//   { op: 'person', query }                      -> { people: {id,name,profilePath}[] }
+//   { op: 'discover', filters, mediaType }       -> { results: TmdbResult[] }
+// where mediaType is 'movie' | 'tv', feed is 'trending' | 'popular', and
+// filters is { genreIds?: number[]; personId?: number; year?: number }.
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -146,6 +150,79 @@ async function handleDetail(body: Record<string, unknown>, apiKey: string): Prom
   return json({ detail })
 }
 
+// ---- op: genres (the genre catalog for the filter chips) -----------------
+async function handleGenres(body: Record<string, unknown>, apiKey: string): Promise<Response> {
+  const mediaType = normalizeMediaType(body.mediaType)
+  const res = await tmdbFetch(`/genre/${mediaType}/list`, apiKey)
+  if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
+  const data = (await res.json()) as { genres?: { id: number; name: string }[] }
+  return json({ genres: data.genres ?? [] })
+}
+
+// ---- op: person (actor / director lookup for the people filter) ----------
+interface TmdbPerson {
+  id: number
+  name?: string
+  profile_path?: string | null
+  known_for_department?: string
+}
+
+async function handlePerson(body: Record<string, unknown>, apiKey: string): Promise<Response> {
+  const query = String(body.query ?? '').trim()
+  if (query.length < 2 || query.length > 100) return json({ people: [] })
+
+  const res = await tmdbFetch('/search/person', apiKey, {
+    query,
+    include_adult: 'false',
+    page: '1',
+  })
+  if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
+  const data = (await res.json()) as { results?: TmdbPerson[] }
+  return json({
+    people: (data.results ?? []).slice(0, 8).map((p) => ({
+      id: p.id,
+      name: p.name ?? '',
+      profilePath: p.profile_path ?? null,
+      department: p.known_for_department ?? null,
+    })),
+  })
+}
+
+// ---- op: discover (filter by genre / person / year) ----------------------
+interface DiscoverFilters {
+  genreIds?: number[]
+  personId?: number
+  year?: number
+}
+
+async function handleDiscover(body: Record<string, unknown>, apiKey: string): Promise<Response> {
+  const mediaType = normalizeMediaType(body.mediaType)
+  const filters = (body.filters ?? {}) as DiscoverFilters
+
+  const params: Record<string, string> = {
+    sort_by: 'popularity.desc',
+    include_adult: 'false',
+    page: '1',
+  }
+  if (Array.isArray(filters.genreIds) && filters.genreIds.length > 0) {
+    params.with_genres = filters.genreIds.join(',')
+  }
+  // with_people matches cast OR crew, so one control covers actors + directors.
+  if (typeof filters.personId === 'number') {
+    params.with_people = String(filters.personId)
+  }
+  if (typeof filters.year === 'number') {
+    params[mediaType === 'movie' ? 'primary_release_year' : 'first_air_date_year'] = String(
+      filters.year,
+    )
+  }
+
+  const res = await tmdbFetch(`/discover/${mediaType}`, apiKey, params)
+  if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
+  const data = (await res.json()) as { results?: TmdbListItem[] }
+  return json({ results: (data.results ?? []).slice(0, 20).map(mapListItem) })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -174,6 +251,12 @@ Deno.serve(async (req) => {
       return handleBrowse(body, apiKey)
     case 'detail':
       return handleDetail(body, apiKey)
+    case 'genres':
+      return handleGenres(body, apiKey)
+    case 'person':
+      return handlePerson(body, apiKey)
+    case 'discover':
+      return handleDiscover(body, apiKey)
     default:
       return json({ error: `unknown op: ${String(op)}` }, 400)
   }

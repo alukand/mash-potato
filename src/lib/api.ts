@@ -290,6 +290,61 @@ export async function fetchTitleDetail(
   return (data as { detail: TitleDetail | null }).detail ?? null
 }
 
+export interface TmdbGenre {
+  id: number
+  name: string
+}
+
+// The genre catalog changes ~never; cache per media type for the app session.
+const genresCache = new Map<'movie' | 'tv', TmdbGenre[]>()
+
+export async function fetchGenres(mediaType: 'movie' | 'tv'): Promise<TmdbGenre[]> {
+  const hit = genresCache.get(mediaType)
+  if (hit) return hit
+  const { data, error } = await supabase.functions.invoke('tmdb-search', {
+    body: { op: 'genres', mediaType },
+  })
+  if (error) throw new Error(error.message)
+  const genres = (data as { genres: TmdbGenre[] }).genres ?? []
+  genresCache.set(mediaType, genres)
+  return genres
+}
+
+export interface TmdbPerson {
+  id: number
+  name: string
+  profilePath: string | null
+  /** e.g. 'Acting' or 'Directing' — from TMDB's known_for_department. */
+  department: string | null
+}
+
+/** Search people (actors + directors) for the filter picker. */
+export async function searchPeople(query: string): Promise<TmdbPerson[]> {
+  const { data, error } = await supabase.functions.invoke('tmdb-search', {
+    body: { op: 'person', query },
+  })
+  if (error) throw new Error(error.message)
+  return (data as { people: TmdbPerson[] }).people ?? []
+}
+
+export interface DiscoverFilters {
+  genreIds?: number[]
+  personId?: number
+  year?: number
+}
+
+/** Filtered discovery by genre / person / year (TMDB /discover). */
+export async function fetchDiscover(
+  filters: DiscoverFilters,
+  mediaType: 'movie' | 'tv',
+): Promise<TmdbResult[]> {
+  const { data, error } = await supabase.functions.invoke('tmdb-search', {
+    body: { op: 'discover', filters, mediaType },
+  })
+  if (error) throw new Error(error.message)
+  return (data as { results: TmdbResult[] }).results ?? []
+}
+
 /** Public TMDB CDN url for a poster/profile image (no key required). */
 export function posterUrl(
   posterPath: string,
@@ -398,6 +453,60 @@ export async function fetchMySavedTitles(userId: string): Promise<SavedTitle[]> 
       posterPath: row.titles!.poster_path,
       savedAt: row.created_at,
     }))
+}
+
+export interface ReviewedTitle {
+  titleId: string
+  tmdbId: number | null
+  mediaType: 'movie' | 'tv'
+  name: string
+  year: number | null
+  posterPath: string | null
+  /** How many sessions (across the user's groups) the user has scored it in. */
+  sessionCount: number
+  /** True once at least one of those sessions has been revealed. */
+  anyRevealed: boolean
+}
+
+/**
+ * Every title the user has scored — i.e. has their OWN member_scores row for,
+ * in any session state. RLS `scores_select_own` returns only the user's rows;
+ * the reveal_sessions embed is gated to their groups. Grouped by title, most
+ * recently scored first.
+ */
+export async function fetchMyReviewedTitles(userId: string): Promise<ReviewedTitle[]> {
+  const { data, error } = await supabase
+    .from('member_scores')
+    .select(
+      'updated_at, reveal_sessions(state, titles(id, tmdb_id, media_type, name, year, poster_path))',
+    )
+    .eq('member_id', userId)
+    .order('updated_at', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  const byTitle = new Map<string, ReviewedTitle>()
+  for (const row of data ?? []) {
+    const title = row.reveal_sessions?.titles
+    if (!title) continue
+    const revealed = row.reveal_sessions!.state === 'revealed'
+    const existing = byTitle.get(title.id)
+    if (existing) {
+      existing.sessionCount += 1
+      existing.anyRevealed = existing.anyRevealed || revealed
+    } else {
+      byTitle.set(title.id, {
+        titleId: title.id,
+        tmdbId: title.tmdb_id,
+        mediaType: title.media_type,
+        name: title.name,
+        year: title.year,
+        posterPath: title.poster_path,
+        sessionCount: 1,
+        anyRevealed: revealed,
+      })
+    }
+  }
+  return [...byTitle.values()]
 }
 
 /**

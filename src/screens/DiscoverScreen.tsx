@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { fetchBrowse, posterUrl } from '../lib/api'
-import type { TmdbResult } from '../lib/api'
+import { fetchBrowse, fetchDiscover, fetchGenres, posterUrl, searchPeople } from '../lib/api'
+import type { TmdbGenre, TmdbPerson, TmdbResult } from '../lib/api'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 import { PosterShelf } from '../components/PosterShelf'
 
@@ -12,18 +12,140 @@ const inputClass =
   'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
   'placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60'
 
-// Discover: search any TMDB title + trending / popular shelves. Every result
-// opens that title's detail page.
+// A tappable list of result rows (shared by text search and filtered discover).
+function ResultList({
+  results,
+  mediaType,
+  onOpenTitle,
+}: {
+  results: TmdbResult[]
+  mediaType: 'movie' | 'tv'
+  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+}) {
+  return (
+    <ul className="overflow-hidden rounded-2xl border border-line bg-surface-2">
+      {results.map((r, i) => (
+        <li key={`${r.tmdbId}`}>
+          <button
+            type="button"
+            onClick={() => onOpenTitle(r.tmdbId, mediaType)}
+            className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface ${
+              i > 0 ? 'border-t border-line/50' : ''
+            }`}
+          >
+            {r.posterPath ? (
+              <img
+                src={posterUrl(r.posterPath, 'w92')}
+                alt=""
+                className="h-12 w-8 shrink-0 rounded-md object-cover"
+              />
+            ) : (
+              <span
+                aria-hidden
+                className="grid h-12 w-8 shrink-0 place-items-center rounded-md bg-line font-display text-sm font-semibold text-bg"
+              >
+                {r.name.charAt(0)}
+              </span>
+            )}
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{r.name}</span>
+            <span className="shrink-0 font-mono text-[11px] text-muted">{r.year ?? '—'}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// Discover: free-text search, filter by genre / actor / director / year, and
+// trending / popular shelves. Every result opens that title's detail page.
 export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
   const [query, setQuery] = useState('')
   const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie')
   const { results, searching } = useTmdbSearch(query, mediaType)
 
+  // filters
+  const [showFilters, setShowFilters] = useState(false)
+  const [genres, setGenres] = useState<TmdbGenre[]>([])
+  const [selectedGenreIds, setSelectedGenreIds] = useState<number[]>([])
+  const [personQuery, setPersonQuery] = useState('')
+  const [personResults, setPersonResults] = useState<TmdbPerson[]>([])
+  const [selectedPerson, setSelectedPerson] = useState<TmdbPerson | null>(null)
+  const [year, setYear] = useState('')
+
+  const [discoverResults, setDiscoverResults] = useState<TmdbResult[]>([])
+  const [discovering, setDiscovering] = useState(false)
+
+  // shelves
   const [trendingMovies, setTrendingMovies] = useState<TmdbResult[]>([])
   const [trendingTv, setTrendingTv] = useState<TmdbResult[]>([])
   const [popularMovies, setPopularMovies] = useState<TmdbResult[]>([])
   const [shelfError, setShelfError] = useState<string | null>(null)
 
+  const yearNum = /^\d{4}$/.test(year) ? Number(year) : undefined
+  const genreKey = selectedGenreIds.join(',')
+  const hasFilters = selectedGenreIds.length > 0 || selectedPerson !== null || yearNum !== undefined
+  const textActive = query.trim().length >= 2
+
+  // Load the genre catalog for the current media type (ids differ movie vs tv).
+  useEffect(() => {
+    let cancelled = false
+    setSelectedGenreIds([])
+    fetchGenres(mediaType)
+      .then((g) => !cancelled && setGenres(g))
+      .catch(() => !cancelled && setGenres([]))
+    return () => {
+      cancelled = true
+    }
+  }, [mediaType])
+
+  // Debounced people search for the person picker.
+  useEffect(() => {
+    const q = personQuery.trim()
+    if (selectedPerson || q.length < 2) {
+      setPersonResults([])
+      return
+    }
+    let stale = false
+    const t = setTimeout(() => {
+      searchPeople(q)
+        .then((p) => !stale && setPersonResults(p))
+        .catch(() => !stale && setPersonResults([]))
+    }, 350)
+    return () => {
+      stale = true
+      clearTimeout(t)
+    }
+  }, [personQuery, selectedPerson])
+
+  // Run a filtered discovery when filters are set and no text search is active.
+  useEffect(() => {
+    if (textActive || !hasFilters) {
+      setDiscoverResults([])
+      return
+    }
+    let stale = false
+    setDiscovering(true)
+    const t = setTimeout(() => {
+      fetchDiscover(
+        {
+          genreIds: selectedGenreIds,
+          personId: selectedPerson?.id,
+          year: yearNum,
+        },
+        mediaType,
+      )
+        .then((r) => !stale && setDiscoverResults(r))
+        .catch(() => !stale && setDiscoverResults([]))
+        .finally(() => !stale && setDiscovering(false))
+    }, 300)
+    return () => {
+      stale = true
+      clearTimeout(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genreKey, selectedPerson, yearNum, mediaType, textActive, hasFilters])
+
+  // Trending / popular shelves (cached in api.ts).
   useEffect(() => {
     let cancelled = false
     Promise.all([
@@ -38,16 +160,28 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
         setPopularMovies(pm)
       })
       .catch((err) => {
-        if (!cancelled) {
-          setShelfError(err instanceof Error ? err.message : 'Could not load shelves')
-        }
+        if (!cancelled) setShelfError(err instanceof Error ? err.message : 'Could not load shelves')
       })
     return () => {
       cancelled = true
     }
   }, [])
 
-  const isSearching = query.trim().length >= 2
+  function toggleGenre(id: number) {
+    setSelectedGenreIds((prev) =>
+      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id],
+    )
+  }
+
+  function clearFilters() {
+    setSelectedGenreIds([])
+    setSelectedPerson(null)
+    setPersonQuery('')
+    setYear('')
+  }
+
+  const activeFilterCount =
+    selectedGenreIds.length + (selectedPerson ? 1 : 0) + (yearNum !== undefined ? 1 : 0)
 
   return (
     <div className="flex flex-col gap-6">
@@ -74,46 +208,164 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
           onChange={(e) => setQuery(e.target.value)}
           className={inputClass}
         />
-        {searching && <p className="mt-2 px-1 font-mono text-[10px] text-muted">searching…</p>}
-      </section>
 
-      {isSearching ? (
-        <section className="mp-rise">
-          {results.length > 0 ? (
-            <ul className="overflow-hidden rounded-2xl border border-line bg-surface-2">
-              {results.map((r, i) => (
-                <li key={`${r.tmdbId}`}>
-                  <button
-                    type="button"
-                    onClick={() => onOpenTitle(r.tmdbId, mediaType)}
-                    className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface ${
-                      i > 0 ? 'border-t border-line/50' : ''
-                    }`}
-                  >
-                    {r.posterPath ? (
-                      <img
-                        src={posterUrl(r.posterPath, 'w92')}
-                        alt=""
-                        className="h-12 w-8 shrink-0 rounded-md object-cover"
-                      />
-                    ) : (
-                      <span
-                        aria-hidden
-                        className="grid h-12 w-8 shrink-0 place-items-center rounded-md bg-line font-display text-sm font-semibold text-bg"
-                      >
-                        {r.name.charAt(0)}
+        {/* filter toggle */}
+        <div className="mt-2 flex items-center justify-between px-1">
+          <button
+            type="button"
+            onClick={() => setShowFilters((s) => !s)}
+            className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 5h18M6 12h12M10 19h4" />
+            </svg>
+            Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
+          </button>
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-coral"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        {searching && <p className="mt-1 px-1 font-mono text-[10px] text-muted">searching…</p>}
+        {textActive && hasFilters && (
+          <p className="mt-1 px-1 text-[11px] leading-snug text-muted">
+            Showing text matches — clear the search box to browse by filters.
+          </p>
+        )}
+
+        {/* filter panel */}
+        {showFilters && (
+          <div className="mp-card mt-3 flex flex-col gap-4 rounded-2xl p-4">
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+                Genre
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {genres.map((g) => {
+                  const on = selectedGenreIds.includes(g.id)
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => toggleGenre(g.id)}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                        on
+                          ? 'border-teal/40 bg-teal/10 text-teal'
+                          : 'border-line text-muted hover:text-text'
+                      }`}
+                    >
+                      {g.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+                Actor or director
+              </p>
+              {selectedPerson ? (
+                <div className="flex items-center gap-2 rounded-full border border-teal/30 bg-teal/5 px-3 py-1.5">
+                  <span className="flex-1 truncate text-[13px] font-medium">
+                    {selectedPerson.name}
+                    {selectedPerson.department && (
+                      <span className="ml-1.5 font-mono text-[10px] text-muted">
+                        {selectedPerson.department}
                       </span>
                     )}
-                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{r.name}</span>
-                    <span className="shrink-0 font-mono text-[11px] text-muted">{r.year ?? '—'}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPerson(null)
+                      setPersonQuery('')
+                    }}
+                    className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-coral"
+                  >
+                    Remove
                   </button>
-                </li>
-              ))}
-            </ul>
+                </div>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    maxLength={100}
+                    placeholder="e.g. Christopher Nolan"
+                    value={personQuery}
+                    onChange={(e) => setPersonQuery(e.target.value)}
+                    className={inputClass}
+                  />
+                  {personResults.length > 0 && (
+                    <ul className="mt-2 overflow-hidden rounded-xl border border-line bg-surface-2">
+                      {personResults.map((p, i) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPerson(p)
+                              setPersonResults([])
+                            }}
+                            className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface ${
+                              i > 0 ? 'border-t border-line/50' : ''
+                            }`}
+                          >
+                            <span className="flex-1 truncate text-[13px]">{p.name}</span>
+                            {p.department && (
+                              <span className="shrink-0 font-mono text-[10px] text-muted">
+                                {p.department}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+                Year
+              </p>
+              <input
+                type="number"
+                min={1870}
+                max={2100}
+                placeholder="e.g. 2014"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          </div>
+        )}
+      </section>
+
+      {textActive ? (
+        <section className="mp-rise">
+          {results.length > 0 ? (
+            <ResultList results={results} mediaType={mediaType} onOpenTitle={onOpenTitle} />
           ) : (
             !searching && (
               <p className="px-1 text-[13px] text-muted">No matches for “{query.trim()}”.</p>
             )
+          )}
+        </section>
+      ) : hasFilters ? (
+        <section className="mp-rise">
+          {discovering ? (
+            <p className="px-1 font-mono text-[10px] text-muted">finding titles…</p>
+          ) : discoverResults.length > 0 ? (
+            <ResultList results={discoverResults} mediaType={mediaType} onOpenTitle={onOpenTitle} />
+          ) : (
+            <p className="px-1 text-[13px] text-muted">No titles match those filters.</p>
           )}
         </section>
       ) : (

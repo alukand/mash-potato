@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { fetchMySavedTitles, posterUrl, signOut } from '../lib/api'
-import type { GroupInfo, SavedTitle } from '../lib/api'
+import { fetchMyReviewedTitles, fetchMySavedTitles, posterUrl, signOut } from '../lib/api'
+import type { GroupInfo, ReviewedTitle, SavedTitle } from '../lib/api'
 
 interface ProfileScreenProps {
   userId: string
@@ -13,8 +13,61 @@ interface ProfileScreenProps {
   onBack: () => void
 }
 
+interface GridItem {
+  titleId: string
+  tmdbId: number | null
+  mediaType: 'movie' | 'tv'
+  name: string
+  year: number | null
+  posterPath: string | null
+}
+
+// A 3-column poster grid shared by the Reviewed and Saved sections.
+function PosterGrid({
+  items,
+  onOpenTitle,
+}: {
+  items: GridItem[]
+  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {items.map((it) => (
+        <button
+          key={it.titleId}
+          type="button"
+          disabled={it.tmdbId === null}
+          onClick={() => it.tmdbId !== null && onOpenTitle(it.tmdbId, it.mediaType)}
+          className="group text-left disabled:opacity-70"
+        >
+          <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-line/60 bg-surface-2">
+            {it.posterPath ? (
+              <img
+                src={posterUrl(it.posterPath, 'w342')}
+                alt=""
+                loading="lazy"
+                className="h-full w-full object-cover transition-transform group-active:scale-95"
+              />
+            ) : (
+              <span
+                aria-hidden
+                className="grid h-full w-full place-items-center font-display text-2xl font-semibold text-bg"
+                style={{ backgroundImage: 'linear-gradient(160deg, #51C5BE, #3E7CB8)' }}
+              >
+                {it.name.charAt(0)}
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 truncate text-[12px] font-medium leading-tight">{it.name}</p>
+          <p className="font-mono text-[10px] text-muted">{it.year ?? '—'}</p>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // Personal profile: who you are, every group you're in (tap to make active),
-// and your saved titles. Lives on the App view-stack.
+// the titles you've reviewed, and your saved list. Lives on the App view-stack.
 export function ProfileScreen({
   userId,
   displayName,
@@ -25,16 +78,25 @@ export function ProfileScreen({
   onOpenTitle,
   onBack,
 }: ProfileScreenProps) {
+  const [reviewed, setReviewed] = useState<ReviewedTitle[]>([])
   const [saved, setSaved] = useState<SavedTitle[]>([])
-  const [loadingSaved, setLoadingSaved] = useState(true)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
-    setLoadingSaved(true)
-    fetchMySavedTitles(userId)
-      .then((s) => !cancelled && setSaved(s))
-      .catch(() => !cancelled && setSaved([]))
-      .finally(() => !cancelled && setLoadingSaved(false))
+    setLoading(true)
+    Promise.all([fetchMyReviewedTitles(userId), fetchMySavedTitles(userId)])
+      .then(([r, s]) => {
+        if (cancelled) return
+        setReviewed(r)
+        setSaved(s)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setReviewed([])
+        setSaved([])
+      })
+      .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
@@ -75,7 +137,8 @@ export function ProfileScreen({
             {displayName}
           </h1>
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
-            {groups.length} group{groups.length === 1 ? '' : 's'} · {saved.length} saved
+            {groups.length} group{groups.length === 1 ? '' : 's'} · {reviewed.length} reviewed ·{' '}
+            {saved.length} saved
           </p>
         </div>
       </section>
@@ -127,50 +190,35 @@ export function ProfileScreen({
         </div>
       </section>
 
-      {/* ---- saved list ---- */}
+      {/* ---- reviewed ---- */}
       <section className="mp-rise mt-7" style={{ animationDelay: '160ms' }}>
+        <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+          Reviewed
+        </p>
+        {loading ? (
+          <p className="px-1 text-[13px] text-muted">Loading…</p>
+        ) : reviewed.length === 0 ? (
+          <p className="px-1 text-[13px] leading-snug text-muted">
+            Nothing reviewed yet — score a title with your group and it shows up here.
+          </p>
+        ) : (
+          <PosterGrid items={reviewed} onOpenTitle={onOpenTitle} />
+        )}
+      </section>
+
+      {/* ---- saved list ---- */}
+      <section className="mp-rise mt-7" style={{ animationDelay: '240ms' }}>
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           Saved
         </p>
-        {loadingSaved ? (
+        {loading ? (
           <p className="px-1 text-[13px] text-muted">Loading…</p>
         ) : saved.length === 0 ? (
           <p className="px-1 text-[13px] leading-snug text-muted">
             Nothing saved yet — open any title from Discover and tap “Save to your list”.
           </p>
         ) : (
-          <div className="grid grid-cols-3 gap-3">
-            {saved.map((s) => (
-              <button
-                key={s.titleId}
-                type="button"
-                disabled={s.tmdbId === null}
-                onClick={() => s.tmdbId !== null && onOpenTitle(s.tmdbId, s.mediaType)}
-                className="group text-left disabled:opacity-70"
-              >
-                <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-line/60 bg-surface-2">
-                  {s.posterPath ? (
-                    <img
-                      src={posterUrl(s.posterPath, 'w342')}
-                      alt=""
-                      loading="lazy"
-                      className="h-full w-full object-cover transition-transform group-active:scale-95"
-                    />
-                  ) : (
-                    <span
-                      aria-hidden
-                      className="grid h-full w-full place-items-center font-display text-2xl font-semibold text-bg"
-                      style={{ backgroundImage: 'linear-gradient(160deg, #51C5BE, #3E7CB8)' }}
-                    >
-                      {s.name.charAt(0)}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1.5 truncate text-[12px] font-medium leading-tight">{s.name}</p>
-                <p className="font-mono text-[10px] text-muted">{s.year ?? '—'}</p>
-              </button>
-            ))}
-          </div>
+          <PosterGrid items={saved} onOpenTitle={onOpenTitle} />
         )}
       </section>
     </div>
