@@ -24,9 +24,6 @@ workflows:
     integrations:
       app_store_connect: "Mash Potato"
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.mashpotato.app
       vars:
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
@@ -53,8 +50,13 @@ workflows:
       - name: Install CocoaPods dependencies
         script: |
           cd ios/App && pod install
-      - name: Set up automatic code signing
+      - name: Fetch (creating if missing) signing files, set up keychain
         script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
           xcode-project use-profiles
       - name: Set build number to the Codemagic build index
         script: |
