@@ -31,7 +31,7 @@ workflows:
         APP_APPLE_ID: 6788610092 # Apple ID of the App Store Connect record
       groups:
         - mashpotato_env
-      node: 20
+      node: 22 # Capacitor 8 CLI requires Node >= 22
       xcode: latest
       cocoapods: default
     scripts:
