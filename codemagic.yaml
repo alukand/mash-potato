@@ -74,4 +74,8 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
+        # Upload only — the build is then immediately available to Internal
+        # Testing with no beta review. For EXTERNAL testers, set this to true and
+        # fill in Beta App Review info in App Store Connect (TestFlight → Test
+        # Information: feedback email + review contact name/phone/email).
+        submit_to_testflight: false
