@@ -39,6 +39,12 @@ workflows:
         script: npm ci
       - name: Write .env.production from CI vars
         script: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "FATAL: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are empty."
+            echo "Check that the 'mashpotato_env' variable group exists on this"
+            echo "app in Codemagic and contains both variables (exact names)."
+            exit 1
+          fi
           cat > .env.production <<EOF
           VITE_SUPABASE_URL=$VITE_SUPABASE_URL
           VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
@@ -46,6 +52,13 @@ workflows:
       - name: Build web bundle and sync into the iOS project
         script: |
           npm run build
+          # Fail loudly if Vite didn't actually embed the Supabase URL — a
+          # silently-missing env var here produces an app that installs fine
+          # but shows a blank screen at runtime (no console on iOS to catch it).
+          if ! grep -q "$VITE_SUPABASE_URL" dist/assets/*.js; then
+            echo "FATAL: VITE_SUPABASE_URL was not embedded in the built bundle."
+            exit 1
+          fi
           npx cap sync ios
       - name: Fetch (creating if missing) signing files, set up keychain
         script: |
