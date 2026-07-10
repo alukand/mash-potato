@@ -135,6 +135,7 @@ async function handleDetail(body: Record<string, unknown>, apiKey: string): Prom
     year,
     overview: d.overview ?? '',
     genres: (d.genres ?? []).map((g) => g.name),
+    genreIds: (d.genres ?? []).map((g) => g.id),
     runtimeMinutes,
     seasons: mediaType === 'tv' ? (d.number_of_seasons ?? null) : null,
     tmdbRating: typeof d.vote_average === 'number' ? Math.round(d.vote_average * 10) / 10 : null,

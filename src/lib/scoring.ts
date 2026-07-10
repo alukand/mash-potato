@@ -2,34 +2,21 @@
 // ALL group-scoring math lives here so it can be unit-tested in isolation
 // (see scoring.test.ts). Pure functions only: no I/O, no React, no Supabase.
 // Blindness/reveal is enforced server-side (Supabase RLS) — never here.
+//
+// Categories are DYNAMIC: each session snapshots an ordered category list
+// (see rubricCatalog.ts + reveal_sessions.rubric), so every function here
+// either takes the category list explicitly or derives it from the weights.
 
-/** The five rubric categories. Fixed set; the GROUP chooses their weights. */
-export const CATEGORY_IDS = [
-  'story',
-  'acting',
-  'cinematography',
-  'pacing',
-  'scoreSound',
-] as const
+/** A category key, e.g. 'story' or 'fearFactor' (see rubricCatalog.ts). */
+export type CategoryId = string
 
-export type CategoryId = (typeof CATEGORY_IDS)[number]
-
-/** Human-facing labels. */
-export const CATEGORY_LABELS: Record<CategoryId, string> = {
-  story: 'Story',
-  acting: 'Acting',
-  cinematography: 'Cinematography',
-  pacing: 'Pacing',
-  scoreSound: 'Score & Sound',
-}
-
-/** A member's 1–10 rating for each category. */
+/** A member's 1–10 rating per category. */
 export type CategoryScores = Record<CategoryId, number>
 
 /**
- * The group rubric: how much each category counts ("importance"). Weights are
- * arbitrary non-negative numbers — they need not sum to 100, because the
- * weighted average normalises by their total.
+ * The rubric in force for a session: how much each category counts
+ * ("importance"). Weights are arbitrary non-negative numbers — they need not
+ * sum to 100, because the weighted average normalises by their total.
  */
 export type RubricWeights = Record<CategoryId, number>
 
@@ -42,8 +29,11 @@ export interface MemberScorecard {
 }
 
 /**
- * A member's weighted score: Σ(score × importance) / Σ(importance).
- * Returns 0 when every weight is 0 (a degenerate rubric the UI must prevent).
+ * A member's weighted score: Σ(score × importance) / Σ(importance), over the
+ * categories present in `weights`. Categories the member has no score for are
+ * skipped entirely (their weight doesn't count against them — this keeps
+ * pre-migration scorecards and mid-session rubric edits fair).
+ * Returns 0 when nothing overlaps (a degenerate case the UI must prevent).
  */
 export function memberWeightedScore(
   scores: CategoryScores,
@@ -51,8 +41,10 @@ export function memberWeightedScore(
 ): number {
   let weightedSum = 0
   let totalWeight = 0
-  for (const id of CATEGORY_IDS) {
-    weightedSum += scores[id] * weights[id]
+  for (const id of Object.keys(weights)) {
+    const score = scores[id]
+    if (typeof score !== 'number') continue
+    weightedSum += score * weights[id]
     totalWeight += weights[id]
   }
   return totalWeight === 0 ? 0 : weightedSum / totalWeight
@@ -101,18 +93,23 @@ export function categoryStat(
   category: CategoryId,
   scorecards: MemberScorecard[],
 ): CategoryStat | null {
-  if (scorecards.length === 0) return null
-  const values = scorecards.map((s) => s.scores[category])
+  const values = scorecards
+    .map((s) => s.scores[category])
+    .filter((v): v is number => typeof v === 'number')
+  if (values.length === 0) return null
   const min = Math.min(...values)
   const max = Math.max(...values)
   const mean = values.reduce((a, b) => a + b, 0) / values.length
   return { category, mean, min, max, range: max - min }
 }
 
-/** Stats for every category, in canonical CATEGORY_IDS order. */
-export function allCategoryStats(scorecards: MemberScorecard[]): CategoryStat[] {
+/** Stats for every category, in the given (session snapshot) order. */
+export function allCategoryStats(
+  categories: CategoryId[],
+  scorecards: MemberScorecard[],
+): CategoryStat[] {
   const stats: CategoryStat[] = []
-  for (const id of CATEGORY_IDS) {
+  for (const id of categories) {
     const stat = categoryStat(id, scorecards)
     if (stat) stats.push(stat)
   }
@@ -121,24 +118,26 @@ export function allCategoryStats(scorecards: MemberScorecard[]): CategoryStat[] 
 
 /**
  * Most contested category = widest range of member scores.
- * Ties break toward the earlier category in CATEGORY_IDS order.
+ * Ties break toward the earlier category in the given order.
  */
 export function mostContestedCategory(
+  categories: CategoryId[],
   scorecards: MemberScorecard[],
 ): CategoryStat | null {
-  const stats = allCategoryStats(scorecards)
+  const stats = allCategoryStats(categories, scorecards)
   if (stats.length === 0) return null
   return stats.reduce((best, s) => (s.range > best.range ? s : best))
 }
 
 /**
  * Most united category = narrowest range.
- * Ties break toward the earlier category in CATEGORY_IDS order.
+ * Ties break toward the earlier category in the given order.
  */
 export function mostUnitedCategory(
+  categories: CategoryId[],
   scorecards: MemberScorecard[],
 ): CategoryStat | null {
-  const stats = allCategoryStats(scorecards)
+  const stats = allCategoryStats(categories, scorecards)
   if (stats.length === 0) return null
   return stats.reduce((best, s) => (s.range < best.range ? s : best))
 }
@@ -161,12 +160,14 @@ export function categoryOutlier(
   if (!stat) return null
   let outlier: Outlier | null = null
   for (const s of scorecards) {
-    const deviation = Math.abs(s.scores[category] - stat.mean)
+    const score = s.scores[category]
+    if (typeof score !== 'number') continue
+    const deviation = Math.abs(score - stat.mean)
     if (outlier === null || deviation > outlier.deviation) {
       outlier = {
         memberId: s.memberId,
         category,
-        score: s.scores[category],
+        score,
         mean: stat.mean,
         deviation,
       }
@@ -189,11 +190,12 @@ export interface MashAnalysis {
 }
 
 export function analyze(
+  categories: CategoryId[],
   scorecards: MemberScorecard[],
   weights: RubricWeights,
 ): MashAnalysis {
   const locked = scorecards.filter((s) => s.locked)
-  const mostContested = mostContestedCategory(locked)
+  const mostContested = mostContestedCategory(categories, locked)
   return {
     mashed: mashedScore(scorecards, weights),
     spread: weightedSpread(scorecards, weights),
@@ -205,7 +207,7 @@ export function analyze(
       locked: s.locked,
     })),
     mostContested,
-    mostUnited: mostUnitedCategory(locked),
+    mostUnited: mostUnitedCategory(categories, locked),
     outlier: mostContested
       ? categoryOutlier(mostContested.category, locked)
       : null,

@@ -13,7 +13,7 @@ import {
   type RubricWeights,
   type MemberScorecard,
 } from './scoring'
-import { sampleScorecards, sampleWeights } from './fixtures'
+import { sampleCategories, sampleScorecards, sampleWeights } from './fixtures'
 
 const equalWeights: RubricWeights = {
   story: 1,
@@ -89,8 +89,10 @@ describe('category analysis', () => {
   })
 
   it('finds the most contested and most united categories', () => {
-    expect(mostContestedCategory(sampleScorecards)?.category).toBe('pacing')
-    expect(mostUnitedCategory(sampleScorecards)?.category).toBe('cinematography')
+    expect(mostContestedCategory(sampleCategories, sampleScorecards)?.category).toBe('pacing')
+    expect(mostUnitedCategory(sampleCategories, sampleScorecards)?.category).toBe(
+      'cinematography',
+    )
   })
 
   it('breaks range ties toward the earlier category', () => {
@@ -99,8 +101,8 @@ describe('category analysis', () => {
       card('b', { story: 4, acting: 4, cinematography: 5, pacing: 5, scoreSound: 5 }),
     ]
     // story & acting both range 2; the rest range 0.
-    expect(mostContestedCategory(cards)?.category).toBe('story')
-    expect(mostUnitedCategory(cards)?.category).toBe('cinematography')
+    expect(mostContestedCategory(sampleCategories, cards)?.category).toBe('story')
+    expect(mostUnitedCategory(sampleCategories, cards)?.category).toBe('cinematography')
   })
 
   it('identifies the per-category outlier (furthest from the mean)', () => {
@@ -113,13 +115,32 @@ describe('category analysis', () => {
   it('returns null for an empty set', () => {
     expect(categoryStat('story', [])).toBeNull()
     expect(categoryOutlier('story', [])).toBeNull()
-    expect(mostContestedCategory([])).toBeNull()
+    expect(mostContestedCategory(sampleCategories, [])).toBeNull()
+  })
+})
+
+describe('dynamic categories', () => {
+  it('skips categories a member has no score for (weight excluded)', () => {
+    // 'humor' only counts for the member who scored it.
+    const weights: RubricWeights = { story: 1, humor: 1 }
+    expect(memberWeightedScore({ story: 8 }, weights)).toBeCloseTo(8)
+    expect(memberWeightedScore({ story: 8, humor: 4 }, weights)).toBeCloseTo(6)
+  })
+
+  it('computes stats only over members who scored the category', () => {
+    const cards = [
+      card('a', { story: 8, humor: 10 }),
+      card('b', { story: 6 }), // scored before Humor existed
+    ]
+    const stat = categoryStat('humor', cards)
+    expect(stat?.mean).toBe(10)
+    expect(stat?.range).toBe(0)
   })
 })
 
 describe('analyze', () => {
   it('bundles the reveal headline numbers', () => {
-    const a = analyze(sampleScorecards, sampleWeights)
+    const a = analyze(sampleCategories, sampleScorecards, sampleWeights)
     expect(a.mashed).toBeCloseTo(8.2125)
     expect(a.spread).toBeCloseTo(1.2)
     expect(a.lockedCount).toBe(4)

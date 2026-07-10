@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { CATEGORY_LABELS, CATEGORY_IDS } from '../lib/scoring'
-import type { RubricWeights } from '../lib/scoring'
-import { fetchWeights, saveWeights, signOut } from '../lib/api'
-import type { GroupInfo, MemberInfo } from '../lib/api'
+import { fetchGroupRubric, saveGroupRubric, signOut } from '../lib/api'
+import type { GroupInfo, GroupRubricRow, MemberInfo } from '../lib/api'
+import { RUBRIC_CATALOG } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
 
 interface GroupScreenProps {
@@ -13,25 +12,29 @@ interface GroupScreenProps {
 }
 
 // Live group view. Members + rubric come from Postgres through RLS; the
-// weight editor is owner-only (the rubric_weights policy enforces it — the
-// UI hiding the sliders is just courtesy).
+// rubric editor is owner-only (the rubric_categories policy enforces it — the
+// UI hiding the controls is just courtesy).
+//
+// The rubric is dynamic: base categories ship enabled, and the owner can
+// toggle categories on/off, reweight them, and add more from the catalog.
+// Genre categories also auto-join matching sessions (see rubricCatalog.ts).
 
 export function GroupScreen({ group, members, userId }: GroupScreenProps) {
   const isOwner = group.role === 'owner'
 
-  const [saved, setSaved] = useState<RubricWeights | null>(null)
-  const [weights, setWeights] = useState<RubricWeights | null>(null)
+  const [saved, setSaved] = useState<GroupRubricRow[] | null>(null)
+  const [rows, setRows] = useState<GroupRubricRow[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [justSaved, setJustSaved] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    fetchWeights(group.id)
-      .then((w) => {
+    fetchGroupRubric(group.id)
+      .then((r) => {
         if (cancelled) return
-        setSaved(w)
-        setWeights(w)
+        setSaved(r)
+        setRows(r)
       })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Load failed'))
     return () => {
@@ -39,18 +42,37 @@ export function GroupScreen({ group, members, userId }: GroupScreenProps) {
     }
   }, [group.id])
 
-  const dirty =
-    weights !== null && saved !== null && CATEGORY_IDS.some((id) => weights[id] !== saved[id])
-  const total = weights === null ? 0 : CATEGORY_IDS.reduce((sum, id) => sum + weights[id], 0)
-  const maxWeight = weights === null ? 1 : Math.max(1, ...CATEGORY_IDS.map((id) => weights[id]))
+  const dirty = rows !== null && saved !== null && JSON.stringify(rows) !== JSON.stringify(saved)
+  const enabledRows = (rows ?? []).filter((r) => r.enabled)
+  const total = enabledRows.reduce((sum, r) => sum + r.weight, 0)
+  const maxWeight = Math.max(1, ...enabledRows.map((r) => r.weight))
+  const addable = RUBRIC_CATALOG.filter(
+    (c) => c.kind !== 'base' && !(rows ?? []).some((r) => r.key === c.key),
+  )
+
+  function updateRow(key: string, patch: Partial<GroupRubricRow>) {
+    setRows((prev) =>
+      prev === null ? prev : prev.map((r) => (r.key === key ? { ...r, ...patch } : r)),
+    )
+  }
+
+  function addCategory(key: string) {
+    const cat = RUBRIC_CATALOG.find((c) => c.key === key)
+    if (!cat) return
+    setRows((prev) => {
+      if (prev === null) return prev
+      const nextSort = Math.max(0, ...prev.map((r) => r.sort)) + 1
+      return [...prev, { key: cat.key, label: cat.label, weight: 20, enabled: true, sort: nextSort }]
+    })
+  }
 
   async function handleSave() {
-    if (weights === null) return
+    if (rows === null) return
     setBusy(true)
     setError(null)
     try {
-      await saveWeights(group.id, weights)
-      setSaved(weights)
+      await saveGroupRubric(group.id, rows)
+      setSaved(rows)
       setJustSaved(true)
       setTimeout(() => setJustSaved(false), 2000)
     } catch (err) {
@@ -116,54 +138,112 @@ export function GroupScreen({ group, members, userId }: GroupScreenProps) {
         </div>
 
         <div className="mp-card rounded-[26px] px-5 py-1">
-          {weights === null ? (
+          {rows === null ? (
             <p className="py-4 text-[13px] text-muted">Loading rubric…</p>
           ) : (
-            CATEGORY_IDS.map((id, i) => (
-              <div key={id} className={`py-3.5 ${i > 0 ? 'border-t border-line/50' : ''}`}>
-                <div className="flex items-baseline justify-between">
-                  <p className="text-[13px] font-medium">{CATEGORY_LABELS[id]}</p>
-                  <span className="tabular font-mono text-[13px] font-semibold text-teal">
-                    {weights[id]}
-                  </span>
-                </div>
-                {isOwner ? (
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={weights[id]}
-                    disabled={busy}
-                    aria-label={`${CATEGORY_LABELS[id]} weight`}
-                    onChange={(e) =>
-                      setWeights((prev) =>
-                        prev === null ? prev : { ...prev, [id]: Number(e.target.value) },
-                      )
-                    }
-                    className="mp-slider mt-1"
-                    style={
-                      {
-                        '--thumb': 'var(--color-teal)',
-                        '--fill': weights[id],
-                      } as CSSProperties
-                    }
-                  />
-                ) : (
-                  <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-surface-2">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${(weights[id] / maxWeight) * 100}%`,
-                        backgroundImage: 'linear-gradient(90deg, #3FA9A2, #6FE3DB)',
-                      }}
-                    />
+            [...rows]
+              .sort((a, b) => a.sort - b.sort)
+              .filter((r) => isOwner || r.enabled)
+              .map((row, i) => (
+                <div
+                  key={row.key}
+                  className={`py-3.5 ${i > 0 ? 'border-t border-line/50' : ''} ${
+                    row.enabled ? '' : 'opacity-45'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="min-w-0 truncate text-[13px] font-medium">{row.label}</p>
+                    <div className="flex shrink-0 items-center gap-2.5">
+                      {row.enabled && (
+                        <span className="tabular font-mono text-[13px] font-semibold text-teal">
+                          {row.weight}
+                        </span>
+                      )}
+                      {isOwner && (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={row.enabled}
+                          aria-label={`${row.label} enabled`}
+                          disabled={busy || (row.enabled && enabledRows.length <= 1)}
+                          onClick={() => updateRow(row.key, { enabled: !row.enabled })}
+                          className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-50 ${
+                            row.enabled ? 'bg-teal/70' : 'bg-line'
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 h-4 w-4 rounded-full bg-bg transition-all ${
+                              row.enabled ? 'left-[18px]' : 'left-0.5'
+                            }`}
+                          />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-            ))
+                  {row.enabled &&
+                    (isOwner ? (
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={row.weight}
+                        disabled={busy}
+                        aria-label={`${row.label} weight`}
+                        onChange={(e) => updateRow(row.key, { weight: Number(e.target.value) })}
+                        className="mp-slider mt-1"
+                        style={
+                          {
+                            '--thumb': 'var(--color-teal)',
+                            '--fill': row.weight,
+                          } as CSSProperties
+                        }
+                      />
+                    ) : (
+                      <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-surface-2">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${(row.weight / maxWeight) * 100}%`,
+                            backgroundImage: 'linear-gradient(90deg, #3FA9A2, #6FE3DB)',
+                          }}
+                        />
+                      </div>
+                    ))}
+                </div>
+              ))
           )}
         </div>
+
+        {/* ---- add more categories (owner) ---- */}
+        {isOwner && rows !== null && addable.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+              Add categories
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {addable.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => addCategory(c.key)}
+                  title={c.blurb}
+                  className="flex items-center gap-1 rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[11px] text-muted transition-colors hover:border-teal/50 hover:text-text"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2.5 px-1 text-[11px] leading-snug text-muted">
+              Genre categories (Humor, Fear Factor, …) also join matching sessions automatically —
+              add one here to score it on everything.
+            </p>
+          </div>
+        )}
 
         {error && (
           <p role="alert" className="mt-3 px-2 text-[12px] leading-snug text-coral">
@@ -187,12 +267,12 @@ export function GroupScreen({ group, members, userId }: GroupScreenProps) {
                 : { backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }
             }
           >
-            {justSaved ? 'Saved ✓' : busy ? 'Saving…' : 'Save weights'}
+            {justSaved ? 'Saved ✓' : busy ? 'Saving…' : 'Save rubric'}
           </button>
         )}
         <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
-          Weights are how much each category counts — they don't need to sum to 100; scores
-          normalise automatically.
+          Weights set how much each category counts — they don't need to sum to 100. Changes apply
+          to new sessions; past reveals keep the rubric they were scored under.
         </p>
       </section>
 

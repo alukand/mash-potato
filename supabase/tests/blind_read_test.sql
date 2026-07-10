@@ -40,18 +40,18 @@ values ('66666666-6666-6666-6666-666666666666',
         '77777777-7777-7777-7777-777777777777',
         'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
 
-insert into public.member_scores
-  (session_id, member_id, story, acting, cinematography, pacing, score_sound, locked)
+insert into public.member_scores (session_id, member_id, scores, locked)
 values ('66666666-6666-6666-6666-666666666666',
-        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 8, 8, 9, 6, 9, true);
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        '{"story":8,"acting":8,"cinematography":9,"pacing":6,"scoreSound":9}', true);
 
 -- ---- act as Ben (member) ----
 set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
 
-insert into public.member_scores
-  (session_id, member_id, story, acting, cinematography, pacing, score_sound, locked)
+insert into public.member_scores (session_id, member_id, scores, locked)
 values ('66666666-6666-6666-6666-666666666666',
-        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 9, 8, 10, 9, 8, true);
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        '{"story":9,"acting":8,"cinematography":10,"pacing":9,"scoreSound":8}', true);
 
 -- ================= assertions: BLIND =================
 select is(
@@ -113,7 +113,7 @@ select is(
 select results_eq(
   $$
   with up as (
-    update public.member_scores set story = 1
+    update public.member_scores set scores = scores || '{"story":1}'::jsonb
       where member_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
         and session_id = '66666666-6666-6666-6666-666666666666'
       returning 1)

@@ -101,42 +101,30 @@ export type Database = {
       }
       member_scores: {
         Row: {
-          acting: number
-          cinematography: number
           created_at: string
           id: string
           locked: boolean
           member_id: string
-          pacing: number
-          score_sound: number
+          scores: Json
           session_id: string
-          story: number
           updated_at: string
         }
         Insert: {
-          acting: number
-          cinematography: number
           created_at?: string
           id?: string
           locked?: boolean
           member_id: string
-          pacing: number
-          score_sound: number
+          scores?: Json
           session_id: string
-          story: number
           updated_at?: string
         }
         Update: {
-          acting?: number
-          cinematography?: number
           created_at?: string
           id?: string
           locked?: boolean
           member_id?: string
-          pacing?: number
-          score_sound?: number
+          scores?: Json
           session_id?: string
-          story?: number
           updated_at?: string
         }
         Relationships: [
@@ -181,6 +169,7 @@ export type Database = {
           group_id: string
           id: string
           revealed_at: string | null
+          rubric: Json | null
           state: Database["public"]["Enums"]["reveal_state"]
           title_id: string
         }
@@ -190,6 +179,7 @@ export type Database = {
           group_id: string
           id?: string
           revealed_at?: string | null
+          rubric?: Json | null
           state?: Database["public"]["Enums"]["reveal_state"]
           title_id: string
         }
@@ -199,6 +189,7 @@ export type Database = {
           group_id?: string
           id?: string
           revealed_at?: string | null
+          rubric?: Json | null
           state?: Database["public"]["Enums"]["reveal_state"]
           title_id?: string
         }
@@ -226,25 +217,34 @@ export type Database = {
           },
         ]
       }
-      rubric_weights: {
+      rubric_categories: {
         Row: {
-          category: Database["public"]["Enums"]["category_id"]
+          category_key: string
+          enabled: boolean
           group_id: string
+          label: string
+          sort: number
           weight: number
         }
         Insert: {
-          category: Database["public"]["Enums"]["category_id"]
+          category_key: string
+          enabled?: boolean
           group_id: string
+          label: string
+          sort?: number
           weight?: number
         }
         Update: {
-          category?: Database["public"]["Enums"]["category_id"]
+          category_key?: string
+          enabled?: boolean
           group_id?: string
+          label?: string
+          sort?: number
           weight?: number
         }
         Relationships: [
           {
-            foreignKeyName: "rubric_weights_group_id_fkey"
+            foreignKeyName: "rubric_categories_group_id_fkey"
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "groups"
@@ -330,6 +330,7 @@ export type Database = {
           group_id: string
           id: string
           revealed_at: string | null
+          rubric: Json | null
           state: Database["public"]["Enums"]["reveal_state"]
           title_id: string
         }
@@ -351,12 +352,6 @@ export type Database = {
       }
     }
     Enums: {
-      category_id:
-        | "story"
-        | "acting"
-        | "cinematography"
-        | "pacing"
-        | "score_sound"
       media_type: "movie" | "tv"
       member_role: "owner" | "member"
       reveal_state: "blind" | "revealed"
@@ -490,13 +485,6 @@ export const Constants = {
   },
   public: {
     Enums: {
-      category_id: [
-        "story",
-        "acting",
-        "cinematography",
-        "pacing",
-        "score_sound",
-      ],
       media_type: ["movie", "tv"],
       member_role: ["owner", "member"],
       reveal_state: ["blind", "revealed"],

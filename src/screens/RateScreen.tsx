@@ -1,20 +1,30 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
-import { memberWeightedScore, formatScore, CATEGORY_LABELS, CATEGORY_IDS } from '../lib/scoring'
-import type { CategoryScores, RubricWeights } from '../lib/scoring'
+import { memberWeightedScore, formatScore } from '../lib/scoring'
+import type { CategoryScores } from '../lib/scoring'
 import { scoreColor } from '../lib/scoreColor'
 import {
   createSession,
+  fetchGroupRubric,
   fetchLatestSession,
   fetchLockStatus,
   fetchMyScore,
-  fetchWeights,
+  fetchTitleDetail,
   onSessionChange,
   posterUrl,
   revealSession,
   saveMyScore,
 } from '../lib/api'
-import type { GroupInfo, MemberInfo, SessionInfo, TmdbResult } from '../lib/api'
+import type {
+  GroupInfo,
+  GroupRubricRow,
+  MemberInfo,
+  SessionInfo,
+  SessionRubricEntry,
+  TmdbResult,
+} from '../lib/api'
+import { weightsFromRubric } from '../lib/mapping'
+import { BASE_CATEGORIES, resolveSessionRubric } from '../lib/rubricCatalog'
 import { colorForMember } from '../lib/palette'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 
@@ -29,13 +39,19 @@ interface RateScreenProps {
 // lock STATUS of others comes from the session_lock_status helper (flags
 // only). The reveal calls the reveal_session RPC.
 
-const DEFAULT_SCORES: CategoryScores = {
-  story: 5,
-  acting: 5,
-  cinematography: 5,
-  pacing: 5,
-  scoreSound: 5,
-}
+/** Every category of the session's snapshot starts at the midpoint. */
+const defaultScores = (rubric: SessionRubricEntry[]): CategoryScores =>
+  Object.fromEntries(rubric.map((e) => [e.key, 5]))
+
+/** Fallback when a group somehow has no rubric rows: the base six. */
+const baseRubricRows = (): GroupRubricRow[] =>
+  BASE_CATEGORIES.map((c, i) => ({
+    key: c.key,
+    label: c.label,
+    weight: 20,
+    enabled: true,
+    sort: i,
+  }))
 
 const inputClass =
   'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
@@ -43,8 +59,8 @@ const inputClass =
 
 export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps) {
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
-  const [weights, setWeights] = useState<RubricWeights | null>(null)
-  const [scores, setScores] = useState<CategoryScores>(DEFAULT_SCORES)
+  const [groupRubric, setGroupRubric] = useState<GroupRubricRow[] | null>(null)
+  const [scores, setScores] = useState<CategoryScores>({})
   const [locked, setLocked] = useState(false)
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
   const [busy, setBusy] = useState(false)
@@ -65,25 +81,35 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
       const s = await fetchLatestSession(group.id)
       setSession(s)
       if (s?.state === 'blind') {
-        const [mine, locks, w] = await Promise.all([
+        const [mine, locks] = await Promise.all([
           fetchMyScore(s.id, userId),
           fetchLockStatus(s.id),
-          fetchWeights(group.id),
         ])
+        const base = defaultScores(s.rubric ?? [])
         if (mine) {
-          setScores(mine.scores)
+          setScores({ ...base, ...mine.scores })
           setLocked(mine.locked)
         } else {
-          setScores(DEFAULT_SCORES)
+          setScores(base)
           setLocked(false)
         }
         setLockStatus(locks)
-        setWeights(w)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
     }
   }, [group.id, userId])
+
+  // The group's rubric configuration — needed to snapshot a NEW session.
+  useEffect(() => {
+    let cancelled = false
+    fetchGroupRubric(group.id)
+      .then((rows) => !cancelled && setGroupRubric(rows))
+      .catch(() => !cancelled && setGroupRubric(null))
+    return () => {
+      cancelled = true
+    }
+  }, [group.id])
 
   useEffect(() => {
     void load()
@@ -105,6 +131,19 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
     setBusy(true)
     setError(null)
     try {
+      // Genre add-ons (Humor for a comedy, Fear Factor for a horror, …) come
+      // from the title's TMDB genres; manual entries have none.
+      let genreIds: number[] = []
+      if (picked) {
+        try {
+          genreIds = (await fetchTitleDetail(picked.tmdbId, mediaType))?.genreIds ?? []
+        } catch {
+          // non-fatal: the session just starts without genre categories
+        }
+      }
+      const rows = groupRubric && groupRubric.length > 0 ? groupRubric : baseRubricRows()
+      const rubric = resolveSessionRubric(rows, genreIds)
+
       await createSession(
         group.id,
         userId,
@@ -123,6 +162,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
               tmdbId: null,
               posterPath: null,
             },
+        rubric,
       )
       setTitleName('')
       setTitleYear('')
@@ -341,8 +381,10 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
   }
 
   // ---- active blind session: score it -------------------------------------
-  const weighted = weights ? memberWeightedScore(scores, weights) : null
-  const weightTotal = weights ? CATEGORY_IDS.reduce((sum, id) => sum + weights[id], 0) : 0
+  const rubric = session.rubric ?? []
+  const weights = weightsFromRubric(rubric)
+  const weighted = rubric.length > 0 ? memberWeightedScore(scores, weights) : null
+  const weightTotal = rubric.reduce((sum, e) => sum + e.weight, 0)
   const lockedIds = new Set(lockStatus.filter((l) => l.locked).map((l) => l.memberId))
   const waiting = members.filter((m) => !lockedIds.has(m.userId))
   const canReveal = group.role === 'owner' || session.createdBy === userId
@@ -419,20 +461,17 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
       {/* ---- The five category sliders ---- */}
       <section className="mp-rise mt-4" style={{ animationDelay: '80ms' }}>
         <div className="mp-card rounded-[26px] px-5 py-1">
-          {CATEGORY_IDS.map((id, i) => {
-            const value = scores[id]
+          {rubric.map((entry, i) => {
+            const value = scores[entry.key] ?? 5
             const color = scoreColor(value)
             return (
-              <div key={id} className={`py-4 ${i > 0 ? 'border-t border-line/50' : ''}`}>
+              <div key={entry.key} className={`py-4 ${i > 0 ? 'border-t border-line/50' : ''}`}>
                 <div className="flex items-baseline justify-between">
                   <div>
-                    <p className="text-[14px] font-medium leading-tight">{CATEGORY_LABELS[id]}</p>
+                    <p className="text-[14px] font-medium leading-tight">{entry.label}</p>
                     <p className="mt-0.5 font-mono text-[10px] text-muted">
                       weight{' '}
-                      {weights && weightTotal > 0
-                        ? Math.round((weights[id] / weightTotal) * 100)
-                        : '—'}
-                      %
+                      {weightTotal > 0 ? Math.round((entry.weight / weightTotal) * 100) : '—'}%
                     </p>
                   </div>
                   <span className="tabular font-mono text-xl font-bold" style={{ color }}>
@@ -446,9 +485,9 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                   step={1}
                   value={value}
                   disabled={locked || busy}
-                  aria-label={`${CATEGORY_LABELS[id]} score`}
+                  aria-label={`${entry.label} score`}
                   onChange={(e) =>
-                    setScores((prev) => ({ ...prev, [id]: Number(e.target.value) }))
+                    setScores((prev) => ({ ...prev, [entry.key]: Number(e.target.value) }))
                   }
                   className="mp-slider mt-1.5"
                   style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}

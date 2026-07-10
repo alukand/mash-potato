@@ -14,6 +14,15 @@ export interface SampleTitle {
   mediaType: 'movie' | 'tv'
 }
 
+/** The sample rubric's category order (ties break toward earlier entries). */
+export const sampleCategories = [
+  'story',
+  'acting',
+  'cinematography',
+  'pacing',
+  'scoreSound',
+]
+
 /** Sample group rubric. (Sums to 100 here, but weights need not.) */
 export const sampleWeights: RubricWeights = {
   story: 30,

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   backdropUrl,
   createSession,
+  fetchGroupRubric,
   fetchLatestSession,
   fetchSavedTitleId,
   fetchTitleDetail,
@@ -10,8 +11,16 @@ import {
   saveTitle,
   unsaveTitle,
 } from '../lib/api'
-import type { GroupInfo, SessionInfo, TitleDetail, TitleHistoryEntry } from '../lib/api'
+import type {
+  GroupInfo,
+  GroupRubricRow,
+  SessionInfo,
+  TitleDetail,
+  TitleHistoryEntry,
+} from '../lib/api'
 import { mashedScore, formatScore } from '../lib/scoring'
+import { weightsFromRubric } from '../lib/mapping'
+import { BASE_CATEGORIES, resolveSessionRubric } from '../lib/rubricCatalog'
 
 interface TitleDetailScreenProps {
   tmdbId: number
@@ -53,6 +62,7 @@ export function TitleDetailScreen({
   const [notFound, setNotFound] = useState(false)
   const [savedTitleId, setSavedTitleId] = useState<string | null>(null)
   const [latest, setLatest] = useState<SessionInfo | null>(null)
+  const [groupRubric, setGroupRubric] = useState<GroupRubricRow[]>([])
   const [history, setHistory] = useState<TitleHistoryEntry[]>([])
   const [saving, setSaving] = useState(false)
   const [starting, setStarting] = useState(false)
@@ -67,14 +77,16 @@ export function TitleDetailScreen({
       fetchSavedTitleId(userId, tmdbId, mediaType),
       fetchTitleHistory(tmdbId, mediaType),
       group ? fetchLatestSession(group.id) : Promise.resolve(null),
+      group ? fetchGroupRubric(group.id).catch(() => []) : Promise.resolve([]),
     ])
-      .then(([d, savedId, hist, latestSession]) => {
+      .then(([d, savedId, hist, latestSession, rubricRows]) => {
         if (cancelled) return
         setDetail(d)
         setNotFound(d === null)
         setSavedTitleId(savedId)
         setHistory(hist)
         setLatest(latestSession)
+        setGroupRubric(rubricRows)
       })
       .catch((err) => {
         if (!cancelled) {
@@ -117,13 +129,29 @@ export function TitleDetailScreen({
     setStarting(true)
     setError(null)
     try {
-      await createSession(group.id, userId, {
-        name: detail.name,
-        year: detail.year,
-        mediaType: detail.mediaType,
-        tmdbId: detail.tmdbId,
-        posterPath: detail.posterPath,
-      })
+      const rows =
+        groupRubric.length > 0
+          ? groupRubric
+          : BASE_CATEGORIES.map((c, i) => ({
+              key: c.key,
+              label: c.label,
+              weight: 20,
+              enabled: true,
+              sort: i,
+            }))
+      const rubric = resolveSessionRubric(rows, detail.genreIds)
+      await createSession(
+        group.id,
+        userId,
+        {
+          name: detail.name,
+          year: detail.year,
+          mediaType: detail.mediaType,
+          tmdbId: detail.tmdbId,
+          posterPath: detail.posterPath,
+        },
+        rubric,
+      )
       onStartedSession()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the session')
@@ -324,7 +352,7 @@ export function TitleDetailScreen({
           {history.length > 0 ? (
             <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
               {history.map((entry) => {
-                const mashed = mashedScore(entry.scorecards, entry.weights)
+                const mashed = mashedScore(entry.scorecards, weightsFromRubric(entry.rubric))
                 return (
                   <div key={entry.sessionId} className="flex items-center justify-between px-5 py-3.5">
                     <div className="min-w-0">

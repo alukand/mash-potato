@@ -1,9 +1,12 @@
 # Mash Potato — project instructions
 
-Mobile movie/TV review app: a GROUP sets a shared weighted rubric (Story,
-Acting, Cinematography, Pacing, Score & Sound), members rate each category
-blind, the app mashes weighted scores into one group "Mashed" score, then THE
-REVEAL drops everyone's scores at once and headlines agreement vs. clash.
+Mobile movie/TV review app: a GROUP composes a weighted rubric (base six —
+Story, Acting, Directing, Cinematography, Editing & Pacing, Sound & Music —
+plus optional and genre-matched add-ons like Humor or Fear Factor), members
+rate each category blind, the app mashes weighted scores into one group
+"Mashed" score, then THE REVEAL drops everyone's scores at once and headlines
+agreement vs. clash. Each session snapshots its rubric at creation
+(`reveal_sessions.rubric`), so history survives rubric edits.
 
 ## Locked — do not redesign or rename
 
@@ -46,27 +49,33 @@ fine client-side.
 
 ## Architecture map
 
-- `src/lib/scoring.ts` — ALL scoring math, pure, unit-tested. Fixed 5
-  camelCase category ids (`scoreSound` ↔ DB `score_sound` via
-  `src/lib/mapping.ts`).
+- `src/lib/scoring.ts` — ALL scoring math, pure, unit-tested. Categories are
+  DYNAMIC (string keys); category-iterating functions take the session's
+  ordered category list.
+- `src/lib/rubricCatalog.ts` — the category catalog (base/optional/genre) +
+  `resolveSessionRubric` (group rubric ∪ TMDB-genre add-ons).
+- `src/lib/mapping.ts` — jsonb `scores` / `rubric` snapshot validators.
 - `src/lib/api.ts` — every Supabase call; screens never import the client.
+  Member ratings live in `member_scores.scores` (jsonb map); the group rubric
+  in `rubric_categories` (key/label/weight/enabled/sort).
 - `src/screens/` — Auth, CreateGroup, Home (latest session, realtime reveal),
-  Rate (TMDB search → blind scoring → lock → reveal), Group (members +
-  owner-editable rubric).
+  Discover (TMDB browse/filters), TitleDetail, Profile, Rate (search → blind
+  scoring → lock → reveal), Group (members + owner-editable rubric with
+  toggles + add-categories).
 - `supabase/migrations/` — schema + RLS as code (grants included — do not
   rely on platform default privileges).
 
-## Current state (2026-07-05)
+## Current state (2026-07-08)
 
-- M0–M5 committed (scaffold → scoring core → schema/RLS → screens → live
-  sessions + realtime reveal, all verified). M6 (TMDB search + ios/ platform
-  + `docs/RELEASING.md`) built & verified locally, uncommitted alongside
-  `.mcp.json` and `.agents/`.
+- Live on TestFlight (internal testing): repo on GitHub (alukand/mash-potato),
+  Codemagic `ios-testflight` workflow builds + uploads (see `codemagic.yaml`
+  + `docs/TESTFLIGHT.md`). App record Apple ID 6788610092.
 - Hosted Supabase project ref: `lvmcwvhlfijvegxbqipc` (MCP config in
-  `.mcp.json`). Remaining for TestFlight — `docs/RELEASING.md` Part 1 on the
-  hosted project (apply migrations, set `TMDB_API_KEY` secret, deploy
-  `tmdb-search`, fill `.env.production`), then Apple Developer + Mac/Codemagic
-  upload (Parts 2–3).
+  `.mcp.json`) — all migrations applied, `TMDB_API_KEY` set as a dashboard
+  secret, `tmdb-search` deployed (ops: search/browse/detail/genres/person/
+  discover). Auth email-confirmation is OFF (no deep-link handling yet).
+- Dynamic rubric (M8) shipped: `rubric_categories` + jsonb `member_scores.
+  scores` + `reveal_sessions.rubric` snapshots; blind-rule suites re-proven.
 
 ## Windows gotchas (this machine)
 

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { analyze, categoryStat, formatScore, CATEGORY_LABELS, CATEGORY_IDS } from '../lib/scoring'
-import type { MemberScorecard, RubricWeights } from '../lib/scoring'
+import { analyze, categoryStat, formatScore } from '../lib/scoring'
+import type { MemberScorecard } from '../lib/scoring'
 import { scoreColor } from '../lib/scoreColor'
+import { weightsFromRubric } from '../lib/mapping'
 import {
   fetchAllScorecards,
   fetchLatestSession,
   fetchLockStatus,
-  fetchWeights,
   onSessionChange,
   posterUrl,
 } from '../lib/api'
@@ -31,7 +31,6 @@ const pct = (score: number) => ((score - 1) / 9) * 100
 export function HomeScreen({ group, members, userId, onStartSession }: HomeScreenProps) {
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
   const [scorecards, setScorecards] = useState<MemberScorecard[]>([])
-  const [weights, setWeights] = useState<RubricWeights | null>(null)
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -41,9 +40,7 @@ export function HomeScreen({ group, members, userId, onStartSession }: HomeScree
       setSession(s)
       if (!s) return
       if (s.state === 'revealed') {
-        const [cards, w] = await Promise.all([fetchAllScorecards(s.id), fetchWeights(group.id)])
-        setScorecards(cards)
-        setWeights(w)
+        setScorecards(await fetchAllScorecards(s.id))
       } else {
         setLockStatus(await fetchLockStatus(s.id))
       }
@@ -165,29 +162,37 @@ export function HomeScreen({ group, members, userId, onStartSession }: HomeScree
 
   // ---- revealed: the Mashed result -----------------------------------------
   const locked = scorecards.filter((s) => s.locked)
-  if (weights === null || locked.length === 0) {
+  if (locked.length === 0) {
     return <p className="mp-rise py-10 text-center text-[13px] text-muted">Loading…</p>
   }
 
-  const result = analyze(scorecards, weights)
+  // The session's snapshot is the rubric of record for this reveal.
+  const rubric = session.rubric ?? []
+  const weights = weightsFromRubric(rubric)
+  const categoryKeys = rubric.map((e) => e.key)
+  const labelFor = (key: string) => rubric.find((e) => e.key === key)?.label ?? key
+
+  const result = analyze(categoryKeys, scorecards, weights)
   const youWeighted = result.perMember.find((m) => m.memberId === userId)?.weighted ?? null
   const delta =
     youWeighted !== null && result.mashed !== null ? youWeighted - result.mashed : null
-  const weightTotal = CATEGORY_IDS.reduce((sum, id) => sum + weights[id], 0)
+  const weightTotal = rubric.reduce((sum, e) => sum + e.weight, 0)
   const leaderboard = [...result.perMember]
     .filter((m) => m.locked)
     .sort((a, b) => b.weighted - a.weighted)
 
-  const categories = CATEGORY_IDS.map((id) => {
-    const stat = categoryStat(id, locked)
+  const categories = rubric.map((entry) => {
+    const stat = categoryStat(entry.key, locked)
     return {
-      id,
-      label: CATEGORY_LABELS[id],
-      weightPct: weightTotal > 0 ? Math.round((weights[id] / weightTotal) * 100) : 0,
+      id: entry.key,
+      label: entry.label,
+      weightPct: weightTotal > 0 ? Math.round((entry.weight / weightTotal) * 100) : 0,
       mean: stat?.mean ?? 0,
       min: stat?.min ?? 0,
       max: stat?.max ?? 0,
-      dots: locked.map((s) => ({ memberId: s.memberId, score: s.scores[id] })),
+      dots: locked
+        .filter((s) => typeof s.scores[entry.key] === 'number')
+        .map((s) => ({ memberId: s.memberId, score: s.scores[entry.key] })),
     }
   })
 
@@ -303,8 +308,8 @@ export function HomeScreen({ group, members, userId, onStartSession }: HomeScree
           </p>
           <h3 className="mt-2.5 font-display text-[27px] font-medium leading-[1.22]">
             United on{' '}
-            <span className="italic text-teal">{CATEGORY_LABELS[aligned.category]}</span> — split
-            over <span className="italic text-coral">{CATEGORY_LABELS[clash.category]}</span>.
+            <span className="italic text-teal">{labelFor(aligned.category)}</span> — split
+            over <span className="italic text-coral">{labelFor(clash.category)}</span>.
           </h3>
           <p className="mt-2 font-mono text-[11px] text-muted">
             agreement range {aligned.range} · clash range {clash.range}
@@ -319,7 +324,7 @@ export function HomeScreen({ group, members, userId, onStartSession }: HomeScree
               </span>
               <p className="text-[13px] leading-snug text-muted">
                 <span className="font-semibold text-text">{memberName(outlier.memberId)}</span>{' '}
-                broke away — scored {CATEGORY_LABELS[outlier.category]}{' '}
+                broke away — scored {labelFor(outlier.category)}{' '}
                 <span className="tabular font-mono text-gold">{outlier.score}</span> against the
                 group's <span className="tabular font-mono">{formatScore(outlier.mean)}</span>
               </p>

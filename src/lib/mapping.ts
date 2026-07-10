@@ -1,88 +1,57 @@
-// DB <-> app mapping for the category enum. The database uses snake_case
-// (`score_sound`); the scoring core uses camelCase (`scoreSound`). Pure and
-// dependency-free so it stays unit-testable without a Supabase client.
+// DB <-> app mapping. With dynamic categories the member_scores row carries a
+// jsonb `scores` map keyed by category key (camelCase, see rubricCatalog.ts),
+// so mapping is mostly a matter of validating shapes. Pure and dependency-free
+// so it stays unit-testable without a Supabase client.
 
-import type { CategoryId, CategoryScores, MemberScorecard } from './scoring'
-import { CATEGORY_IDS } from './scoring'
-import type { Database } from './database.types'
+import type { CategoryScores, MemberScorecard } from './scoring'
 
-export type DbCategoryId = Database['public']['Enums']['category_id']
-
-const TO_DB: Record<CategoryId, DbCategoryId> = {
-  story: 'story',
-  acting: 'acting',
-  cinematography: 'cinematography',
-  pacing: 'pacing',
-  scoreSound: 'score_sound',
-}
-
-const FROM_DB: Record<DbCategoryId, CategoryId> = {
-  story: 'story',
-  acting: 'acting',
-  cinematography: 'cinematography',
-  pacing: 'pacing',
-  score_sound: 'scoreSound',
-}
-
-export function toDbCategory(id: CategoryId): DbCategoryId {
-  return TO_DB[id]
-}
-
-export function fromDbCategory(id: DbCategoryId): CategoryId {
-  return FROM_DB[id]
-}
-
-/** The five score columns of a member_scores row, as the DB names them. */
-export interface DbScoreColumns {
-  story: number
-  acting: number
-  cinematography: number
-  pacing: number
-  score_sound: number
-}
-
-/** DB score columns -> the scoring core's CategoryScores. */
-export function scoresFromRow(row: DbScoreColumns): CategoryScores {
-  return {
-    story: row.story,
-    acting: row.acting,
-    cinematography: row.cinematography,
-    pacing: row.pacing,
-    scoreSound: row.score_sound,
+/** A raw jsonb scores value from the DB -> the scoring core's CategoryScores.
+ *  Drops anything that isn't a finite number (defensive: the column is
+ *  client-written jsonb, not schema-checked per key). */
+export function scoresFromJson(value: unknown): CategoryScores {
+  const scores: CategoryScores = {}
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof v === 'number' && Number.isFinite(v)) scores[key] = v
+    }
   }
-}
-
-/** CategoryScores -> DB score columns (for insert/upsert payloads). */
-export function scoresToRow(scores: CategoryScores): DbScoreColumns {
-  return {
-    story: scores.story,
-    acting: scores.acting,
-    cinematography: scores.cinematography,
-    pacing: scores.pacing,
-    score_sound: scores.scoreSound,
-  }
+  return scores
 }
 
 /** A full member_scores row -> the scoring core's MemberScorecard. */
-export function scorecardFromRow(
-  row: DbScoreColumns & { member_id: string; locked: boolean },
-): MemberScorecard {
-  return { memberId: row.member_id, locked: row.locked, scores: scoresFromRow(row) }
+export function scorecardFromRow(row: {
+  member_id: string
+  locked: boolean
+  scores: unknown
+}): MemberScorecard {
+  return { memberId: row.member_id, locked: row.locked, scores: scoresFromJson(row.scores) }
 }
 
-/**
- * Fold rubric rows into the scoring core's RubricWeights shape.
- * Missing categories default to 20 (the trigger's seed value).
- */
-export function weightsFromRows(
-  rows: { category: DbCategoryId; weight: number }[],
-): Record<CategoryId, number> {
-  const weights = Object.fromEntries(CATEGORY_IDS.map((id) => [id, 20])) as Record<
-    CategoryId,
-    number
-  >
-  for (const row of rows) {
-    weights[fromDbCategory(row.category)] = row.weight
+/** An entry of a session's rubric snapshot (reveal_sessions.rubric jsonb). */
+export interface SessionRubricEntry {
+  key: string
+  label: string
+  weight: number
+}
+
+/** A raw jsonb rubric snapshot -> validated, ordered entries (null if absent). */
+export function rubricFromJson(value: unknown): SessionRubricEntry[] | null {
+  if (!Array.isArray(value)) return null
+  const entries: SessionRubricEntry[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const { key, label, weight } = item as Record<string, unknown>
+    if (typeof key !== 'string' || key.length === 0) continue
+    entries.push({
+      key,
+      label: typeof label === 'string' && label.length > 0 ? label : key,
+      weight: typeof weight === 'number' && Number.isFinite(weight) ? weight : 20,
+    })
   }
-  return weights
+  return entries.length > 0 ? entries : null
+}
+
+/** Rubric snapshot entries -> the weights map the scoring core wants. */
+export function weightsFromRubric(entries: SessionRubricEntry[]): Record<string, number> {
+  return Object.fromEntries(entries.map((e) => [e.key, e.weight]))
 }
