@@ -39,11 +39,11 @@ export function CreateGroupScreen({ userId, onCreated, onBack }: CreateGroupScre
         <header className="mp-rise mb-8 flex flex-col items-center text-center">
           <Logo className="h-12 w-12" />
           <h1 className="mt-4 font-display text-[28px] font-semibold leading-tight">
-            Name your crew
+            Create a group
           </h1>
           <p className="mt-2 max-w-[300px] text-[13px] leading-snug text-muted">
-            A group is a shared definition of a good movie. You set the rubric together — then
-            everyone scores blind.
+            You'll rate movies and shows together. Everyone scores privately, then the results
+            are revealed at the same time.
           </p>
         </header>
 

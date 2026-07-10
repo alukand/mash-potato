@@ -81,11 +81,11 @@ export function HomeScreen({ group, members, userId, onStartSession }: HomeScree
       <section className="mp-rise mp-card rounded-[26px] p-8 text-center">
         <Logo className="mx-auto h-12 w-12" />
         <h2 className="mt-4 font-display text-[24px] font-semibold leading-tight">
-          Nothing mashed yet
+          No sessions yet
         </h2>
         <p className="mx-auto mt-2 max-w-[280px] text-[13px] leading-snug text-muted">
-          Pick a film or show, score it blind together, and reveal where {group.name} agrees —
-          and where it doesn't.
+          Pick a film or show for {group.name} to rate. Everyone scores it privately, then the
+          reveal shows everything at once.
         </p>
         <button
           type="button"
@@ -147,7 +147,7 @@ export function HomeScreen({ group, members, userId, onStartSession }: HomeScree
         </div>
 
         <p className="mt-4 text-[13px] leading-snug text-muted">
-          Scores stay hidden until the reveal — then everything drops at once.
+          Ratings stay hidden until the reveal.
         </p>
         {!iAmIn && (
           <button

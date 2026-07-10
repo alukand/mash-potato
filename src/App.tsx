@@ -4,7 +4,7 @@ import { supabase } from './lib/supabase'
 import { fetchMyGroups, fetchMembers } from './lib/api'
 import type { GroupInfo, MemberInfo } from './lib/api'
 import { pickActiveGroup, readStoredGroupId, storeGroupId } from './lib/activeGroup'
-import { AVATAR_PALETTE, colorForMember } from './lib/palette'
+import { colorForMember } from './lib/palette'
 import { Logo } from './components/Logo'
 import { BottomNav } from './components/BottomNav'
 import type { TabId } from './components/BottomNav'
@@ -38,7 +38,7 @@ function Splash({ note }: { note?: string }) {
       <div className="mp-rise flex flex-col items-center">
         <Logo className="h-14 w-14" />
         <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.3em] text-muted">
-          {note ?? 'warming up'}
+          {note ?? 'loading'}
         </p>
       </div>
     </div>
@@ -152,7 +152,7 @@ function App() {
 
   if (session === undefined) return <Splash />
   if (session === null) return <AuthScreen />
-  if (groups === undefined) return <Splash note="finding your crew" />
+  if (groups === undefined) return <Splash note="loading your groups" />
   if (!group) {
     // First run: no groups yet. Shown as the gate (sign-out escape hatch).
     return (
@@ -219,32 +219,26 @@ function App() {
         </div>
       ) : (
         <div className="mx-auto w-full max-w-[480px] px-5 pb-32">
-          {/* ---- Header (active group) ---- */}
-          <header className="flex items-center justify-between pt-7 pb-5">
+          {/* ---- Header: brand first; the active group is a switchable chip ---- */}
+          <header className="flex items-center justify-between gap-3 pt-7 pb-5">
             <div className="flex min-w-0 items-center gap-2.5">
-              <Logo className="h-9 w-9" />
-              <div className="min-w-0">
-                <h1 className="truncate font-display text-[26px] font-semibold leading-none tracking-tight">
-                  {group.name}
-                </h1>
-                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
-                  Mash Potato · {members.length || 1} member{members.length === 1 ? '' : 's'}
-                </p>
-              </div>
+              <Logo className="h-9 w-9 shrink-0" />
+              <h1 className="truncate font-display text-[24px] font-semibold leading-none tracking-tight">
+                Mash Potato
+              </h1>
             </div>
-            <div className="flex shrink-0 items-center gap-2.5">
-              <div className="flex -space-x-2">
-                {members.map((m, i) => (
-                  <span
-                    key={m.userId}
-                    title={m.displayName}
-                    className="grid h-7 w-7 place-items-center rounded-full border-2 border-bg font-mono text-[10px] font-bold text-bg"
-                    style={{ backgroundColor: AVATAR_PALETTE[i % AVATAR_PALETTE.length] }}
-                  >
-                    {m.displayName.charAt(0).toUpperCase()}
-                  </span>
-                ))}
-              </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => pushView({ kind: 'profile' })}
+                aria-label="Switch group"
+                className="flex max-w-[150px] items-center gap-1.5 rounded-full border border-line bg-surface-2 py-1.5 pl-3 pr-2 transition-colors hover:border-teal/50"
+              >
+                <span className="truncate text-[12px] font-semibold">{group.name}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted" aria-hidden>
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
               <button
                 type="button"
                 onClick={() => pushView({ kind: 'profile' })}
@@ -281,9 +275,6 @@ function App() {
             )}
           </main>
 
-          <p className="mt-7 text-center font-mono text-[10px] text-muted">
-            M5 · sessions live · the reveal is real
-          </p>
         </div>
       )}
 

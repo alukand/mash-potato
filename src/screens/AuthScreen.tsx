@@ -43,8 +43,8 @@ export function AuthScreen() {
           <h1 className="mt-4 font-display text-[34px] font-semibold leading-none tracking-tight">
             Mash Potato
           </h1>
-          <p className="mt-2 font-display text-[15px] italic text-muted">
-            One group. One rubric. One Mashed score.
+          <p className="mt-2 text-[14px] text-muted">
+            Rate movies and shows with your friends.
           </p>
         </header>
 
@@ -117,7 +117,13 @@ export function AuthScreen() {
             className="mt-5 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98] disabled:opacity-60"
             style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
           >
-            {busy ? 'One sec…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+            {busy
+              ? mode === 'signin'
+                ? 'Signing in…'
+                : 'Creating account…'
+              : mode === 'signin'
+                ? 'Sign in'
+                : 'Create account'}
           </button>
         </form>
 
@@ -125,7 +131,7 @@ export function AuthScreen() {
           className="mp-rise mt-6 text-center font-mono text-[10px] text-muted"
           style={{ animationDelay: '160ms' }}
         >
-          scores stay blind until the reveal — enforced server-side
+          ratings stay hidden until the whole group reveals
         </p>
       </div>
     </div>

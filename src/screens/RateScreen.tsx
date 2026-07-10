@@ -324,7 +324,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
             </button>
           </form>
           <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
-            Everyone scores blind. Search powered by{' '}
+            Search powered by{' '}
             <a
               href="https://www.themoviedb.org"
               target="_blank"
@@ -467,8 +467,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
             <path d="M8 10V7a4 4 0 0 1 8 0v3" />
           </svg>
           <p className="text-[12px] leading-snug text-muted">
-            Everyone scores blind — the database itself refuses to show anyone else's numbers
-            until the reveal.
+            Your ratings stay hidden from the group until the reveal.
           </p>
         </div>
 
