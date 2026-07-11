@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { addMember, fetchGroupRubric, saveGroupRubric, searchProfiles, signOut } from '../lib/api'
 import type { GroupInfo, GroupRubricRow, MemberInfo, UserSearchResult } from '../lib/api'
-import { RUBRIC_CATALOG } from '../lib/rubricCatalog'
+import { RUBRIC_CATALOG, defaultRubricRows } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
 
 interface GroupScreenProps {
@@ -374,6 +374,17 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
           <p role="alert" className="mt-3 px-2 text-[12px] leading-snug text-coral">
             {error}
           </p>
+        )}
+
+        {isOwner && (
+          <button
+            type="button"
+            onClick={() => setRows(defaultRubricRows())}
+            disabled={busy}
+            className="mt-4 w-full rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text disabled:opacity-50"
+          >
+            Reset to the default rubric
+          </button>
         )}
 
         {isOwner && (

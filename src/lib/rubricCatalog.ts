@@ -27,8 +27,8 @@ export const RUBRIC_CATALOG: CatalogCategory[] = [
   { key: 'acting', label: 'Acting', blurb: 'Performances and chemistry', kind: 'base' },
   { key: 'directing', label: 'Directing', blurb: 'Vision, tone, cohesion', kind: 'base' },
   { key: 'cinematography', label: 'Cinematography', blurb: 'Framing, lighting, visuals', kind: 'base' },
-  { key: 'pacing', label: 'Editing & Pacing', blurb: 'Flow, rhythm, runtime discipline', kind: 'base' },
-  { key: 'scoreSound', label: 'Sound & Music', blurb: 'Score, sound design', kind: 'base' },
+  { key: 'pacing', label: 'Pacing', blurb: 'Flow, rhythm, runtime discipline', kind: 'base' },
+  { key: 'scoreSound', label: 'Score & Soundtrack', blurb: 'Music, sound design', kind: 'base' },
 
   // ---- optional: group toggles --------------------------------------------
   { key: 'emotionalImpact', label: 'Emotional Impact', blurb: 'Did it land?', kind: 'optional' },
@@ -51,6 +51,41 @@ export const RUBRIC_CATALOG: CatalogCategory[] = [
 ]
 
 export const BASE_CATEGORIES = RUBRIC_CATALOG.filter((c) => c.kind === 'base')
+
+/**
+ * The app-wide DEFAULT rubric weights: story/acting/cinematography count for
+ * more than pacing/score. New groups seed from this (and can reset to it), and
+ * every solo/community rating uses exactly this rubric. Keep in sync with the
+ * handle_new_group() seed in the dynamic-rubric + default-rubric migrations.
+ */
+export const DEFAULT_WEIGHTS: Record<string, number> = {
+  story: 30,
+  acting: 25,
+  directing: 20,
+  cinematography: 25,
+  pacing: 15,
+  scoreSound: 15,
+}
+
+/** The default rubric as ordered snapshot entries (base six + default weights). */
+export function defaultRubricEntries(): SessionRubricEntry[] {
+  return BASE_CATEGORIES.map((c) => ({
+    key: c.key,
+    label: c.label,
+    weight: DEFAULT_WEIGHTS[c.key] ?? 20,
+  }))
+}
+
+/** The default rubric as group-editor rows (for seeding / reset). */
+export function defaultRubricRows(): GroupRubricRow[] {
+  return BASE_CATEGORIES.map((c, i) => ({
+    key: c.key,
+    label: c.label,
+    weight: DEFAULT_WEIGHTS[c.key] ?? 20,
+    enabled: true,
+    sort: i,
+  }))
+}
 
 const BY_KEY = new Map(RUBRIC_CATALOG.map((c) => [c.key, c]))
 

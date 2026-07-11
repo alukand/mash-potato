@@ -1,26 +1,42 @@
 import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import {
   backdropUrl,
   createSession,
+  fetchCommunityScore,
   fetchGroupRubric,
   fetchLatestSession,
+  fetchMyGlobalRating,
   fetchSavedTitleId,
   fetchTitleDetail,
   fetchTitleHistory,
   posterUrl,
+  saveGlobalRating,
   saveTitle,
   unsaveTitle,
 } from '../lib/api'
 import type {
+  CommunityScore,
   GroupInfo,
   GroupRubricRow,
   SessionInfo,
   TitleDetail,
   TitleHistoryEntry,
 } from '../lib/api'
-import { mashedScore, formatScore } from '../lib/scoring'
+import type { CategoryScores } from '../lib/scoring'
+import { mashedScore, memberWeightedScore, formatScore } from '../lib/scoring'
 import { weightsFromRubric } from '../lib/mapping'
-import { BASE_CATEGORIES, resolveSessionRubric } from '../lib/rubricCatalog'
+import {
+  DEFAULT_WEIGHTS,
+  defaultRubricEntries,
+  defaultRubricRows,
+  resolveSessionRubric,
+} from '../lib/rubricCatalog'
+import { scoreColor } from '../lib/scoreColor'
+
+// The default rubric everyone's solo/community rating uses.
+const SOLO_RUBRIC = defaultRubricEntries()
+const SOLO_WEIGHT_TOTAL = SOLO_RUBRIC.reduce((sum, e) => sum + e.weight, 0)
 
 interface TitleDetailScreenProps {
   tmdbId: number
@@ -64,6 +80,11 @@ export function TitleDetailScreen({
   const [latest, setLatest] = useState<SessionInfo | null>(null)
   const [groupRubric, setGroupRubric] = useState<GroupRubricRow[]>([])
   const [history, setHistory] = useState<TitleHistoryEntry[]>([])
+  const [community, setCommunity] = useState<CommunityScore | null>(null)
+  const [myScores, setMyScores] = useState<CategoryScores | null>(null)
+  const [rating, setRating] = useState(false)
+  const [soloScores, setSoloScores] = useState<CategoryScores>({})
+  const [savingRating, setSavingRating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -72,14 +93,17 @@ export function TitleDetailScreen({
     let cancelled = false
     setDetail(undefined)
     setNotFound(false)
+    setRating(false)
     Promise.all([
       fetchTitleDetail(tmdbId, mediaType),
       fetchSavedTitleId(userId, tmdbId, mediaType),
       fetchTitleHistory(tmdbId, mediaType),
       group ? fetchLatestSession(group.id) : Promise.resolve(null),
       group ? fetchGroupRubric(group.id).catch(() => []) : Promise.resolve([]),
+      fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
+      fetchMyGlobalRating(userId, tmdbId, mediaType),
     ])
-      .then(([d, savedId, hist, latestSession, rubricRows]) => {
+      .then(([d, savedId, hist, latestSession, rubricRows, comm, mine]) => {
         if (cancelled) return
         setDetail(d)
         setNotFound(d === null)
@@ -87,6 +111,8 @@ export function TitleDetailScreen({
         setHistory(hist)
         setLatest(latestSession)
         setGroupRubric(rubricRows)
+        setCommunity(comm)
+        setMyScores(mine)
       })
       .catch((err) => {
         if (!cancelled) {
@@ -124,21 +150,45 @@ export function TitleDetailScreen({
     }
   }
 
+  function openRating() {
+    setSoloScores(
+      Object.fromEntries(SOLO_RUBRIC.map((e) => [e.key, myScores?.[e.key] ?? 5])),
+    )
+    setRating(true)
+  }
+
+  async function handleSaveRating() {
+    if (!detail) return
+    setSavingRating(true)
+    setError(null)
+    try {
+      await saveGlobalRating(
+        userId,
+        {
+          name: detail.name,
+          year: detail.year,
+          mediaType: detail.mediaType,
+          tmdbId: detail.tmdbId,
+          posterPath: detail.posterPath,
+        },
+        soloScores,
+      )
+      setMyScores({ ...soloScores })
+      setCommunity(await fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS))
+      setRating(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save your rating')
+    } finally {
+      setSavingRating(false)
+    }
+  }
+
   async function handleStartSession() {
     if (!detail || !group) return
     setStarting(true)
     setError(null)
     try {
-      const rows =
-        groupRubric.length > 0
-          ? groupRubric
-          : BASE_CATEGORIES.map((c, i) => ({
-              key: c.key,
-              label: c.label,
-              weight: 20,
-              enabled: true,
-              sort: i,
-            }))
+      const rows = groupRubric.length > 0 ? groupRubric : defaultRubricRows()
       const rubric = resolveSessionRubric(rows, detail.genreIds)
       await createSession(
         group.id,
@@ -320,6 +370,120 @@ export function TitleDetailScreen({
             {savedTitleId ? '✓ Saved to your list' : 'Save to your list'}
           </button>
         </div>
+
+        {/* ---- community rating (solo, default rubric) ---- */}
+        <section className="mt-7">
+          <div className="mb-2.5 flex items-baseline justify-between px-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+              Community rating
+            </p>
+            <p className="font-mono text-[10px] text-muted">everyone · default rubric</p>
+          </div>
+          <div className="mp-card rounded-[22px] p-5">
+            <div className="flex items-end justify-between">
+              <div>
+                <span className="tabular font-display text-[40px] font-semibold leading-none text-teal">
+                  {formatScore(community?.mashed ?? null)}
+                </span>
+                <p className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-teal">
+                  Mashed
+                </p>
+              </div>
+              <p className="pb-1 text-right font-mono text-[11px] text-muted">
+                {community && community.count > 0
+                  ? `${community.count} ${community.count === 1 ? 'rating' : 'ratings'}`
+                  : 'No ratings yet'}
+              </p>
+            </div>
+
+            {!rating && (
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-line/60 pt-4">
+                {myScores ? (
+                  <p className="text-[13px] text-muted">
+                    You rated it{' '}
+                    <span className="font-semibold text-gold">
+                      {formatScore(memberWeightedScore(myScores, DEFAULT_WEIGHTS))}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-[13px] leading-snug text-muted">
+                    Rate it yourself — it counts toward the community score.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={openRating}
+                  className="shrink-0 rounded-full border border-teal/40 bg-teal/10 px-4 py-2 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20"
+                >
+                  {myScores ? 'Edit rating' : 'Rate it'}
+                </button>
+              </div>
+            )}
+
+            {rating && (
+              <div className="mt-4 border-t border-line/60 pt-2">
+                {SOLO_RUBRIC.map((entry, i) => {
+                  const value = soloScores[entry.key] ?? 5
+                  const color = scoreColor(value)
+                  return (
+                    <div key={entry.key} className={`py-3 ${i > 0 ? 'border-t border-line/40' : ''}`}>
+                      <div className="flex items-baseline justify-between">
+                        <div>
+                          <p className="text-[13px] font-medium leading-tight">{entry.label}</p>
+                          <p className="mt-0.5 font-mono text-[10px] text-muted">
+                            weight {Math.round((entry.weight / SOLO_WEIGHT_TOTAL) * 100)}%
+                          </p>
+                        </div>
+                        <span className="tabular font-mono text-lg font-bold" style={{ color }}>
+                          {value}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={10}
+                        step={1}
+                        value={value}
+                        aria-label={`${entry.label} score`}
+                        onChange={(e) =>
+                          setSoloScores((prev) => ({ ...prev, [entry.key]: Number(e.target.value) }))
+                        }
+                        className="mp-slider mt-1.5"
+                        style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
+                      />
+                    </div>
+                  )
+                })}
+                <div className="mt-2 flex items-center justify-between border-t border-line/60 pt-3">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                    Your score{' '}
+                    <span className="tabular text-gold">
+                      {formatScore(memberWeightedScore(soloScores, DEFAULT_WEIGHTS))}
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRating(false)}
+                      className="rounded-full px-3 py-2 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-text"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveRating()}
+                      disabled={savingRating}
+                      className="rounded-full px-4 py-2 text-[12px] font-bold text-bg shadow-[0_10px_28px_-12px_rgba(81,197,190,0.5)] transition-transform active:scale-[0.98] disabled:opacity-60"
+                      style={{ backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }}
+                    >
+                      {savingRating ? 'Saving…' : 'Save rating'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* ---- cast ---- */}
         {detail.cast.length > 0 && (

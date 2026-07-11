@@ -701,6 +701,109 @@ export async function fetchTitleHistory(
   })
 }
 
+// ---- global (community) ratings ------------------------------------------
+// A solo rating that feeds a title's community score — everyone's implicitly
+// in one big pool. Individual rows are self-only; the aggregate below is the
+// only way to see across users.
+
+export interface CommunityScore {
+  count: number
+  mashed: number | null
+}
+
+/** The community score for a title (count + weighted mean across all users). */
+export async function fetchCommunityScore(
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+  weights: Record<string, number>,
+): Promise<CommunityScore> {
+  const { data: title, error: titleError } = await supabase
+    .from('titles')
+    .select('id')
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .maybeSingle()
+  if (titleError) throw new Error(titleError.message)
+  if (!title) return { count: 0, mashed: null }
+
+  const { data, error } = await supabase.rpc('title_community_score', {
+    p_title_id: title.id,
+    p_weights: weights,
+  })
+  if (error) throw new Error(error.message)
+  const row = data?.[0]
+  return { count: row?.rating_count ?? 0, mashed: row?.mashed ?? null }
+}
+
+/** My own solo rating for a title (always self-readable), or null. */
+export async function fetchMyGlobalRating(
+  userId: string,
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+): Promise<CategoryScores | null> {
+  const { data: title, error: titleError } = await supabase
+    .from('titles')
+    .select('id')
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .maybeSingle()
+  if (titleError) throw new Error(titleError.message)
+  if (!title) return null
+
+  const { data, error } = await supabase
+    .from('global_ratings')
+    .select('scores')
+    .eq('user_id', userId)
+    .eq('title_id', title.id)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data ? scoresFromJson(data.scores) : null
+}
+
+/** Save (or update) my solo rating for a title, which feeds the community score. */
+export async function saveGlobalRating(
+  userId: string,
+  title: NewTitle,
+  scores: CategoryScores,
+): Promise<void> {
+  const titleId = await ensureTitle(title)
+  const { error } = await supabase
+    .from('global_ratings')
+    .upsert({ user_id: userId, title_id: titleId, scores }, { onConflict: 'user_id,title_id' })
+  if (error) throw new Error(error.message)
+}
+
+export interface RatedTitle {
+  titleId: string
+  tmdbId: number | null
+  mediaType: 'movie' | 'tv'
+  name: string
+  year: number | null
+  posterPath: string | null
+  ratedAt: string
+}
+
+/** Titles the user has solo-rated, most recent first (for the profile). */
+export async function fetchMyGlobalRatings(userId: string): Promise<RatedTitle[]> {
+  const { data, error } = await supabase
+    .from('global_ratings')
+    .select('updated_at, titles(id, tmdb_id, media_type, name, year, poster_path)')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? [])
+    .filter((row) => row.titles)
+    .map((row) => ({
+      titleId: row.titles!.id,
+      tmdbId: row.titles!.tmdb_id,
+      mediaType: row.titles!.media_type,
+      name: row.titles!.name,
+      year: row.titles!.year,
+      posterPath: row.titles!.poster_path,
+      ratedAt: row.updated_at,
+    }))
+}
+
 // ---- realtime -----------------------------------------------------------
 
 /**

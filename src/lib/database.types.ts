@@ -34,6 +34,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      global_ratings: {
+        Row: {
+          created_at: string
+          scores: Json
+          title_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          scores: Json
+          title_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          scores?: Json
+          title_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "global_ratings_title_id_fkey"
+            columns: ["title_id"]
+            isOneToOne: false
+            referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "global_ratings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_members: {
         Row: {
           group_id: string
@@ -342,6 +381,13 @@ export type Database = {
         }
       }
       session_group_id: { Args: { p_session_id: string }; Returns: string }
+      title_community_score: {
+        Args: { p_title_id: string; p_weights: Json }
+        Returns: {
+          rating_count: number
+          mashed: number
+        }[]
+      }
       session_is_revealed: { Args: { p_session_id: string }; Returns: boolean }
       session_lock_status: {
         Args: { p_session_id: string }

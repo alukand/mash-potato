@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
-import { fetchMyReviewedTitles, fetchMySavedTitles, posterUrl, signOut } from '../lib/api'
-import type { GroupInfo, ReviewedTitle, SavedTitle } from '../lib/api'
+import {
+  fetchMyGlobalRatings,
+  fetchMyReviewedTitles,
+  fetchMySavedTitles,
+  posterUrl,
+  signOut,
+} from '../lib/api'
+import type { GroupInfo, RatedTitle, ReviewedTitle, SavedTitle } from '../lib/api'
 
 interface ProfileScreenProps {
   userId: string
@@ -22,13 +28,16 @@ interface GridItem {
   posterPath: string | null
 }
 
-// A 3-column poster grid shared by the Reviewed and Saved sections.
+// A 3-column poster grid shared by the Reviewed, Rated, and Saved sections.
 function PosterGrid({
   items,
   onOpenTitle,
+  badge,
 }: {
   items: GridItem[]
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  /** Optional corner label on each tile (e.g. "Solo"). */
+  badge?: string
 }) {
   return (
     <div className="grid grid-cols-3 gap-3">
@@ -41,6 +50,11 @@ function PosterGrid({
           className="group text-left disabled:opacity-70"
         >
           <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-line/60 bg-surface-2">
+            {badge && (
+              <span className="absolute left-1.5 top-1.5 z-10 rounded-full bg-bg/70 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wide text-teal backdrop-blur-sm">
+                {badge}
+              </span>
+            )}
             {it.posterPath ? (
               <img
                 src={posterUrl(it.posterPath, 'w342')}
@@ -79,21 +93,28 @@ export function ProfileScreen({
   onBack,
 }: ProfileScreenProps) {
   const [reviewed, setReviewed] = useState<ReviewedTitle[]>([])
+  const [rated, setRated] = useState<RatedTitle[]>([])
   const [saved, setSaved] = useState<SavedTitle[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    Promise.all([fetchMyReviewedTitles(userId), fetchMySavedTitles(userId)])
-      .then(([r, s]) => {
+    Promise.all([
+      fetchMyReviewedTitles(userId),
+      fetchMyGlobalRatings(userId),
+      fetchMySavedTitles(userId),
+    ])
+      .then(([r, g, s]) => {
         if (cancelled) return
         setReviewed(r)
+        setRated(g)
         setSaved(s)
       })
       .catch(() => {
         if (cancelled) return
         setReviewed([])
+        setRated([])
         setSaved([])
       })
       .finally(() => !cancelled && setLoading(false))
@@ -137,7 +158,7 @@ export function ProfileScreen({
             {displayName}
           </h1>
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
-            {groups.length} group{groups.length === 1 ? '' : 's'} · {reviewed.length} reviewed ·{' '}
+            {groups.length} group{groups.length === 1 ? '' : 's'} · {rated.length} rated ·{' '}
             {saved.length} saved
           </p>
         </div>
@@ -206,8 +227,24 @@ export function ProfileScreen({
         )}
       </section>
 
+      {/* ---- rated solo (community) ---- */}
+      <section className="mp-rise mt-7" style={{ animationDelay: '220ms' }}>
+        <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+          Rated
+        </p>
+        {loading ? (
+          <p className="px-1 text-[13px] text-muted">Loading…</p>
+        ) : rated.length === 0 ? (
+          <p className="px-1 text-[13px] leading-snug text-muted">
+            Nothing rated yet — open any title and rate it yourself to add to the community score.
+          </p>
+        ) : (
+          <PosterGrid items={rated} onOpenTitle={onOpenTitle} badge="Solo" />
+        )}
+      </section>
+
       {/* ---- saved list ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '240ms' }}>
+      <section className="mp-rise mt-7" style={{ animationDelay: '300ms' }}>
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           Saved
         </p>

@@ -24,7 +24,7 @@ import type {
   TmdbResult,
 } from '../lib/api'
 import { weightsFromRubric } from '../lib/mapping'
-import { BASE_CATEGORIES, resolveSessionRubric } from '../lib/rubricCatalog'
+import { defaultRubricRows, resolveSessionRubric } from '../lib/rubricCatalog'
 import { colorForMember } from '../lib/palette'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 
@@ -42,16 +42,6 @@ interface RateScreenProps {
 /** Every category of the session's snapshot starts at the midpoint. */
 const defaultScores = (rubric: SessionRubricEntry[]): CategoryScores =>
   Object.fromEntries(rubric.map((e) => [e.key, 5]))
-
-/** Fallback when a group somehow has no rubric rows: the base six. */
-const baseRubricRows = (): GroupRubricRow[] =>
-  BASE_CATEGORIES.map((c, i) => ({
-    key: c.key,
-    label: c.label,
-    weight: 20,
-    enabled: true,
-    sort: i,
-  }))
 
 const inputClass =
   'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
@@ -141,7 +131,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
           // non-fatal: the session just starts without genre categories
         }
       }
-      const rows = groupRubric && groupRubric.length > 0 ? groupRubric : baseRubricRows()
+      const rows = groupRubric && groupRubric.length > 0 ? groupRubric : defaultRubricRows()
       const rubric = resolveSessionRubric(rows, genreIds)
 
       await createSession(
