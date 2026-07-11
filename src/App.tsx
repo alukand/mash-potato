@@ -53,6 +53,7 @@ function App() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [members, setMembers] = useState<MemberInfo[]>([])
   const [stack, setStack] = useState<StackView[]>([])
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   // The active group: the stored/selected one, else the oldest, else null.
@@ -235,15 +236,18 @@ function App() {
                 Mash Potato
               </h1>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="relative flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => pushView({ kind: 'profile' })}
+                onClick={() => setGroupMenuOpen((o) => !o)}
                 aria-label="Switch group"
-                className="flex max-w-[150px] items-center gap-1.5 rounded-full border border-line bg-surface-2 py-1.5 pl-3 pr-2 transition-colors hover:border-teal/50"
+                aria-expanded={groupMenuOpen}
+                className={`flex max-w-[150px] items-center gap-1.5 rounded-full border py-1.5 pl-3 pr-2 transition-colors ${
+                  groupMenuOpen ? 'border-teal/60 bg-teal/10' : 'border-line bg-surface-2 hover:border-teal/50'
+                }`}
               >
                 <span className="truncate text-[12px] font-semibold">{group.name}</span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted" aria-hidden>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 text-muted transition-transform ${groupMenuOpen ? 'rotate-180' : ''}`} aria-hidden>
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
@@ -256,6 +260,60 @@ function App() {
               >
                 {myName.charAt(0).toUpperCase()}
               </button>
+
+              {/* ---- group-switch dropdown ---- */}
+              {groupMenuOpen && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close menu"
+                    onClick={() => setGroupMenuOpen(false)}
+                    className="fixed inset-0 z-30 cursor-default"
+                  />
+                  <div className="absolute right-0 top-full z-40 mt-2 w-60 overflow-hidden rounded-2xl border border-line bg-surface-2 p-1.5 shadow-[0_24px_50px_-24px_rgba(0,0,0,0.95)]">
+                    <p className="px-3 pb-1.5 pt-1 font-mono text-[9px] uppercase tracking-[0.2em] text-muted">
+                      Your groups
+                    </p>
+                    {groups.map((g) => {
+                      const active = g.id === group.id
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => {
+                            setGroupMenuOpen(false)
+                            if (!active) switchGroup(g.id)
+                          }}
+                          className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-surface ${
+                            active ? 'text-teal' : ''
+                          }`}
+                        >
+                          <span className="truncate text-[13px] font-semibold">{g.name}</span>
+                          {active && (
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden>
+                              <path d="m5 13 4 4 10-11" />
+                            </svg>
+                          )}
+                        </button>
+                      )
+                    })}
+                    <div className="my-1 h-px bg-line/60" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGroupMenuOpen(false)
+                        pushView({ kind: 'createGroup' })
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left font-semibold text-teal transition-colors hover:bg-surface"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      <span className="text-[13px]">Create a group</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </header>
 

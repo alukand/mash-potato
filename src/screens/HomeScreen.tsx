@@ -75,22 +75,35 @@ export function HomeScreen({ group, members, userId, onStartSession }: HomeScree
   // ---- no sessions yet ----------------------------------------------------
   if (session === null) {
     return (
-      <section className="mp-rise mp-card rounded-[26px] p-8 text-center">
+      <section className="mp-rise mp-card rounded-[26px] p-7 text-center">
         <Logo className="mx-auto h-12 w-12" />
         <h2 className="mt-4 font-display text-[24px] font-semibold leading-tight">
-          No sessions yet
+          Rate your first movie
         </h2>
         <p className="mx-auto mt-2 max-w-[280px] text-[13px] leading-snug text-muted">
-          Pick a film or show for {group.name} to rate. Everyone scores it privately, then the
-          reveal shows everything at once.
+          Here's how {group.name} does it:
         </p>
+        <ol className="mx-auto mt-5 flex max-w-[300px] flex-col gap-3 text-left">
+          {[
+            'Pick a film or show to rate together.',
+            'Everyone scores it privately — no peeking.',
+            'Reveal at once to see your group’s Mashed score, and where you agreed or clashed.',
+          ].map((step, i) => (
+            <li key={i} className="flex items-start gap-3">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-teal/15 font-mono text-[11px] font-bold text-teal">
+                {i + 1}
+              </span>
+              <span className="text-[13px] leading-snug text-text/90">{step}</span>
+            </li>
+          ))}
+        </ol>
         <button
           type="button"
           onClick={onStartSession}
           className="mt-6 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
           style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
         >
-          Start your first session
+          Pick a movie
         </button>
       </section>
     )
@@ -274,7 +287,12 @@ export function HomeScreen({ group, members, userId, onStartSession }: HomeScree
           </ul>
         </div>
 
-        <div className="mt-5 flex items-center justify-between border-t border-line/60 pt-4 font-mono text-[10px] uppercase tracking-[0.14em]">
+        <p className="mt-3 text-center text-[11px] leading-snug text-muted">
+          <span className="font-semibold text-teal">Mashed</span> is your group's weighted
+          average — everyone's locked scores, combined.
+        </p>
+
+        <div className="mt-4 flex items-center justify-between border-t border-line/60 pt-4 font-mono text-[10px] uppercase tracking-[0.14em]">
           <span className="text-muted">
             Spread <span className="text-text">{formatScore(result.spread)}</span>
           </span>

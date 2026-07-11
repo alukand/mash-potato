@@ -78,6 +78,16 @@ export function CreateGroupScreen({ userId, onCreated, onBack }: CreateGroupScre
           </button>
         </form>
 
+        {!onBack && (
+          <p
+            className="mp-rise mt-5 text-center text-[12px] leading-snug text-muted"
+            style={{ animationDelay: '120ms' }}
+          >
+            Joining a friend's group instead? Ask them to add you — they can find you by your
+            name.
+          </p>
+        )}
+
         <button
           type="button"
           onClick={() => (onBack ? onBack() : void signOut())}
