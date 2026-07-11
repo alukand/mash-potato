@@ -220,7 +220,7 @@ function App() {
       ) : (
         <div className="mx-auto w-full max-w-[480px] px-5 pb-32">
           {/* ---- Header: brand first; the active group is a switchable chip ---- */}
-          <header className="flex items-center justify-between gap-3 pt-7 pb-5">
+          <header className="pt-safe flex items-center justify-between gap-3 pb-5">
             <div className="flex min-w-0 items-center gap-2.5">
               <Logo className="h-9 w-9 shrink-0" />
               <h1 className="truncate font-display text-[24px] font-semibold leading-none tracking-tight">

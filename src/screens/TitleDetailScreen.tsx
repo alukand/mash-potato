@@ -174,7 +174,7 @@ export function TitleDetailScreen({
 
   if (detail === undefined) {
     return (
-      <div className="px-5 pt-6">
+      <div className="px-5 pt-safe">
         <div className="mb-6">{BackButton}</div>
         <p className="mp-rise py-10 text-center text-[13px] text-muted">Loading…</p>
       </div>
@@ -183,7 +183,7 @@ export function TitleDetailScreen({
 
   if (notFound || !detail) {
     return (
-      <div className="px-5 pt-6">
+      <div className="px-5 pt-safe">
         <div className="mb-6">{BackButton}</div>
         <p className="mp-rise py-10 text-center text-[13px] text-coral">
           {error ?? 'TMDB has no record of this title.'}
@@ -224,7 +224,12 @@ export function TitleDetailScreen({
           className="absolute inset-0"
           style={{ background: 'linear-gradient(180deg, rgba(21,18,27,0.15), var(--color-bg))' }}
         />
-        <div className="absolute left-4 top-4">{BackButton}</div>
+        <div
+          className="absolute left-4"
+          style={{ top: 'calc(env(safe-area-inset-top) + 1rem)' }}
+        >
+          {BackButton}
+        </div>
       </div>
 
       {/* ---- poster + title, pulled up over the hero fade ---- */}

@@ -103,7 +103,7 @@ export function ProfileScreen({
   }, [userId])
 
   return (
-    <div className="px-5 pt-6">
+    <div className="px-5 pt-safe">
       <header className="mp-rise mb-6 flex items-center justify-between">
         <button
           type="button"

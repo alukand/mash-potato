@@ -28,6 +28,14 @@
   --font-mono: "Space Mono", ui-monospace, SFMono-Regular, monospace; /* numeric readouts */
 }
 
+/* Clears the iOS status bar / Dynamic Island so top-of-screen content isn't
+   hugging the notch. Falls back to a sane minimum where there's no inset (flat
+   screens, the browser preview). Applied to each screen's top container rather
+   than the body, so the min-h-dvh gate screens don't overflow. */
+.pt-safe {
+  padding-top: max(1.75rem, calc(env(safe-area-inset-top) + 0.65rem));
+}
+
 /* ---- Base ---- */
 html {
   background-color: var(--color-bg);
