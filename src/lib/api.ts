@@ -84,6 +84,44 @@ export async function fetchMembers(groupId: string): Promise<MemberInfo[]> {
   }))
 }
 
+export interface UserSearchResult {
+  userId: string
+  displayName: string
+}
+
+/**
+ * Find people by display name to add to a group. Profiles are readable by any
+ * signed-in user (RLS `profiles_select_authenticated`), so this is a directory
+ * search; `exclude` filters out people already in the group.
+ */
+export async function searchProfiles(
+  query: string,
+  exclude: string[] = [],
+): Promise<UserSearchResult[]> {
+  const q = query.trim()
+  if (q.length < 2) return []
+  // Escape LIKE wildcards so a literal name is matched.
+  const pattern = `%${q.replace(/[%_\\]/g, '\\$&')}%`
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, display_name')
+    .ilike('display_name', pattern)
+    .limit(12)
+  if (error) throw new Error(error.message)
+  const excluded = new Set(exclude)
+  return (data ?? [])
+    .filter((r) => !excluded.has(r.id))
+    .map((r) => ({ userId: r.id, displayName: r.display_name }))
+}
+
+/** Add a member to a group (owner-only by RLS). No-op if already a member. */
+export async function addMember(groupId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('group_members')
+    .insert({ group_id: groupId, user_id: userId, role: 'member' })
+  if (error && error.code !== '23505') throw new Error(error.message)
+}
+
 // ---- rubric -----------------------------------------------------------
 
 /** One row of a group's rubric configuration (see rubricCatalog.ts). */

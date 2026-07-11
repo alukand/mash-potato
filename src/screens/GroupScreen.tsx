@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { fetchGroupRubric, saveGroupRubric, signOut } from '../lib/api'
-import type { GroupInfo, GroupRubricRow, MemberInfo } from '../lib/api'
+import { addMember, fetchGroupRubric, saveGroupRubric, searchProfiles, signOut } from '../lib/api'
+import type { GroupInfo, GroupRubricRow, MemberInfo, UserSearchResult } from '../lib/api'
 import { RUBRIC_CATALOG } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
 
@@ -9,7 +9,13 @@ interface GroupScreenProps {
   group: GroupInfo
   members: MemberInfo[]
   userId: string
+  /** Refetch the group's members (called after adding someone). */
+  onMembersChanged: () => void
 }
+
+const searchInputClass =
+  'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
+  'placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60'
 
 // Live group view. Members + rubric come from Postgres through RLS; the
 // rubric editor is owner-only (the rubric_categories policy enforces it — the
@@ -19,7 +25,7 @@ interface GroupScreenProps {
 // toggle categories on/off, reweight them, and add more from the catalog.
 // Genre categories also auto-join matching sessions (see rubricCatalog.ts).
 
-export function GroupScreen({ group, members, userId }: GroupScreenProps) {
+export function GroupScreen({ group, members, userId, onMembersChanged }: GroupScreenProps) {
   const isOwner = group.role === 'owner'
 
   const [saved, setSaved] = useState<GroupRubricRow[] | null>(null)
@@ -27,6 +33,55 @@ export function GroupScreen({ group, members, userId }: GroupScreenProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [justSaved, setJustSaved] = useState(false)
+
+  // ---- add members (owner) ----
+  const [showAdd, setShowAdd] = useState(false)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<UserSearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
+
+  const memberIds = members.map((m) => m.userId)
+
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) {
+      setResults([])
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    let stale = false
+    const timer = setTimeout(() => {
+      searchProfiles(q, memberIds)
+        .then((r) => !stale && setResults(r))
+        .catch(() => !stale && setResults([]))
+        .finally(() => !stale && setSearching(false))
+    }, 350)
+    return () => {
+      stale = true
+      clearTimeout(timer)
+    }
+    // memberIds derives from members (stable per load); intentionally omitted
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, members])
+
+  async function handleAdd(user: UserSearchResult) {
+    setError(null)
+    setAddedIds((prev) => new Set(prev).add(user.userId))
+    try {
+      await addMember(group.id, user.userId)
+      onMembersChanged()
+      setResults((prev) => prev.filter((r) => r.userId !== user.userId))
+    } catch (err) {
+      setAddedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(user.userId)
+        return next
+      })
+      setError(err instanceof Error ? err.message : 'Could not add that person')
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -121,9 +176,79 @@ export function GroupScreen({ group, members, userId }: GroupScreenProps) {
             )}
           </ul>
         </div>
-        <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
-          Inviting friends arrives with the next milestone — for now the crew is just you.
-        </p>
+        {isOwner ? (
+          <div className="mt-3">
+            {!showAdd ? (
+              <button
+                type="button"
+                onClick={() => setShowAdd(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-full border border-line py-2.5 text-[13px] font-semibold text-teal transition-colors hover:border-teal/50"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M19 8v6M22 11h-6" />
+                </svg>
+                Add friends
+              </button>
+            ) : (
+              <div className="mp-card rounded-2xl p-4">
+                <input
+                  type="text"
+                  autoFocus
+                  maxLength={60}
+                  placeholder="Search by name…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className={searchInputClass}
+                />
+                {searching && (
+                  <p className="mt-2 px-1 font-mono text-[10px] text-muted">searching…</p>
+                )}
+                {results.length > 0 && (
+                  <ul className="mt-2 overflow-hidden rounded-xl border border-line bg-surface-2">
+                    {results.map((u, i) => (
+                      <li key={u.userId}>
+                        <button
+                          type="button"
+                          onClick={() => void handleAdd(u)}
+                          className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface ${
+                            i > 0 ? 'border-t border-line/50' : ''
+                          }`}
+                        >
+                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-line font-mono text-[12px] font-bold text-bg">
+                            {u.displayName.charAt(0).toUpperCase()}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                            {u.displayName}
+                          </span>
+                          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-teal">
+                            Add
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {query.trim().length >= 2 && !searching && results.length === 0 && (
+                  <p className="mt-2 px-1 text-[12px] leading-snug text-muted">
+                    Nobody by that name yet. They need a Mash Potato account first — have them
+                    sign up, then search again.
+                  </p>
+                )}
+                {addedIds.size > 0 && (
+                  <p className="mt-2 px-1 text-[12px] text-teal">
+                    Added ✓ — they'll see this group next time they open the app.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
+            Only the group owner can add members.
+          </p>
+        )}
       </section>
 
       {/* ---- The shared rubric ---- */}

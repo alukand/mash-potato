@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import { fetchMyGroups, fetchMembers } from './lib/api'
@@ -96,19 +96,27 @@ function App() {
     }
   }, [session])
 
+  const groupId = group?.id ?? null
   useEffect(() => {
-    if (!group) {
+    if (!groupId) {
       setMembers([])
       return
     }
     let cancelled = false
-    fetchMembers(group.id)
+    fetchMembers(groupId)
       .then((m) => !cancelled && setMembers(m))
       .catch(() => !cancelled && setMembers([]))
     return () => {
       cancelled = true
     }
-  }, [group])
+  }, [groupId])
+
+  const refreshMembers = useCallback(() => {
+    if (!groupId) return
+    fetchMembers(groupId)
+      .then(setMembers)
+      .catch(() => {})
+  }, [groupId])
 
   function openTitle(tmdbId: number, mediaType: 'movie' | 'tv') {
     setStack((s) => [...s, { kind: 'title', tmdbId, mediaType }])
@@ -271,7 +279,12 @@ function App() {
               />
             )}
             {tab === 'group' && (
-              <GroupScreen group={group} members={members} userId={userId} />
+              <GroupScreen
+                group={group}
+                members={members}
+                userId={userId}
+                onMembersChanged={refreshMembers}
+              />
             )}
           </main>
 
