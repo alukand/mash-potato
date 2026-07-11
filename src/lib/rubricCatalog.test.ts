@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { BASE_CATEGORIES, resolveSessionRubric, RUBRIC_CATALOG } from './rubricCatalog'
+import {
+  BASE_CATEGORIES,
+  mashRubrics,
+  resolveSessionRubric,
+  RUBRIC_CATALOG,
+} from './rubricCatalog'
 import type { GroupRubricRow } from './api'
 
 const row = (key: string, over: Partial<GroupRubricRow> = {}): GroupRubricRow => {
@@ -18,6 +23,51 @@ describe('the catalog', () => {
   it('has unique keys throughout', () => {
     const keys = RUBRIC_CATALOG.map((c) => c.key)
     expect(new Set(keys).size).toBe(keys.length)
+  })
+})
+
+describe('mashRubrics', () => {
+  it('averages weights across members', () => {
+    const effective = mashRubrics([
+      { userId: 'a', rows: [row('story', { weight: 30 })] },
+      { userId: 'b', rows: [row('story', { weight: 20 })] },
+    ])
+    expect(effective).toHaveLength(1)
+    expect(effective[0]).toMatchObject({ key: 'story', weight: 25 })
+  })
+
+  it('splits the difference when only some members carry a category', () => {
+    // Two members; only one has Humor at 20 -> effective 10.
+    const effective = mashRubrics([
+      { userId: 'a', rows: [row('story', { weight: 20 }), row('humor', { weight: 20, sort: 9 })] },
+      { userId: 'b', rows: [row('story', { weight: 20 })] },
+    ])
+    expect(effective.find((r) => r.key === 'humor')?.weight).toBe(10)
+    expect(effective.find((r) => r.key === 'story')?.weight).toBe(20)
+  })
+
+  it('treats a disabled row like an absent one', () => {
+    const effective = mashRubrics([
+      { userId: 'a', rows: [row('story', { weight: 20 }), row('humor', { weight: 30, sort: 9 })] },
+      { userId: 'b', rows: [row('story', { weight: 20 }), row('humor', { weight: 30, sort: 9, enabled: false })] },
+    ])
+    expect(effective.find((r) => r.key === 'humor')?.weight).toBe(15)
+  })
+
+  it('drops categories nobody carries enabled, and empty input', () => {
+    const effective = mashRubrics([
+      { userId: 'a', rows: [row('story', { weight: 20 }), row('humor', { enabled: false, sort: 9 })] },
+      { userId: 'b', rows: [row('story', { weight: 20 })] },
+    ])
+    expect(effective.map((r) => r.key)).toEqual(['story'])
+    expect(mashRubrics([])).toEqual([])
+  })
+
+  it('keeps the base order via the lowest personal sort', () => {
+    const effective = mashRubrics([
+      { userId: 'a', rows: [row('acting', { sort: 1 }), row('story', { sort: 0 })] },
+    ])
+    expect(effective.map((r) => r.key)).toEqual(['story', 'acting'])
   })
 })
 

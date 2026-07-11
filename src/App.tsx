@@ -325,6 +325,7 @@ function App() {
                 members={members}
                 userId={userId}
                 onStartSession={() => setTab('rate')}
+                onOpenTitle={openTitle}
               />
             )}
             {tab === 'discover' && <DiscoverScreen onOpenTitle={openTitle} />}

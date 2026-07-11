@@ -256,13 +256,14 @@ export type Database = {
           },
         ]
       }
-      rubric_categories: {
+      member_rubrics: {
         Row: {
           category_key: string
           enabled: boolean
           group_id: string
           label: string
           sort: number
+          user_id: string
           weight: number
         }
         Insert: {
@@ -271,6 +272,7 @@ export type Database = {
           group_id: string
           label: string
           sort?: number
+          user_id: string
           weight?: number
         }
         Update: {
@@ -279,15 +281,16 @@ export type Database = {
           group_id?: string
           label?: string
           sort?: number
+          user_id?: string
           weight?: number
         }
         Relationships: [
           {
-            foreignKeyName: "rubric_categories_group_id_fkey"
-            columns: ["group_id"]
+            foreignKeyName: "member_rubrics_group_id_user_id_fkey"
+            columns: ["group_id", "user_id"]
             isOneToOne: false
-            referencedRelation: "groups"
-            referencedColumns: ["id"]
+            referencedRelation: "group_members"
+            referencedColumns: ["group_id", "user_id"]
           },
         ]
       }

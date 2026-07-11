@@ -93,6 +93,53 @@ export function catalogCategory(key: string): CatalogCategory | undefined {
   return BY_KEY.get(key)
 }
 
+/** One member's personal rubric rows within a group. */
+export interface MemberRubric {
+  userId: string
+  rows: GroupRubricRow[]
+}
+
+/**
+ * Mash every member's personal rubric into the group's EFFECTIVE rubric:
+ * each category's weight is the mean of what each member gives it, counting 0
+ * for members who don't carry (or disabled) the category. So with two members
+ * where only one weights Humor at 20, Humor lands at an effective 10 — the
+ * difference is split across the group.
+ *
+ * A category is dropped entirely only when NO member carries it enabled.
+ * Order: lowest personal `sort` wins (base categories keep their seeded order).
+ */
+export function mashRubrics(memberRubrics: MemberRubric[]): GroupRubricRow[] {
+  const memberCount = memberRubrics.length
+  if (memberCount === 0) return []
+
+  const byKey = new Map<string, { label: string; total: number; sort: number }>()
+  for (const member of memberRubrics) {
+    for (const row of member.rows) {
+      if (!row.enabled) continue
+      const existing = byKey.get(row.key)
+      if (existing) {
+        existing.total += row.weight
+        existing.sort = Math.min(existing.sort, row.sort)
+      } else {
+        byKey.set(row.key, { label: row.label, total: row.weight, sort: row.sort })
+      }
+    }
+  }
+
+  return [...byKey.entries()]
+    .map(([key, v]) => ({
+      key,
+      label: v.label,
+      // one decimal is plenty; keeps session snapshots readable
+      weight: Math.round((v.total / memberCount) * 10) / 10,
+      enabled: true,
+      sort: v.sort,
+    }))
+    .filter((r) => r.weight > 0)
+    .sort((a, b) => a.sort - b.sort || a.key.localeCompare(b.key))
+}
+
 /**
  * Resolve the category set for a NEW session: the group's enabled categories
  * (in their configured order) plus any genre categories matching the title's

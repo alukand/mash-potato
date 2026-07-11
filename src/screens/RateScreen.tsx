@@ -5,7 +5,7 @@ import type { CategoryScores } from '../lib/scoring'
 import { scoreColor } from '../lib/scoreColor'
 import {
   createSession,
-  fetchGroupRubric,
+  fetchGroupRubrics,
   fetchLatestSession,
   fetchLockStatus,
   fetchMyScore,
@@ -24,7 +24,7 @@ import type {
   TmdbResult,
 } from '../lib/api'
 import { weightsFromRubric } from '../lib/mapping'
-import { defaultRubricRows, resolveSessionRubric } from '../lib/rubricCatalog'
+import { defaultRubricRows, mashRubrics, resolveSessionRubric } from '../lib/rubricCatalog'
 import { colorForMember } from '../lib/palette'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 
@@ -90,11 +90,11 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
     }
   }, [group.id, userId])
 
-  // The group's rubric configuration — needed to snapshot a NEW session.
+  // The group's EFFECTIVE rubric (everyone's mashed) — snapshots a NEW session.
   useEffect(() => {
     let cancelled = false
-    fetchGroupRubric(group.id)
-      .then((rows) => !cancelled && setGroupRubric(rows))
+    fetchGroupRubrics(group.id)
+      .then((all) => !cancelled && setGroupRubric(mashRubrics(all)))
       .catch(() => !cancelled && setGroupRubric(null))
     return () => {
       cancelled = true

@@ -52,12 +52,16 @@ fine client-side.
 - `src/lib/scoring.ts` — ALL scoring math, pure, unit-tested. Categories are
   DYNAMIC (string keys); category-iterating functions take the session's
   ordered category list.
-- `src/lib/rubricCatalog.ts` — the category catalog (base/optional/genre) +
-  `resolveSessionRubric` (group rubric ∪ TMDB-genre add-ons).
+- `src/lib/rubricCatalog.ts` — the category catalog (base/optional/genre),
+  DEFAULT_WEIGHTS, `mashRubrics` (per-member rubrics → effective group rubric;
+  absent/disabled counts as 0), and `resolveSessionRubric` (effective rubric ∪
+  TMDB-genre add-ons).
 - `src/lib/mapping.ts` — jsonb `scores` / `rubric` snapshot validators.
 - `src/lib/api.ts` — every Supabase call; screens never import the client.
-  Member ratings live in `member_scores.scores` (jsonb map); the group rubric
-  in `rubric_categories` (key/label/weight/enabled/sort).
+  Member ratings live in `member_scores.scores` (jsonb map); rubrics are PER
+  MEMBER in `member_rubrics` (seeded with the default on join, mashed
+  client-side); solo/community ratings in `global_ratings` (self-only RLS,
+  aggregate via `title_community_score`).
 - `src/screens/` — Auth, CreateGroup, Home (latest session, realtime reveal),
   Discover (TMDB browse/filters), TitleDetail, Profile, Rate (search → blind
   scoring → lock → reveal), Group (members + owner-editable rubric with

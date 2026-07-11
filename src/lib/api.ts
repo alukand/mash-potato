@@ -4,7 +4,8 @@
 
 import { supabase } from './supabase'
 import type { CategoryScores, MemberScorecard } from './scoring'
-import { rubricFromJson, scorecardFromRow, scoresFromJson } from './mapping'
+import { mashedScore } from './scoring'
+import { rubricFromJson, scorecardFromRow, scoresFromJson, weightsFromRubric } from './mapping'
 import type { SessionRubricEntry } from './mapping'
 
 export type { SessionRubricEntry } from './mapping'
@@ -122,9 +123,9 @@ export async function addMember(groupId: string, userId: string): Promise<void> 
   if (error && error.code !== '23505') throw new Error(error.message)
 }
 
-// ---- rubric -----------------------------------------------------------
+// ---- rubrics (per member, mashed into the group's) -----------------------
 
-/** One row of a group's rubric configuration (see rubricCatalog.ts). */
+/** One row of a rubric configuration (see rubricCatalog.ts). */
 export interface GroupRubricRow {
   key: string
   label: string
@@ -133,33 +134,49 @@ export interface GroupRubricRow {
   sort: number
 }
 
-export async function fetchGroupRubric(groupId: string): Promise<GroupRubricRow[]> {
+/**
+ * Every member's personal rubric for a group (RLS: members read the whole
+ * group's). Mash them with rubricCatalog's mashRubrics for the effective
+ * rubric a session is scored under.
+ */
+export async function fetchGroupRubrics(
+  groupId: string,
+): Promise<{ userId: string; rows: GroupRubricRow[] }[]> {
   const { data, error } = await supabase
-    .from('rubric_categories')
-    .select('category_key, label, weight, enabled, sort')
+    .from('member_rubrics')
+    .select('user_id, category_key, label, weight, enabled, sort')
     .eq('group_id', groupId)
     .order('sort', { ascending: true })
   if (error) throw new Error(error.message)
-  return (data ?? []).map((r) => ({
-    key: r.category_key,
-    label: r.label,
-    weight: r.weight,
-    enabled: r.enabled,
-    sort: r.sort,
-  }))
+
+  const byUser = new Map<string, GroupRubricRow[]>()
+  for (const r of data ?? []) {
+    const row: GroupRubricRow = {
+      key: r.category_key,
+      label: r.label,
+      weight: r.weight,
+      enabled: r.enabled,
+      sort: r.sort,
+    }
+    const rows = byUser.get(r.user_id)
+    if (rows) rows.push(row)
+    else byUser.set(r.user_id, [row])
+  }
+  return [...byUser.entries()].map(([userId, rows]) => ({ userId, rows }))
 }
 
-/** Owner-only by RLS; upserts the group's full rubric configuration. */
-export async function saveGroupRubric(groupId: string, rows: GroupRubricRow[]) {
+/** Save MY rubric for a group (self-only by RLS; upserts every row). */
+export async function saveMyRubric(groupId: string, userId: string, rows: GroupRubricRow[]) {
   const payload = rows.map((r) => ({
     group_id: groupId,
+    user_id: userId,
     category_key: r.key,
     label: r.label,
     weight: r.weight,
     enabled: r.enabled,
     sort: r.sort,
   }))
-  const { error } = await supabase.from('rubric_categories').upsert(payload)
+  const { error } = await supabase.from('member_rubrics').upsert(payload)
   if (error) throw new Error(error.message)
 }
 
@@ -697,6 +714,68 @@ export async function fetchTitleHistory(
       revealedAt: r.revealed_at,
       scorecards,
       rubric,
+    }
+  })
+}
+
+// ---- group log ------------------------------------------------------------
+
+export interface GroupLogEntry {
+  sessionId: string
+  titleName: string
+  titleYear: number | null
+  mediaType: 'movie' | 'tv'
+  posterPath: string | null
+  tmdbId: number | null
+  revealedAt: string | null
+  mashed: number | null
+}
+
+/**
+ * Every REVEALED session of the group, newest first, each with its Mashed
+ * score computed from its own rubric snapshot. One scorecards query covers
+ * all sessions (RLS: revealed rows are member-visible).
+ */
+export async function fetchGroupLog(groupId: string): Promise<GroupLogEntry[]> {
+  const { data: sessions, error } = await supabase
+    .from('reveal_sessions')
+    .select('id, revealed_at, rubric, titles(tmdb_id, media_type, name, year, poster_path)')
+    .eq('group_id', groupId)
+    .eq('state', 'revealed')
+    .order('revealed_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  const rows = (sessions ?? []).filter((r) => r.titles)
+  if (rows.length === 0) return []
+
+  const { data: scoreRows, error: scoresError } = await supabase
+    .from('member_scores')
+    .select('session_id, member_id, locked, scores')
+    .in(
+      'session_id',
+      rows.map((r) => r.id),
+    )
+  if (scoresError) throw new Error(scoresError.message)
+
+  const bySession = new Map<string, MemberScorecard[]>()
+  for (const row of scoreRows ?? []) {
+    const card = scorecardFromRow(row)
+    const cards = bySession.get(row.session_id)
+    if (cards) cards.push(card)
+    else bySession.set(row.session_id, [card])
+  }
+
+  return rows.map((r) => {
+    const rubric = rubricFromJson(r.rubric) ?? []
+    const cards = bySession.get(r.id) ?? []
+    return {
+      sessionId: r.id,
+      titleName: r.titles!.name,
+      titleYear: r.titles!.year,
+      mediaType: r.titles!.media_type,
+      posterPath: r.titles!.poster_path,
+      tmdbId: r.titles!.tmdb_id,
+      revealedAt: r.revealed_at,
+      mashed: rubric.length > 0 ? mashedScore(cards, weightsFromRubric(rubric)) : null,
     }
   })
 }

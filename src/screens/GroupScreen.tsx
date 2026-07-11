@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { addMember, fetchGroupRubric, saveGroupRubric, searchProfiles, signOut } from '../lib/api'
+import { addMember, fetchGroupRubrics, saveMyRubric, searchProfiles, signOut } from '../lib/api'
 import type { GroupInfo, GroupRubricRow, MemberInfo, UserSearchResult } from '../lib/api'
-import { RUBRIC_CATALOG, defaultRubricRows } from '../lib/rubricCatalog'
+import { RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from '../lib/rubricCatalog'
+import type { MemberRubric } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
 
 interface GroupScreenProps {
@@ -17,17 +18,16 @@ const searchInputClass =
   'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
   'placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60'
 
-// Live group view. Members + rubric come from Postgres through RLS; the
-// rubric editor is owner-only (the rubric_categories policy enforces it — the
-// UI hiding the controls is just courtesy).
+// Live group view. Members + rubrics come from Postgres through RLS.
 //
-// The rubric is dynamic: base categories ship enabled, and the owner can
-// toggle categories on/off, reweight them, and add more from the catalog.
-// Genre categories also auto-join matching sessions (see rubricCatalog.ts).
+// Rubrics are PER MEMBER: everyone edits their own, and the group's effective
+// rubric is the mash — each category's weight is the mean across members,
+// counting 0 for anyone who doesn't carry it (see rubricCatalog.mashRubrics).
 
 export function GroupScreen({ group, members, userId, onMembersChanged }: GroupScreenProps) {
   const isOwner = group.role === 'owner'
 
+  const [others, setOthers] = useState<MemberRubric[]>([])
   const [saved, setSaved] = useState<GroupRubricRow[] | null>(null)
   const [rows, setRows] = useState<GroupRubricRow[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -42,6 +42,22 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
 
   const memberIds = members.map((m) => m.userId)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchGroupRubrics(group.id)
+      .then((all) => {
+        if (cancelled) return
+        const mine = all.find((m) => m.userId === userId)?.rows ?? defaultRubricRows()
+        setSaved(mine)
+        setRows(mine)
+        setOthers(all.filter((m) => m.userId !== userId))
+      })
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Load failed'))
+    return () => {
+      cancelled = true
+    }
+  }, [group.id, userId])
 
   useEffect(() => {
     const q = query.trim()
@@ -83,27 +99,17 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
     }
   }
 
-  useEffect(() => {
-    let cancelled = false
-    fetchGroupRubric(group.id)
-      .then((r) => {
-        if (cancelled) return
-        setSaved(r)
-        setRows(r)
-      })
-      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Load failed'))
-    return () => {
-      cancelled = true
-    }
-  }, [group.id])
-
   const dirty = rows !== null && saved !== null && JSON.stringify(rows) !== JSON.stringify(saved)
   const enabledRows = (rows ?? []).filter((r) => r.enabled)
   const total = enabledRows.reduce((sum, r) => sum + r.weight, 0)
-  const maxWeight = Math.max(1, ...enabledRows.map((r) => r.weight))
   const addable = RUBRIC_CATALOG.filter(
     (c) => c.kind !== 'base' && !(rows ?? []).some((r) => r.key === c.key),
   )
+
+  // Live preview: the group's mashed rubric with YOUR current (unsaved) edits.
+  const effective =
+    rows === null ? [] : mashRubrics([...others, { userId, rows }])
+  const effectiveMax = Math.max(1, ...effective.map((r) => r.weight))
 
   function updateRow(key: string, patch: Partial<GroupRubricRow>) {
     setRows((prev) =>
@@ -126,7 +132,7 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
     setBusy(true)
     setError(null)
     try {
-      await saveGroupRubric(group.id, rows)
+      await saveMyRubric(group.id, userId, rows)
       setSaved(rows)
       setJustSaved(true)
       setTimeout(() => setJustSaved(false), 2000)
@@ -238,7 +244,7 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
                 )}
                 {addedIds.size > 0 && (
                   <p className="mt-2 px-1 text-[12px] text-teal">
-                    Added ✓ — they'll see this group next time they open the app.
+                    Added ✓ — they start with the default rubric and can tune it here.
                   </p>
                 )}
               </div>
@@ -251,11 +257,11 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
         )}
       </section>
 
-      {/* ---- The shared rubric ---- */}
+      {/* ---- Your rubric (everyone edits their own) ---- */}
       <section className="mp-rise mt-7" style={{ animationDelay: '80ms' }}>
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-            Group rubric
+            Your rubric
           </p>
           <p className="tabular font-mono text-[10px] text-muted">
             total <span className={total === 0 ? 'text-coral' : 'text-text'}>{total}</span>
@@ -268,7 +274,6 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
           ) : (
             [...rows]
               .sort((a, b) => a.sort - b.sort)
-              .filter((r) => isOwner || r.enabled)
               .map((row, i) => (
                 <div
                   key={row.key}
@@ -284,64 +289,50 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
                           {row.weight}
                         </span>
                       )}
-                      {isOwner && (
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={row.enabled}
-                          aria-label={`${row.label} enabled`}
-                          disabled={busy || (row.enabled && enabledRows.length <= 1)}
-                          onClick={() => updateRow(row.key, { enabled: !row.enabled })}
-                          className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-50 ${
-                            row.enabled ? 'bg-teal/70' : 'bg-line'
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={row.enabled}
+                        aria-label={`${row.label} enabled`}
+                        disabled={busy || (row.enabled && enabledRows.length <= 1)}
+                        onClick={() => updateRow(row.key, { enabled: !row.enabled })}
+                        className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-50 ${
+                          row.enabled ? 'bg-teal/70' : 'bg-line'
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 h-4 w-4 rounded-full bg-bg transition-all ${
+                            row.enabled ? 'left-[18px]' : 'left-0.5'
                           }`}
-                        >
-                          <span
-                            className={`absolute top-0.5 h-4 w-4 rounded-full bg-bg transition-all ${
-                              row.enabled ? 'left-[18px]' : 'left-0.5'
-                            }`}
-                          />
-                        </button>
-                      )}
+                        />
+                      </button>
                     </div>
                   </div>
-                  {row.enabled &&
-                    (isOwner ? (
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={5}
-                        value={row.weight}
-                        disabled={busy}
-                        aria-label={`${row.label} weight`}
-                        onChange={(e) => updateRow(row.key, { weight: Number(e.target.value) })}
-                        className="mp-slider mt-1"
-                        style={
-                          {
-                            '--thumb': 'var(--color-teal)',
-                            '--fill': row.weight,
-                          } as CSSProperties
-                        }
-                      />
-                    ) : (
-                      <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-surface-2">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${(row.weight / maxWeight) * 100}%`,
-                            backgroundImage: 'linear-gradient(90deg, #3FA9A2, #6FE3DB)',
-                          }}
-                        />
-                      </div>
-                    ))}
+                  {row.enabled && (
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={row.weight}
+                      disabled={busy}
+                      aria-label={`${row.label} weight`}
+                      onChange={(e) => updateRow(row.key, { weight: Number(e.target.value) })}
+                      className="mp-slider mt-1"
+                      style={
+                        {
+                          '--thumb': 'var(--color-teal)',
+                          '--fill': row.weight,
+                        } as CSSProperties
+                      }
+                    />
+                  )}
                 </div>
               ))
           )}
         </div>
 
-        {/* ---- add more categories (owner) ---- */}
-        {isOwner && rows !== null && addable.length > 0 && (
+        {rows !== null && addable.length > 0 && (
           <div className="mt-4">
             <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
               Add categories
@@ -363,10 +354,6 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
                 </button>
               ))}
             </div>
-            <p className="mt-2.5 px-1 text-[11px] leading-snug text-muted">
-              Genre categories (Humor, Fear Factor, …) also join matching sessions automatically —
-              add one here to score it on everything.
-            </p>
           </div>
         )}
 
@@ -376,44 +363,79 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
           </p>
         )}
 
-        {isOwner && (
-          <button
-            type="button"
-            onClick={() => setRows(defaultRubricRows())}
-            disabled={busy}
-            className="mt-4 w-full rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text disabled:opacity-50"
-          >
-            Reset to the default rubric
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setRows(defaultRubricRows())}
+          disabled={busy || rows === null}
+          className="mt-4 w-full rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text disabled:opacity-50"
+        >
+          Reset to the default rubric
+        </button>
 
-        {isOwner && (
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={busy || !dirty || total === 0}
-            className={`mt-4 w-full rounded-full py-3 text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-45 ${
-              justSaved
-                ? 'border border-teal/30 bg-teal/10 text-teal'
-                : 'text-bg shadow-[0_12px_32px_-12px_rgba(81,197,190,0.45),inset_0_1px_0_rgba(255,255,255,0.3)]'
-            }`}
-            style={
-              justSaved
-                ? undefined
-                : { backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }
-            }
-          >
-            {justSaved ? 'Saved ✓' : busy ? 'Saving…' : 'Save rubric'}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={busy || !dirty || total === 0}
+          className={`mt-3 w-full rounded-full py-3 text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-45 ${
+            justSaved
+              ? 'border border-teal/30 bg-teal/10 text-teal'
+              : 'text-bg shadow-[0_12px_32px_-12px_rgba(81,197,190,0.45),inset_0_1px_0_rgba(255,255,255,0.3)]'
+          }`}
+          style={
+            justSaved
+              ? undefined
+              : { backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }
+          }
+        >
+          {justSaved ? 'Saved ✓' : busy ? 'Saving…' : 'Save your rubric'}
+        </button>
         <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
-          Weights set how much each category counts — they don't need to sum to 100. Changes apply
-          to new sessions; past reveals keep the rubric they were scored under.
+          Every member sets their own rubric — the group scores with the mash of everyone's,
+          below. New sessions use it; past reveals keep the rubric they were scored under.
+        </p>
+      </section>
+
+      {/* ---- The group's mashed rubric ---- */}
+      <section className="mp-rise mt-7" style={{ animationDelay: '160ms' }}>
+        <div className="mb-3 flex items-baseline justify-between px-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Group rubric
+          </p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">Mashed</p>
+        </div>
+        <div className="mp-card rounded-[26px] px-5 py-1">
+          {effective.length === 0 ? (
+            <p className="py-4 text-[13px] text-muted">Loading…</p>
+          ) : (
+            effective.map((row, i) => (
+              <div key={row.key} className={`py-3 ${i > 0 ? 'border-t border-line/50' : ''}`}>
+                <div className="flex items-baseline justify-between">
+                  <p className="text-[13px] font-medium">{row.label}</p>
+                  <span className="tabular font-mono text-[13px] font-semibold text-teal">
+                    {row.weight}
+                  </span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${(row.weight / effectiveMax) * 100}%`,
+                      backgroundImage: 'linear-gradient(90deg, #3FA9A2, #6FE3DB)',
+                    }}
+                  />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
+          The average of {others.length + 1} rubric{others.length === 0 ? '' : 's'} — a category
+          someone doesn't carry counts as 0 for them, so lone picks weigh less.
         </p>
       </section>
 
       {/* ---- Sign out ---- */}
-      <section className="mp-rise mt-8 text-center" style={{ animationDelay: '160ms' }}>
+      <section className="mp-rise mt-8 text-center" style={{ animationDelay: '240ms' }}>
         <button
           type="button"
           onClick={() => void signOut()}

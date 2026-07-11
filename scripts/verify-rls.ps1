@@ -41,6 +41,7 @@ Invoke-Sql "API-role grants" (Join-Path $repo "scripts\verify-rls\20-grants.sql"
 Invoke-Sql "BLIND-RULE TEST" (Join-Path $repo "scripts\verify-rls\30-blind-rule-test.sql")
 Invoke-Sql "SAVED-TITLES TEST" (Join-Path $repo "scripts\verify-rls\40-saved-titles-test.sql")
 Invoke-Sql "GLOBAL-RATINGS TEST" (Join-Path $repo "scripts\verify-rls\50-global-ratings-test.sql")
+Invoke-Sql "MEMBER-RUBRICS TEST" (Join-Path $repo "scripts\verify-rls\60-member-rubrics-test.sql")
 
 Write-Host ""
 Write-Host "RLS verification complete - the blind rule holds." -ForegroundColor Green

@@ -4,7 +4,7 @@ import {
   backdropUrl,
   createSession,
   fetchCommunityScore,
-  fetchGroupRubric,
+  fetchGroupRubrics,
   fetchLatestSession,
   fetchMyGlobalRating,
   fetchSavedTitleId,
@@ -30,6 +30,7 @@ import {
   DEFAULT_WEIGHTS,
   defaultRubricEntries,
   defaultRubricRows,
+  mashRubrics,
   resolveSessionRubric,
 } from '../lib/rubricCatalog'
 import { scoreColor } from '../lib/scoreColor'
@@ -99,7 +100,11 @@ export function TitleDetailScreen({
       fetchSavedTitleId(userId, tmdbId, mediaType),
       fetchTitleHistory(tmdbId, mediaType),
       group ? fetchLatestSession(group.id) : Promise.resolve(null),
-      group ? fetchGroupRubric(group.id).catch(() => []) : Promise.resolve([]),
+      group
+        ? fetchGroupRubrics(group.id)
+            .then(mashRubrics)
+            .catch(() => [])
+        : Promise.resolve([]),
       fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
       fetchMyGlobalRating(userId, tmdbId, mediaType),
     ])
