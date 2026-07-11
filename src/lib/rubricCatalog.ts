@@ -99,6 +99,28 @@ export interface MemberRubric {
   rows: GroupRubricRow[]
 }
 
+/** Parse a preset's jsonb rows (user_rubrics.rows) into validated rubric rows. */
+export function presetRowsFromJson(value: unknown): GroupRubricRow[] {
+  if (!Array.isArray(value)) return []
+  const rows: GroupRubricRow[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const { key, label, weight, enabled, sort } = item as Record<string, unknown>
+    if (typeof key !== 'string' || !/^[a-zA-Z][a-zA-Z0-9]{0,39}$/.test(key)) continue
+    rows.push({
+      key,
+      label: typeof label === 'string' && label.length > 0 ? label.slice(0, 40) : key,
+      weight:
+        typeof weight === 'number' && Number.isFinite(weight)
+          ? Math.min(1000, Math.max(0, Math.round(weight)))
+          : 20,
+      enabled: typeof enabled === 'boolean' ? enabled : true,
+      sort: typeof sort === 'number' && Number.isFinite(sort) ? sort : rows.length,
+    })
+  }
+  return rows
+}
+
 /**
  * Mash every member's personal rubric into the group's EFFECTIVE rubric:
  * each category's weight is the mean of what each member gives it, counting 0

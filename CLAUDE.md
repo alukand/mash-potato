@@ -59,9 +59,11 @@ fine client-side.
 - `src/lib/mapping.ts` — jsonb `scores` / `rubric` snapshot validators.
 - `src/lib/api.ts` — every Supabase call; screens never import the client.
   Member ratings live in `member_scores.scores` (jsonb map); rubrics are PER
-  MEMBER in `member_rubrics` (seeded with the default on join, mashed
-  client-side); solo/community ratings in `global_ratings` (self-only RLS,
-  aggregate via `title_community_score`).
+  MEMBER in `member_rubrics` (mashed client-side); personal presets in
+  `user_rubrics` (one ★ favorite — it's what seed_member_rubric submits when
+  the user joins/creates a group, else the app default); solo/community
+  ratings in `global_ratings` (self-only RLS, aggregate via
+  `title_community_score`).
 - `src/screens/` — Auth, CreateGroup, Home (latest session, realtime reveal),
   Discover (TMDB browse/filters), TitleDetail, Profile, Rate (search → blind
   scoring → lock → reveal), Group (members + owner-editable rubric with

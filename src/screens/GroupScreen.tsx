@@ -1,7 +1,23 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { addMember, fetchGroupRubrics, saveMyRubric, searchProfiles, signOut } from '../lib/api'
-import type { GroupInfo, GroupRubricRow, MemberInfo, UserSearchResult } from '../lib/api'
+import {
+  addMember,
+  deleteRubricPreset,
+  fetchGroupRubrics,
+  fetchMyRubricPresets,
+  saveMyRubric,
+  saveRubricPreset,
+  searchProfiles,
+  setFavoriteRubricPreset,
+  signOut,
+} from '../lib/api'
+import type {
+  GroupInfo,
+  GroupRubricRow,
+  MemberInfo,
+  UserRubricPreset,
+  UserSearchResult,
+} from '../lib/api'
 import { RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from '../lib/rubricCatalog'
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
@@ -34,6 +50,12 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
   const [error, setError] = useState<string | null>(null)
   const [justSaved, setJustSaved] = useState(false)
 
+  // ---- personal presets ----
+  const [presets, setPresets] = useState<UserRubricPreset[]>([])
+  const [presetName, setPresetName] = useState('')
+  const [showSavePreset, setShowSavePreset] = useState(false)
+  const [presetBusy, setPresetBusy] = useState(false)
+
   // ---- add members (owner) ----
   const [showAdd, setShowAdd] = useState(false)
   const [query, setQuery] = useState('')
@@ -54,10 +76,55 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
         setOthers(all.filter((m) => m.userId !== userId))
       })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Load failed'))
+    fetchMyRubricPresets(userId)
+      .then((p) => !cancelled && setPresets(p))
+      .catch(() => {})
     return () => {
       cancelled = true
     }
   }, [group.id, userId])
+
+  async function handleSavePreset() {
+    if (rows === null || presetName.trim().length === 0) return
+    setPresetBusy(true)
+    setError(null)
+    try {
+      await saveRubricPreset(userId, presetName.trim(), rows)
+      setPresets(await fetchMyRubricPresets(userId))
+      setPresetName('')
+      setShowSavePreset(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the preset')
+    } finally {
+      setPresetBusy(false)
+    }
+  }
+
+  async function handleToggleFavorite(preset: UserRubricPreset) {
+    setPresetBusy(true)
+    setError(null)
+    try {
+      await setFavoriteRubricPreset(userId, preset.isFavorite ? null : preset.id)
+      setPresets(await fetchMyRubricPresets(userId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update the favorite')
+    } finally {
+      setPresetBusy(false)
+    }
+  }
+
+  async function handleDeletePreset(preset: UserRubricPreset) {
+    setPresetBusy(true)
+    setError(null)
+    try {
+      await deleteRubricPreset(userId, preset.id)
+      setPresets((prev) => prev.filter((p) => p.id !== preset.id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the preset')
+    } finally {
+      setPresetBusy(false)
+    }
+  }
 
   useEffect(() => {
     const q = query.trim()
@@ -363,14 +430,111 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
           </p>
         )}
 
-        <button
-          type="button"
-          onClick={() => setRows(defaultRubricRows())}
-          disabled={busy || rows === null}
-          className="mt-4 w-full rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text disabled:opacity-50"
-        >
-          Reset to the default rubric
-        </button>
+        {/* ---- apply a rubric: app default / favorite / saved presets ---- */}
+        <div className="mt-4">
+          <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Apply a rubric
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={busy || rows === null}
+                onClick={() => setRows(defaultRubricRows())}
+                className="flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-left text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text disabled:opacity-50"
+              >
+                App default
+              </button>
+            </div>
+            {presets.map((p) => (
+              <div key={p.id} className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={busy || presetBusy}
+                  onClick={() => setRows(p.rows.map((r) => ({ ...r })))}
+                  className="min-w-0 flex-1 truncate rounded-xl border border-line bg-surface-2 px-3 py-2 text-left text-[12px] font-semibold transition-colors hover:border-teal/50 disabled:opacity-50"
+                >
+                  {p.name}
+                </button>
+                <button
+                  type="button"
+                  disabled={presetBusy}
+                  onClick={() => void handleToggleFavorite(p)}
+                  aria-label={p.isFavorite ? `Unfavorite ${p.name}` : `Favorite ${p.name}`}
+                  title={
+                    p.isFavorite
+                      ? 'Your favorite — used when you join a group'
+                      : 'Make this your favorite'
+                  }
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-50 ${
+                    p.isFavorite
+                      ? 'border-gold/40 bg-gold/10 text-gold'
+                      : 'border-line text-muted hover:text-gold'
+                  }`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill={p.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5Z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  disabled={presetBusy}
+                  onClick={() => void handleDeletePreset(p)}
+                  aria-label={`Delete ${p.name}`}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:text-coral disabled:opacity-50"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                    <path d="M6 6l12 12M18 6 6 18" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {showSavePreset ? (
+            <div className="mt-2 flex items-center gap-1.5">
+              <input
+                type="text"
+                autoFocus
+                maxLength={40}
+                placeholder="Preset name…"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                className="min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-text placeholder:text-muted/70 outline-none focus:border-teal/60"
+              />
+              <button
+                type="button"
+                disabled={presetBusy || presetName.trim().length === 0}
+                onClick={() => void handleSavePreset()}
+                className="shrink-0 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-[12px] font-semibold text-teal disabled:opacity-50"
+              >
+                {presetBusy ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSavePreset(false)
+                  setPresetName('')
+                }}
+                className="shrink-0 rounded-full px-2 py-2 font-mono text-[10px] uppercase text-muted hover:text-text"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={rows === null}
+              onClick={() => setShowSavePreset(true)}
+              className="mt-2 w-full rounded-xl border border-dashed border-line px-3 py-2 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text disabled:opacity-50"
+            >
+              + Save current as a preset
+            </button>
+          )}
+          <p className="mt-2 px-1 text-[11px] leading-snug text-muted">
+            Your ★ favorite is the rubric you bring when you join or create a group.
+          </p>
+        </div>
 
         <button
           type="button"

@@ -7,6 +7,8 @@ import type { CategoryScores, MemberScorecard } from './scoring'
 import { mashedScore } from './scoring'
 import { rubricFromJson, scorecardFromRow, scoresFromJson, weightsFromRubric } from './mapping'
 import type { SessionRubricEntry } from './mapping'
+// runtime-safe: rubricCatalog only type-imports from this module
+import { presetRowsFromJson } from './rubricCatalog'
 
 export type { SessionRubricEntry } from './mapping'
 
@@ -716,6 +718,83 @@ export async function fetchTitleHistory(
       rubric,
     }
   })
+}
+
+// ---- personal rubric presets ----------------------------------------------
+
+export interface UserRubricPreset {
+  id: string
+  name: string
+  rows: GroupRubricRow[]
+  isFavorite: boolean
+}
+
+/** My saved rubric presets, favorite first then A–Z. */
+export async function fetchMyRubricPresets(userId: string): Promise<UserRubricPreset[]> {
+  const { data, error } = await supabase
+    .from('user_rubrics')
+    .select('id, name, rows, is_favorite')
+    .eq('user_id', userId)
+    .order('is_favorite', { ascending: false })
+    .order('name', { ascending: true })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    rows: presetRowsFromJson(r.rows),
+    isFavorite: r.is_favorite,
+  }))
+}
+
+/** Save (or overwrite, by name) one of my presets. Returns its id. */
+export async function saveRubricPreset(
+  userId: string,
+  name: string,
+  rows: GroupRubricRow[],
+): Promise<string> {
+  const { data, error } = await supabase
+    .from('user_rubrics')
+    .upsert(
+      {
+        user_id: userId,
+        name,
+        rows: rows.map((r) => ({ ...r })),
+      },
+      { onConflict: 'user_id,name' },
+    )
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+  return data.id
+}
+
+/** Star one preset as my favorite (or pass null to clear). One favorite max. */
+export async function setFavoriteRubricPreset(
+  userId: string,
+  presetId: string | null,
+): Promise<void> {
+  const { error: clearError } = await supabase
+    .from('user_rubrics')
+    .update({ is_favorite: false })
+    .eq('user_id', userId)
+    .eq('is_favorite', true)
+  if (clearError) throw new Error(clearError.message)
+  if (presetId === null) return
+  const { error } = await supabase
+    .from('user_rubrics')
+    .update({ is_favorite: true })
+    .eq('user_id', userId)
+    .eq('id', presetId)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteRubricPreset(userId: string, presetId: string): Promise<void> {
+  const { error } = await supabase
+    .from('user_rubrics')
+    .delete()
+    .eq('user_id', userId)
+    .eq('id', presetId)
+  if (error) throw new Error(error.message)
 }
 
 // ---- group log ------------------------------------------------------------
