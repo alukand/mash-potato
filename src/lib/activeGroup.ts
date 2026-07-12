@@ -34,3 +34,27 @@ export function storeGroupId(id: string): void {
     // ignore (private mode / storage disabled) — we just fall back to first
   }
 }
+
+// The active TAB persists the same way: a reload (or iOS reclaiming the
+// webview) lands you back on the tab you were using.
+
+const TAB_KEY = 'mp.activeTab'
+const TAB_IDS = ['home', 'discover', 'rate', 'group'] as const
+type StoredTab = (typeof TAB_IDS)[number]
+
+export function readStoredTab(): StoredTab | null {
+  try {
+    const v = localStorage.getItem(TAB_KEY)
+    return (TAB_IDS as readonly string[]).includes(v ?? '') ? (v as StoredTab) : null
+  } catch {
+    return null
+  }
+}
+
+export function storeTab(tab: StoredTab): void {
+  try {
+    localStorage.setItem(TAB_KEY, tab)
+  } catch {
+    // ignore
+  }
+}

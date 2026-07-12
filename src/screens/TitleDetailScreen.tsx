@@ -35,8 +35,9 @@ import {
   mashRubrics,
   resolveSessionRubric,
 } from '../lib/rubricCatalog'
-import { scoreColor } from '../lib/scoreColor'
+import { scoreColor, scoreWord } from '../lib/scoreColor'
 import { CommunityHistogram } from '../components/CommunityHistogram'
+import { CtaButton } from '../components/ui'
 
 // The default rubric everyone's solo/community rating uses.
 const SOLO_RUBRIC = defaultRubricEntries()
@@ -362,7 +363,7 @@ export function TitleDetailScreen({
         </div>
 
         <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-          {meta.join(' · ')}
+          {meta.join(', ')}
         </p>
         {detail.genres.length > 0 && (
           <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -385,19 +386,17 @@ export function TitleDetailScreen({
 
         {/* ---- actions ---- */}
         <div className="mt-5 flex flex-col gap-3">
-          <button
-            type="button"
+          <CtaButton
             onClick={() => void handleStartSession()}
             disabled={!canStart || starting}
-            className="w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98] disabled:opacity-50"
-            style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
+            className="w-full py-3.5 text-[14px] disabled:opacity-50"
           >
             {starting
               ? 'Starting…'
               : group
                 ? `Invite ${group.name} to rate it`
                 : 'Score with your group'}
-          </button>
+          </CtaButton>
           {blindElsewhere && (
             <p className="text-center font-mono text-[10px] text-muted">
               Finish {group?.name}’s current blind session first.
@@ -446,7 +445,7 @@ export function TitleDetailScreen({
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
               Community rating
             </p>
-            <p className="font-mono text-[10px] text-muted">everyone · default rubric</p>
+            <p className="font-mono text-[10px] text-muted">everyone, default rubric</p>
           </div>
           <div className="mp-card rounded-[22px] p-5">
             <div className="flex items-end justify-between">
@@ -478,7 +477,7 @@ export function TitleDetailScreen({
                   </p>
                 ) : (
                   <p className="text-[13px] leading-snug text-muted">
-                    Rate it yourself — it counts toward the community score.
+                    Rate it yourself. It counts toward the community score.
                   </p>
                 )}
                 <div className="flex shrink-0 items-center gap-2">
@@ -541,8 +540,13 @@ export function TitleDetailScreen({
                             weight {Math.round((entry.weight / SOLO_WEIGHT_TOTAL) * 100)}%
                           </p>
                         </div>
-                        <span className="tabular font-mono text-lg font-bold" style={{ color }}>
-                          {value}
+                        <span className="flex items-baseline gap-1.5">
+                          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+                            {scoreWord(value)}
+                          </span>
+                          <span className="tabular font-mono text-lg font-bold" style={{ color }}>
+                            {value}
+                          </span>
                         </span>
                       </div>
                       <input
@@ -576,15 +580,14 @@ export function TitleDetailScreen({
                     >
                       Cancel
                     </button>
-                    <button
-                      type="button"
+                    <CtaButton
+                      tone="teal"
                       onClick={() => void handleSaveRating()}
                       disabled={savingRating}
-                      className="rounded-full px-4 py-2 text-[12px] font-bold text-bg shadow-[0_10px_28px_-12px_rgba(81,197,190,0.5)] transition-transform active:scale-[0.98] disabled:opacity-60"
-                      style={{ backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }}
+                      className="px-4 py-2 text-[12px]"
                     >
                       {savingRating ? 'Saving…' : 'Save rating'}
-                    </button>
+                    </CtaButton>
                   </div>
                 </div>
               </div>

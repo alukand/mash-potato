@@ -69,12 +69,16 @@ fine client-side.
   `src/lib/rsvp.ts` — scoring always counts as in; groups of 3+ only).
 - `src/screens/` — Auth, CreateGroup, Home (CROSS-GROUP dashboard: live
   rounds w/ inline RSVP + latest reveals + trending; group-agnostic),
-  Discover (TMDB browse/filters), TitleDetail, Profile, Rate (search →
-  invite the group → blind scoring → lock → reveal), Group (group switcher +
-  SessionPanel [blind progress / the full Reveal] + members + log + mashed
-  rubric with a collapsed per-member editor). Every round is an invite
-  (RSVP shows for groups of 2+; the header has no group chip — switching is
-  Group-tab only).
+  Discover (TMDB browse/filters), TitleDetail, Profile (editable display
+  name, groups, poster grids, JSON export), Rate (search → invite the group
+  → blind scoring → lock → reveal), Group (group switcher → SessionPanel
+  [blind progress / the full Reveal] → log w/ avg+best strip → mashed rubric
+  with a collapsed per-member editor → members + Manage: rename / remove
+  member / leave / delete, all via existing RLS — no schema changes). Every
+  round is an invite (RSVP shows for groups of 2+; the header has no group
+  chip — switching is Group-tab only). Shared UI recipes (fieldClass,
+  CtaButton, GroupMark) live in `src/components/ui.tsx`; the design system
+  is documented in `DESIGN.md`.
 - `supabase/migrations/` — schema + RLS as code (grants included — do not
   rely on platform default privileges).
 

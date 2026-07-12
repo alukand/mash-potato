@@ -59,7 +59,7 @@ export function MashMath({ rubric, scorecards, userId, memberName, mashed }: Mas
         <div className="mp-card mt-2 rounded-[22px] p-5">
           {/* step 1: your scores × weights */}
           <p className="mp-rise font-mono text-[10px] uppercase tracking-[0.2em] text-muted" style={delay(step)}>
-            1 · {myLabel} scores × the group's weights
+            1. {myLabel} scores × the group's weights
           </p>
           <div className="mt-2">
             {rows.map((r) => {
@@ -97,7 +97,7 @@ export function MashMath({ rubric, scorecards, userId, memberName, mashed }: Mas
             className="mp-rise mt-4 font-mono text-[10px] uppercase tracking-[0.2em] text-muted"
             style={delay((step += 1))}
           >
-            2 · Everyone who locked in
+            2. Everyone who locked in
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {scorecards.map((s) => {

@@ -22,3 +22,15 @@ export function scoreColor(score: number): string {
   const t = (clamped - 1) / 9 // 0..1
   return t <= 0.5 ? mix(CORAL, GOLD, t / 0.5) : mix(GOLD, LIME, (t - 0.5) / 0.5)
 }
+
+/**
+ * Anchor word for a 1..10 score. Ten-point scales drift toward "7 means shrug";
+ * naming the bands keeps the low half of the ramp in play.
+ */
+export function scoreWord(score: number): string {
+  if (score <= 2) return 'brutal'
+  if (score <= 4) return 'rough'
+  if (score <= 6) return 'fine'
+  if (score <= 8) return 'great'
+  return 'all-timer'
+}

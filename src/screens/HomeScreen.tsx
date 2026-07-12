@@ -16,6 +16,7 @@ import type { GroupInfo, MemberInfo, SessionInfo, TmdbResult } from '../lib/api'
 import { participation, formatWindow } from '../lib/rsvp'
 import { PosterShelf } from '../components/PosterShelf'
 import { Logo } from '../components/Logo'
+import { CtaButton, GroupMark } from '../components/ui'
 
 interface HomeScreenProps {
   groups: GroupInfo[]
@@ -179,9 +180,9 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
                       </p>
                       <p className="mt-1 font-mono text-[10px] text-muted">
                         {part.inIds.length} in
-                        {part.passedIds.length > 0 ? ` · ${part.passedIds.length} passed` : ''}
+                        {part.passedIds.length > 0 ? `, ${part.passedIds.length} passed` : ''}
                         {part.invitedIds.length > 0
-                          ? ` · ${part.invitedIds.length} invited (closes in ${formatWindow(part.windowRemainingMs)})`
+                          ? `, ${part.invitedIds.length} invited (closes in ${formatWindow(part.windowRemainingMs)})`
                           : ''}
                       </p>
                     </div>
@@ -189,19 +190,18 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
 
                   {iLocked ? (
                     <p className="mt-3.5 rounded-full border border-teal/30 bg-teal/10 py-2.5 text-center text-[12px] font-semibold text-teal">
-                      You're locked in — waiting on the reveal
+                      You're locked in, waiting on the reveal
                     </p>
                   ) : mine === 'invited' ? (
                     <div className="mt-3.5 flex items-center gap-2">
-                      <button
-                        type="button"
+                      <CtaButton
+                        tone="teal"
                         disabled={busyRsvp === session.id}
                         onClick={() => void answer(session.id, 'in')}
-                        className="flex-1 rounded-full py-2.5 text-[13px] font-bold text-bg shadow-[0_10px_28px_-12px_rgba(81,197,190,0.5)] transition-transform active:scale-[0.98] disabled:opacity-60"
-                        style={{ backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }}
+                        className="flex-1 py-2.5 text-[13px]"
                       >
                         I'm in
-                      </button>
+                      </CtaButton>
                       <button
                         type="button"
                         disabled={busyRsvp === session.id}
@@ -217,17 +217,15 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
                       onClick={() => onOpenGroup(group.id, 'rate')}
                       className="mt-3.5 w-full rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text"
                     >
-                      You passed — jump back in →
+                      You passed. Jump back in →
                     </button>
                   ) : (
-                    <button
-                      type="button"
+                    <CtaButton
                       onClick={() => onOpenGroup(group.id, 'rate')}
-                      className="mt-3.5 w-full rounded-full py-2.5 text-[13px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
-                      style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
+                      className="mt-3.5 w-full py-2.5 text-[13px]"
                     >
                       Score it blind →
-                    </button>
+                    </CtaButton>
                   )}
                 </div>
               )
@@ -250,14 +248,14 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
                   key={session.id}
                   type="button"
                   onClick={() => onOpenGroup(group.id, 'group')}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface"
+                  className="group flex w-full items-center gap-3 px-4 py-3 text-left"
                 >
                   {session.posterPath ? (
                     <img
                       src={posterUrl(session.posterPath, 'w92')}
                       alt=""
                       loading="lazy"
-                      className="h-14 w-9 shrink-0 rounded-md object-cover"
+                      className="h-14 w-9 shrink-0 rounded-md object-cover transition-transform group-active:scale-95"
                     />
                   ) : (
                     <span
@@ -268,11 +266,12 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
                     </span>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-medium leading-tight">
+                    <p className="truncate text-[14px] font-medium leading-tight transition-colors group-hover:text-teal">
                       {session.titleName}
                     </p>
-                    <p className="mt-0.5 font-mono text-[10px] text-muted">
-                      {group.name} · see the reveal →
+                    <p className="mt-1 flex items-center gap-1.5 font-mono text-[10px] text-muted">
+                      <GroupMark groupId={group.id} name={group.name} size={14} />
+                      <span className="truncate">{group.name}</span>
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
@@ -298,17 +297,12 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
             Nothing live right now
           </h2>
           <p className="mx-auto mt-2 max-w-[280px] text-[13px] leading-snug text-muted">
-            Find something worth arguing about — rate it solo, or invite a group and score it
+            Find something worth arguing about: rate it solo, or invite a group and score it
             blind.
           </p>
-          <button
-            type="button"
-            onClick={onExplore}
-            className="mt-5 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
-            style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
-          >
+          <CtaButton onClick={onExplore} className="mt-5 w-full py-3.5 text-[14px]">
             Explore titles
-          </button>
+          </CtaButton>
         </section>
       )}
 

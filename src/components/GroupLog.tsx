@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatScore } from '../lib/scoring'
+import { scoreColor } from '../lib/scoreColor'
 import { posterUrl } from '../lib/api'
 import type { GroupLogEntry } from '../lib/api'
 
@@ -10,8 +11,9 @@ interface GroupLogProps {
   animationDelay?: string
 }
 
-// The group's full reveal history, with quick text + media filters.
-// Each entry's Mashed score comes from its own rubric snapshot.
+// The group's full reveal history, with quick text + media filters and a
+// one-line memory strip (average Mashed + the group's best round) once
+// there's enough history to mean something.
 export function GroupLog({ entries, onOpenTitle, animationDelay }: GroupLogProps) {
   const [query, setQuery] = useState('')
   const [media, setMedia] = useState<'all' | 'movie' | 'tv'>('all')
@@ -25,16 +27,41 @@ export function GroupLog({ entries, onOpenTitle, animationDelay }: GroupLogProps
       (q.length === 0 || e.titleName.toLowerCase().includes(q)),
   )
 
+  const scored = entries.filter((e) => e.mashed !== null)
+  const avg =
+    scored.length > 0
+      ? scored.reduce((sum, e) => sum + (e.mashed ?? 0), 0) / scored.length
+      : null
+  const best = scored.reduce<GroupLogEntry | null>(
+    (top, e) => (top === null || (e.mashed ?? 0) > (top.mashed ?? 0) ? e : top),
+    null,
+  )
+  const showStats = scored.length >= 3 && avg !== null && best !== null
+
   return (
     <section className="mp-rise" style={{ animationDelay }}>
       <div className="mb-3 flex items-baseline justify-between px-1">
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-          Group log
-        </p>
-        <p className="tabular font-mono text-[10px] text-muted">
-          {entries.length} rated
+          Group log <span className="tabular ml-1 font-mono text-[10px]">{entries.length}</span>
         </p>
       </div>
+
+      {/* the group's memory, in one quiet line */}
+      {showStats && (
+        <div className="mb-3 flex items-center gap-3 px-1 font-mono text-[10px] text-muted">
+          <span>
+            avg <span className="tabular text-teal">{formatScore(avg)}</span>
+          </span>
+          <span aria-hidden className="h-3 w-px bg-line" />
+          <span className="min-w-0 truncate">
+            best{' '}
+            <span className="tabular" style={{ color: scoreColor(best.mashed ?? 0) }}>
+              {formatScore(best.mashed)}
+            </span>{' '}
+            {best.titleName}
+          </span>
+        </div>
+      )}
 
       {entries.length > 3 && (
         <div className="mb-3 flex items-center gap-2">
@@ -71,14 +98,14 @@ export function GroupLog({ entries, onOpenTitle, animationDelay }: GroupLogProps
               type="button"
               disabled={e.tmdbId === null}
               onClick={() => e.tmdbId !== null && onOpenTitle(e.tmdbId, e.mediaType)}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface disabled:cursor-default"
+              className="group flex w-full items-center gap-3 px-4 py-3 text-left disabled:cursor-default"
             >
               {e.posterPath ? (
                 <img
                   src={posterUrl(e.posterPath, 'w92')}
                   alt=""
                   loading="lazy"
-                  className="h-14 w-9 shrink-0 rounded-md object-cover"
+                  className="h-14 w-9 shrink-0 rounded-md object-cover transition-transform group-active:scale-95"
                 />
               ) : (
                 <span
@@ -89,12 +116,14 @@ export function GroupLog({ entries, onOpenTitle, animationDelay }: GroupLogProps
                 </span>
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-medium leading-tight">{e.titleName}</p>
+                <p className="truncate text-[14px] font-medium leading-tight transition-colors group-hover:text-teal">
+                  {e.titleName}
+                </p>
                 <p className="mt-0.5 font-mono text-[10px] text-muted">
                   {e.mediaType === 'movie' ? 'Film' : 'TV'}
-                  {e.titleYear ? ` · ${e.titleYear}` : ''}
+                  {e.titleYear ? ` ${e.titleYear}` : ''}
                   {e.revealedAt
-                    ? ` · ${new Date(e.revealedAt).toLocaleDateString(undefined, {
+                    ? `, ${new Date(e.revealedAt).toLocaleDateString(undefined, {
                         month: 'short',
                         day: 'numeric',
                       })}`

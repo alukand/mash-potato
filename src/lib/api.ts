@@ -125,6 +125,44 @@ export async function addMember(groupId: string, userId: string): Promise<void> 
   if (error && error.code !== '23505') throw new Error(error.message)
 }
 
+/** Rename a group (owner-only by RLS `groups_update_owner`). */
+export async function renameGroup(groupId: string, name: string): Promise<void> {
+  const { error } = await supabase.from('groups').update({ name }).eq('id', groupId)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Remove a membership row: the owner removing someone, or a member leaving
+ * (RLS `group_members_delete_owner_or_self`). The member's rubric goes with
+ * them (FK cascade); their scores on past sessions stay in the history.
+ */
+export async function removeMember(groupId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('group_members')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('user_id', userId)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Delete a group and everything in it — sessions, scores, rubrics (owner-only
+ * by RLS `groups_delete_owner`; FK cascades). Shared titles are untouched.
+ */
+export async function deleteGroup(groupId: string): Promise<void> {
+  const { error } = await supabase.from('groups').delete().eq('id', groupId)
+  if (error) throw new Error(error.message)
+}
+
+/** Update your display name (self-only by RLS `profiles_update_self`). */
+export async function updateMyDisplayName(userId: string, displayName: string): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ display_name: displayName })
+    .eq('id', userId)
+  if (error) throw new Error(error.message)
+}
+
 // ---- rubrics (per member, mashed into the group's) -----------------------
 
 /** One row of a rubric configuration (see rubricCatalog.ts). */
@@ -1054,6 +1092,43 @@ export async function fetchMyGlobalRatings(userId: string): Promise<RatedTitle[]
       posterPath: row.titles!.poster_path,
       ratedAt: row.updated_at,
     }))
+}
+
+/**
+ * Everything the user owns, as one portable object: solo ratings (with their
+ * per-category scores) and the saved list. Your history is yours to take.
+ */
+export async function fetchMyExport(userId: string): Promise<Record<string, unknown>> {
+  const [ratings, saved] = await Promise.all([
+    supabase
+      .from('global_ratings')
+      .select('updated_at, scores, titles(tmdb_id, media_type, name, year)')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false }),
+    fetchMySavedTitles(userId),
+  ])
+  if (ratings.error) throw new Error(ratings.error.message)
+  return {
+    app: 'Mash Potato',
+    exportedAt: new Date().toISOString(),
+    soloRatings: (ratings.data ?? [])
+      .filter((r) => r.titles)
+      .map((r) => ({
+        name: r.titles!.name,
+        year: r.titles!.year,
+        mediaType: r.titles!.media_type,
+        tmdbId: r.titles!.tmdb_id,
+        scores: scoresFromJson(r.scores),
+        ratedAt: r.updated_at,
+      })),
+    savedTitles: saved.map((s) => ({
+      name: s.name,
+      year: s.year,
+      mediaType: s.mediaType,
+      tmdbId: s.tmdbId,
+      savedAt: s.savedAt,
+    })),
+  }
 }
 
 // ---- realtime -----------------------------------------------------------

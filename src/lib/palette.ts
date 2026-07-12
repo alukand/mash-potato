@@ -7,3 +7,10 @@ export function colorForMember(members: { userId: string }[], userId: string): s
   const i = members.findIndex((m) => m.userId === userId)
   return AVATAR_PALETTE[(i >= 0 ? i : members.length) % AVATAR_PALETTE.length]
 }
+
+/** Colour for a group id, stable across screens (hash of the id). */
+export function colorForGroup(groupId: string): string {
+  let hash = 0
+  for (let i = 0; i < groupId.length; i++) hash = (hash * 31 + groupId.charCodeAt(i)) >>> 0
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length]
+}

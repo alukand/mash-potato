@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
 import { memberWeightedScore, formatScore } from '../lib/scoring'
 import type { CategoryScores } from '../lib/scoring'
-import { scoreColor } from '../lib/scoreColor'
+import { scoreColor, scoreWord } from '../lib/scoreColor'
 import {
   createSession,
   fetchGroupRubrics,
@@ -30,6 +30,7 @@ import { defaultRubricRows, mashRubrics, resolveSessionRubric } from '../lib/rub
 import { participation, formatWindow } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
+import { CtaButton, fieldClass } from '../components/ui'
 
 interface RateScreenProps {
   group: GroupInfo
@@ -45,10 +46,6 @@ interface RateScreenProps {
 /** Every category of the session's snapshot starts at the midpoint. */
 const defaultScores = (rubric: SessionRubricEntry[]): CategoryScores =>
   Object.fromEntries(rubric.map((e) => [e.key, 5]))
-
-const inputClass =
-  'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
-  'placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60'
 
 export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps) {
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
@@ -241,7 +238,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
           <section className="mp-rise mp-card mb-4 rounded-[26px] p-5">
             <p className="text-[13px] leading-snug text-muted">
               <span className="font-semibold text-text">{session.titleName}</span> has been
-              revealed —{' '}
+              revealed:{' '}
               <button type="button" onClick={onGoHome} className="font-semibold text-teal">
                 see the result
               </button>
@@ -294,7 +291,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                   <p className="truncate text-[14px] font-semibold">{picked.name}</p>
                   <p className="font-mono text-[11px] text-muted">
                     {mediaType === 'movie' ? 'Film' : 'TV'}
-                    {picked.year ? ` · ${picked.year}` : ''}
+                    {picked.year ? ` ${picked.year}` : ''}
                   </p>
                 </div>
                 <button
@@ -313,7 +310,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                   placeholder={`Search ${mediaType === 'movie' ? 'films' : 'TV shows'}…`}
                   value={titleName}
                   onChange={(e) => setTitleName(e.target.value)}
-                  className={inputClass}
+                  className={fieldClass}
                 />
                 {searching && (
                   <p className="mt-2 px-1 font-mono text-[10px] text-muted">searching…</p>
@@ -325,7 +322,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                         <button
                           type="button"
                           onClick={() => setPicked(r)}
-                          className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface ${
+                          className={`group flex w-full items-center gap-3 px-3 py-2.5 text-left ${
                             i > 0 ? 'border-t border-line/50' : ''
                           }`}
                         >
@@ -343,7 +340,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                               {r.name.charAt(0)}
                             </span>
                           )}
-                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium transition-colors group-hover:text-teal">
                             {r.name}
                           </span>
                           <span className="tabular shrink-0 font-mono text-[11px] text-muted">
@@ -363,11 +360,11 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                       placeholder="Year (only if using it as typed)"
                       value={titleYear}
                       onChange={(e) => setTitleYear(e.target.value)}
-                      className={inputClass}
+                      className={fieldClass}
                     />
                     {results.length === 0 && (
                       <p className="px-1 text-[12px] text-muted">
-                        No matches — starting will use "{titleName.trim()}" as typed.
+                        No matches. Starting will use "{titleName.trim()}" as typed.
                       </p>
                     )}
                   </div>
@@ -380,14 +377,13 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                 {error}
               </p>
             )}
-            <button
+            <CtaButton
               type="submit"
               disabled={busy || (!picked && titleName.trim().length === 0)}
-              className="mt-4 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98] disabled:opacity-60"
-              style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
+              className="mt-4 w-full py-3.5 text-[14px]"
             >
-              {busy ? 'Sending…' : `Invite ${group.name} — blind scoring`}
-            </button>
+              {busy ? 'Sending…' : `Invite ${group.name} to score it blind`}
+            </CtaButton>
           </form>
           <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
             Search powered by{' '}
@@ -435,19 +431,18 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
             In for this one?
           </p>
           <p className="mt-1 text-[12px] leading-snug text-muted">
-            {session.titleName} — answers close in {formatWindow(part.windowRemainingMs)}; no
+            {session.titleName}: answers close in {formatWindow(part.windowRemainingMs)}; no
             answer counts as a pass. You can always jump in later.
           </p>
           <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
+            <CtaButton
+              tone="teal"
               disabled={busy}
               onClick={() => void handleRespond('in')}
-              className="flex-1 rounded-full py-2.5 text-[13px] font-bold text-bg shadow-[0_10px_28px_-12px_rgba(81,197,190,0.5)] transition-transform active:scale-[0.98] disabled:opacity-60"
-              style={{ backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }}
+              className="flex-1 py-2.5 text-[13px]"
             >
               I'm in
-            </button>
+            </CtaButton>
             <button
               type="button"
               disabled={busy}
@@ -462,7 +457,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
       {showRsvps && myPart === 'passed' && !locked && (
         <section className="mp-rise mb-4 rounded-2xl border border-line bg-surface-2 px-4 py-3">
           <p className="text-[12px] leading-snug text-muted">
-            You passed on this one — score it below anytime to jump back in.
+            You passed on this one. Score it below anytime to jump back in.
           </p>
         </section>
       )}
@@ -489,8 +484,8 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-                Now scoring · {session.mediaType === 'movie' ? 'Film' : 'TV'}
-                {session.titleYear ? ` · ${session.titleYear}` : ''}
+                Now scoring: {session.mediaType === 'movie' ? 'Film' : 'TV'}
+                {session.titleYear ? ` ${session.titleYear}` : ''}
               </p>
               <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-gold/30 bg-gold/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-gold">
                 <span className="h-1.5 w-1.5 rounded-full bg-gold" />
@@ -536,7 +531,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
             {showRsvps && (part.passedIds.length > 0 || part.invitedIds.length > 0) && (
               <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
                 {part.passedIds.length > 0 ? `${part.passedIds.length} passed` : ''}
-                {part.passedIds.length > 0 && part.invitedIds.length > 0 ? ' · ' : ''}
+                {part.passedIds.length > 0 && part.invitedIds.length > 0 ? ', ' : ''}
                 {part.invitedIds.length > 0 ? `${part.invitedIds.length} invited` : ''}
               </p>
             )}
@@ -560,8 +555,13 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                       {weightTotal > 0 ? Math.round((entry.weight / weightTotal) * 100) : '—'}%
                     </p>
                   </div>
-                  <span className="tabular font-mono text-xl font-bold" style={{ color }}>
-                    {value}
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+                      {scoreWord(value)}
+                    </span>
+                    <span className="tabular font-mono text-xl font-bold" style={{ color }}>
+                      {value}
+                    </span>
                   </span>
                 </div>
                 <input
@@ -610,7 +610,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
               </svg>
               {waiting.length === 0
                 ? 'Everyone is locked in'
-                : `Locked in — waiting on ${waiting.map((m) => m.displayName).join(', ')}`}
+                : `Locked in, waiting on ${waiting.map((m) => m.displayName).join(', ')}`}
             </div>
             <button
               type="button"
@@ -622,31 +622,28 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
             </button>
           </>
         ) : (
-          <button
-            type="button"
+          <CtaButton
             onClick={() => void handleLockIn()}
             disabled={busy}
-            className="mt-4 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98] disabled:opacity-60"
-            style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
+            className="mt-4 w-full py-3.5 text-[14px]"
           >
             {busy ? 'Locking…' : 'Lock in your scores'}
-          </button>
+          </CtaButton>
         )}
 
         {locked && canReveal && (
           <>
-            <button
-              type="button"
+            <CtaButton
+              tone="teal"
               onClick={() => void handleReveal()}
               disabled={busy}
-              className="mt-3 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(81,197,190,0.5),inset_0_1px_0_rgba(255,255,255,0.3)] transition-transform active:scale-[0.98] disabled:opacity-60"
-              style={{ backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }}
+              className="mt-3 w-full py-3.5 text-[14px]"
             >
               {busy ? 'Revealing…' : 'Reveal the scores'}
-            </button>
+            </CtaButton>
             {waiting.length > 0 && (
               <p className="mt-2 text-center font-mono text-[10px] text-muted">
-                {waiting.length} still scoring — revealing now drops without them
+                {waiting.length} still scoring, revealing now drops without them
               </p>
             )}
           </>

@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   addMember,
+  deleteGroup,
   deleteRubricPreset,
   fetchGroupLog,
   fetchGroupRubrics,
   fetchMyRubricPresets,
+  removeMember,
+  renameGroup,
   saveMyRubric,
   saveRubricPreset,
   searchProfiles,
   setFavoriteRubricPreset,
-  signOut,
 } from '../lib/api'
 import type {
   GroupInfo,
@@ -23,6 +25,7 @@ import type {
 import { RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from '../lib/rubricCatalog'
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
+import { CtaButton, GroupMark, fieldClass, fieldClassSm } from '../components/ui'
 import { GroupLog } from '../components/GroupLog'
 import { SessionPanel } from '../components/SessionPanel'
 
@@ -31,8 +34,10 @@ interface GroupScreenProps {
   groups: GroupInfo[]
   members: MemberInfo[]
   userId: string
-  /** Refetch the group's members (called after adding someone). */
+  /** Refetch the group's members (called after adding/removing someone). */
   onMembersChanged: () => void
+  /** Refetch the group list itself (rename / leave / delete). */
+  onGroupsChanged: () => Promise<void>
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
   onSwitchGroup: (groupId: string) => void
   onCreateGroup: () => void
@@ -40,11 +45,11 @@ interface GroupScreenProps {
   onGoRate: () => void
 }
 
-const searchInputClass =
-  'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
-  'placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60'
-
 // Live group view. Members + rubrics come from Postgres through RLS.
+//
+// Section order tells the story: the round (SessionPanel), the memory (log),
+// the identity (rubric), and only then the admin (members + manage). Account
+// actions live on the Profile, not here.
 //
 // Rubrics are PER MEMBER: everyone edits their own, and the group's effective
 // rubric is the mash — each category's weight is the mean across members,
@@ -56,6 +61,7 @@ export function GroupScreen({
   members,
   userId,
   onMembersChanged,
+  onGroupsChanged,
   onOpenTitle,
   onSwitchGroup,
   onCreateGroup,
@@ -85,6 +91,15 @@ export function GroupScreen({
   const [searching, setSearching] = useState(false)
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
 
+  // ---- manage group (rename / remove / leave / delete) ----
+  const [manageOpen, setManageOpen] = useState(false)
+  const [newName, setNewName] = useState(group.name)
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
+  const [confirmEnd, setConfirmEnd] = useState(false) // leave (member) / delete (owner)
+  const [manageBusy, setManageBusy] = useState(false)
+  const [manageError, setManageError] = useState<string | null>(null)
+  const [renamed, setRenamed] = useState(false)
+
   const memberIds = members.map((m) => m.userId)
 
   useEffect(() => {
@@ -108,6 +123,16 @@ export function GroupScreen({
       cancelled = true
     }
   }, [group.id, userId])
+
+  // Manage panel state belongs to one group at a time.
+  useEffect(() => {
+    setManageOpen(false)
+    setNewName(group.name)
+    setConfirmRemoveId(null)
+    setConfirmEnd(false)
+    setManageError(null)
+    setRenamed(false)
+  }, [group.id, group.name])
 
   async function handleSavePreset() {
     if (rows === null || presetName.trim().length === 0) return
@@ -191,6 +216,58 @@ export function GroupScreen({
     }
   }
 
+  async function handleRename() {
+    const name = newName.trim()
+    if (name.length === 0 || name === group.name) return
+    setManageBusy(true)
+    setManageError(null)
+    try {
+      await renameGroup(group.id, name)
+      await onGroupsChanged()
+      setRenamed(true)
+      setTimeout(() => setRenamed(false), 2000)
+    } catch (err) {
+      setManageError(err instanceof Error ? err.message : 'Could not rename the group')
+    } finally {
+      setManageBusy(false)
+    }
+  }
+
+  async function handleRemoveMember(memberId: string) {
+    setManageBusy(true)
+    setManageError(null)
+    try {
+      await removeMember(group.id, memberId)
+      setConfirmRemoveId(null)
+      onMembersChanged()
+    } catch (err) {
+      setManageError(err instanceof Error ? err.message : 'Could not remove that member')
+    } finally {
+      setManageBusy(false)
+    }
+  }
+
+  /** Member: leave the group. Owner: delete it for everyone. */
+  async function handleEndMembership() {
+    setManageBusy(true)
+    setManageError(null)
+    try {
+      if (isOwner) await deleteGroup(group.id)
+      else await removeMember(group.id, userId)
+      await onGroupsChanged()
+      // this screen unmounts (or switches group) via the refreshed list
+    } catch (err) {
+      setManageError(
+        err instanceof Error
+          ? err.message
+          : isOwner
+            ? 'Could not delete the group'
+            : 'Could not leave the group',
+      )
+      setManageBusy(false)
+    }
+  }
+
   const dirty = rows !== null && saved !== null && JSON.stringify(rows) !== JSON.stringify(saved)
   const enabledRows = (rows ?? []).filter((r) => r.enabled)
   const total = enabledRows.reduce((sum, r) => sum + r.weight, 0)
@@ -246,12 +323,13 @@ export function GroupScreen({
               key={g.id}
               type="button"
               onClick={() => !active && onSwitchGroup(g.id)}
-              className={`shrink-0 rounded-full border px-3.5 py-2 text-[12px] font-semibold transition-colors ${
+              className={`flex shrink-0 items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3.5 text-[12px] font-semibold transition-colors ${
                 active
                   ? 'border-teal/50 bg-teal/10 text-teal'
                   : 'border-line bg-surface-2 text-muted hover:text-text'
               }`}
             >
+              <GroupMark groupId={g.id} name={g.name} size={22} />
               {g.name}
             </button>
           )
@@ -274,127 +352,15 @@ export function GroupScreen({
         <SessionPanel group={group} members={members} userId={userId} onGoRate={onGoRate} />
       </div>
 
-      {/* ---- Members ---- */}
-      <section className="mp-rise" style={{ animationDelay: '60ms' }}>
-        <p className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-          Members
-        </p>
-        <div className="mp-card rounded-[26px] px-4">
-          <ul>
-            {members.map((m, i) => {
-              const isYou = m.userId === userId
-              return (
-                <li
-                  key={m.userId}
-                  className={`flex items-center gap-3 py-3.5 ${i > 0 ? 'border-t border-line/50' : ''}`}
-                >
-                  <span
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[13px] font-bold text-bg"
-                    style={{ backgroundColor: AVATAR_PALETTE[i % AVATAR_PALETTE.length] }}
-                  >
-                    {m.displayName.charAt(0).toUpperCase()}
-                  </span>
-                  <span className="flex-1 truncate text-[14px] font-medium">
-                    {m.displayName}
-                    {isYou && <span className="ml-1.5 text-muted">(you)</span>}
-                  </span>
-                  {m.role === 'owner' && (
-                    <span className="rounded-full border border-line bg-surface-2 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted">
-                      Owner
-                    </span>
-                  )}
-                </li>
-              )
-            })}
-            {members.length === 0 && (
-              <li className="py-3.5 text-[13px] text-muted">Loading members…</li>
-            )}
-          </ul>
-        </div>
-        {isOwner ? (
-          <div className="mt-3">
-            {!showAdd ? (
-              <button
-                type="button"
-                onClick={() => setShowAdd(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-full border border-line py-2.5 text-[13px] font-semibold text-teal transition-colors hover:border-teal/50"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M19 8v6M22 11h-6" />
-                </svg>
-                Add friends
-              </button>
-            ) : (
-              <div className="mp-card rounded-2xl p-4">
-                <input
-                  type="text"
-                  autoFocus
-                  maxLength={60}
-                  placeholder="Search by name…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className={searchInputClass}
-                />
-                {searching && (
-                  <p className="mt-2 px-1 font-mono text-[10px] text-muted">searching…</p>
-                )}
-                {results.length > 0 && (
-                  <ul className="mt-2 overflow-hidden rounded-xl border border-line bg-surface-2">
-                    {results.map((u, i) => (
-                      <li key={u.userId}>
-                        <button
-                          type="button"
-                          onClick={() => void handleAdd(u)}
-                          className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface ${
-                            i > 0 ? 'border-t border-line/50' : ''
-                          }`}
-                        >
-                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-line font-mono text-[12px] font-bold text-bg">
-                            {u.displayName.charAt(0).toUpperCase()}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-                            {u.displayName}
-                          </span>
-                          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-teal">
-                            Add
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {query.trim().length >= 2 && !searching && results.length === 0 && (
-                  <p className="mt-2 px-1 text-[12px] leading-snug text-muted">
-                    Nobody by that name yet. They need a Mash Potato account first — have them
-                    sign up, then search again.
-                  </p>
-                )}
-                {addedIds.size > 0 && (
-                  <p className="mt-2 px-1 text-[12px] text-teal">
-                    Added ✓ — they start with the default rubric and can tune it here.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
-            Only the group owner can add members.
-          </p>
-        )}
-      </section>
-
-      {/* ---- Group log: everything rated together ---- */}
+      {/* ---- Group log: everything rated together (the group's memory) ---- */}
       {log.length > 0 && (
-        <div className="mt-7">
-          <GroupLog entries={log} onOpenTitle={onOpenTitle} animationDelay="80ms" />
+        <div className="mb-7">
+          <GroupLog entries={log} onOpenTitle={onOpenTitle} animationDelay="60ms" />
         </div>
       )}
 
       {/* ---- The group's mashed rubric (compact) + editor toggle ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '160ms' }}>
+      <section className="mp-rise" style={{ animationDelay: '120ms' }}>
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
             Group rubric
@@ -427,7 +393,7 @@ export function GroupScreen({
           )}
         </div>
         <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
-          The average of {others.length + 1} rubric{others.length === 0 ? '' : 's'} — a category
+          The average of {others.length + 1} rubric{others.length === 0 ? '' : 's'}: a category
           someone doesn't carry counts as 0 for them, so lone picks weigh less.
         </p>
         <button
@@ -436,7 +402,8 @@ export function GroupScreen({
           aria-expanded={editOpen}
           className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
         >
-          {editOpen ? 'Close the editor' : dirty ? 'Edit your rubric · unsaved changes' : 'Edit your rubric'}
+          {editOpen ? 'Close the editor' : 'Edit your rubric'}
+          {!editOpen && dirty && <span className="text-gold">unsaved</span>}
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 transition-transform ${editOpen ? 'rotate-180' : ''}`} aria-hidden>
             <path d="m6 9 6 6 6-6" />
           </svg>
@@ -583,7 +550,7 @@ export function GroupScreen({
                   aria-label={p.isFavorite ? `Unfavorite ${p.name}` : `Favorite ${p.name}`}
                   title={
                     p.isFavorite
-                      ? 'Your favorite — used when you join a group'
+                      ? 'Your favorite: the rubric you bring to new groups'
                       : 'Make this your favorite'
                   }
                   className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-50 ${
@@ -620,7 +587,7 @@ export function GroupScreen({
                 placeholder="Preset name…"
                 value={presetName}
                 onChange={(e) => setPresetName(e.target.value)}
-                className="min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-text placeholder:text-muted/70 outline-none focus:border-teal/60"
+                className={`flex-1 ${fieldClassSm}`}
               />
               <button
                 type="button"
@@ -656,39 +623,289 @@ export function GroupScreen({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={busy || !dirty || total === 0}
-          className={`mt-3 w-full rounded-full py-3 text-[13px] font-bold transition-all active:scale-[0.98] disabled:opacity-45 ${
-            justSaved
-              ? 'border border-teal/30 bg-teal/10 text-teal'
-              : 'text-bg shadow-[0_12px_32px_-12px_rgba(81,197,190,0.45),inset_0_1px_0_rgba(255,255,255,0.3)]'
-          }`}
-          style={
-            justSaved
-              ? undefined
-              : { backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }
-          }
-        >
-          {justSaved ? 'Saved ✓' : busy ? 'Saving…' : 'Save your rubric'}
-        </button>
+        {justSaved ? (
+          <div className="mt-3 w-full rounded-full border border-teal/30 bg-teal/10 py-3 text-center text-[13px] font-bold text-teal">
+            Saved ✓
+          </div>
+        ) : (
+          <CtaButton
+            tone="teal"
+            disabled={busy || !dirty || total === 0}
+            onClick={() => void handleSave()}
+            className="mt-3 w-full py-3 text-[13px] disabled:opacity-45"
+          >
+            {busy ? 'Saving…' : 'Save your rubric'}
+          </CtaButton>
+        )}
         <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
-          Every member sets their own rubric — the group scores with the mash of everyone's,
-          above. New sessions use it; past reveals keep the rubric they were scored under.
+          Every member sets their own rubric; the group scores with the mash of everyone's,
+          above. New sessions use it, and past reveals keep the rubric they were scored under.
         </p>
       </section>
       )}
 
-      {/* ---- Sign out ---- */}
-      <section className="mp-rise mt-8 text-center" style={{ animationDelay: '240ms' }}>
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          className="rounded-full border border-line px-5 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
-        >
-          Sign out
-        </button>
+      {/* ---- Members + manage: the admin corner, deliberately last ---- */}
+      <section className="mp-rise mt-7" style={{ animationDelay: '180ms' }}>
+        <div className="mb-3 flex items-baseline justify-between px-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Members <span className="tabular ml-1 font-mono text-[10px]">{members.length || ''}</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setManageOpen((o) => !o)
+              setConfirmRemoveId(null)
+              setConfirmEnd(false)
+              setManageError(null)
+              setNewName(group.name)
+            }}
+            aria-expanded={manageOpen}
+            className={`font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
+              manageOpen ? 'text-teal' : 'text-muted hover:text-text'
+            }`}
+          >
+            {manageOpen ? 'Done' : 'Manage'}
+          </button>
+        </div>
+        <div className="mp-card rounded-[26px] px-4">
+          <ul>
+            {members.map((m, i) => {
+              const isYou = m.userId === userId
+              const removable = manageOpen && isOwner && !isYou && m.role !== 'owner'
+              return (
+                <li
+                  key={m.userId}
+                  className={`py-3.5 ${i > 0 ? 'border-t border-line/50' : ''}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[13px] font-bold text-bg"
+                      style={{ backgroundColor: AVATAR_PALETTE[i % AVATAR_PALETTE.length] }}
+                    >
+                      {m.displayName.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
+                      {m.displayName}
+                      {isYou && <span className="ml-1.5 text-muted">(you)</span>}
+                    </span>
+                    {m.role === 'owner' && (
+                      <span className="shrink-0 rounded-full border border-line bg-surface-2 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted">
+                        Owner
+                      </span>
+                    )}
+                    {removable && (
+                      <button
+                        type="button"
+                        disabled={manageBusy}
+                        onClick={() =>
+                          setConfirmRemoveId((prev) => (prev === m.userId ? null : m.userId))
+                        }
+                        aria-label={`Remove ${m.displayName}`}
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:border-coral/50 hover:text-coral disabled:opacity-50"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                          <path d="M6 6l12 12M18 6 6 18" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {removable && confirmRemoveId === m.userId && (
+                    <div className="mt-2.5 flex items-center justify-between gap-3 rounded-2xl border border-coral/30 bg-coral/5 px-3.5 py-2.5">
+                      <p className="text-[12px] leading-snug text-muted">
+                        Remove {m.displayName}? Their scores on past reveals stay in the log.
+                      </p>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRemoveId(null)}
+                          className="rounded-full px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-text"
+                        >
+                          Keep
+                        </button>
+                        <button
+                          type="button"
+                          disabled={manageBusy}
+                          onClick={() => void handleRemoveMember(m.userId)}
+                          className="rounded-full bg-coral/90 px-3 py-1.5 text-[12px] font-bold text-bg transition-transform active:scale-[0.98] disabled:opacity-60"
+                        >
+                          {manageBusy ? 'Removing…' : 'Remove'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+            {members.length === 0 && (
+              <li className="py-3.5 text-[13px] text-muted">Loading members…</li>
+            )}
+          </ul>
+        </div>
+
+        {isOwner && (
+          <div className="mt-3">
+            {!showAdd ? (
+              <button
+                type="button"
+                onClick={() => setShowAdd(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-full border border-line py-2.5 text-[13px] font-semibold text-teal transition-colors hover:border-teal/50"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M19 8v6M22 11h-6" />
+                </svg>
+                Add friends
+              </button>
+            ) : (
+              <div className="mp-card rounded-2xl p-4">
+                <input
+                  type="text"
+                  autoFocus
+                  maxLength={60}
+                  placeholder="Search by name…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className={fieldClass}
+                />
+                {searching && (
+                  <p className="mt-2 px-1 font-mono text-[10px] text-muted">searching…</p>
+                )}
+                {results.length > 0 && (
+                  <ul className="mt-2 overflow-hidden rounded-xl border border-line bg-surface-2">
+                    {results.map((u, i) => (
+                      <li key={u.userId}>
+                        <button
+                          type="button"
+                          onClick={() => void handleAdd(u)}
+                          className={`group flex w-full items-center gap-3 px-3 py-2.5 text-left ${
+                            i > 0 ? 'border-t border-line/50' : ''
+                          }`}
+                        >
+                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-line font-mono text-[12px] font-bold text-bg transition-transform group-active:scale-95">
+                            {u.displayName.charAt(0).toUpperCase()}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium transition-colors group-hover:text-teal">
+                            {u.displayName}
+                          </span>
+                          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-teal">
+                            Add
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {query.trim().length >= 2 && !searching && results.length === 0 && (
+                  <p className="mt-2 px-1 text-[12px] leading-snug text-muted">
+                    Nobody by that name yet. They need a Mash Potato account first: have them
+                    sign up, then search again.
+                  </p>
+                )}
+                {addedIds.size > 0 && (
+                  <p className="mt-2 px-1 text-[12px] text-teal">
+                    Added ✓ They start with the default rubric and can tune it here.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ---- manage panel: rename (owner), leave / delete ---- */}
+        {manageOpen && (
+          <div className="mp-rise mt-4">
+            {isOwner && (
+              <div className="mp-card rounded-2xl p-4">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+                  Group name
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    maxLength={80}
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    aria-label="Group name"
+                    className={`flex-1 ${fieldClassSm}`}
+                  />
+                  <button
+                    type="button"
+                    disabled={
+                      manageBusy || newName.trim().length === 0 || newName.trim() === group.name
+                    }
+                    onClick={() => void handleRename()}
+                    className="shrink-0 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-[12px] font-semibold text-teal disabled:opacity-50"
+                  >
+                    {manageBusy ? 'Saving…' : renamed ? 'Saved ✓' : 'Rename'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!confirmEnd ? (
+              <button
+                type="button"
+                disabled={manageBusy}
+                onClick={() => setConfirmEnd(true)}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:border-coral/50 hover:text-coral disabled:opacity-50"
+              >
+                {isOwner ? 'Delete this group' : `Leave ${group.name}`}
+              </button>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-coral/30 bg-coral/5 p-4">
+                <p className="text-[13px] font-semibold leading-snug">
+                  {isOwner ? `Delete ${group.name} for everyone?` : `Leave ${group.name}?`}
+                </p>
+                <p className="mt-1 text-[12px] leading-snug text-muted">
+                  {isOwner
+                    ? 'Every round, reveal, and rubric goes with it. There is no undo.'
+                    : 'Your scores on past reveals stay. The owner can add you back later.'}
+                </p>
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmEnd(false)}
+                    className="flex-1 rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+                  >
+                    {isOwner ? 'Keep it' : 'Stay'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={manageBusy}
+                    onClick={() => void handleEndMembership()}
+                    className="flex-1 rounded-full bg-coral/90 py-2.5 text-[12px] font-bold text-bg transition-transform active:scale-[0.98] disabled:opacity-60"
+                  >
+                    {manageBusy
+                      ? isOwner
+                        ? 'Deleting…'
+                        : 'Leaving…'
+                      : isOwner
+                        ? 'Delete for good'
+                        : 'Leave group'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isOwner && (
+              <p className="mt-2 px-2 text-[11px] leading-snug text-muted">
+                Owners can't leave their own group; deleting it is the way out.
+              </p>
+            )}
+            {manageError && (
+              <p role="alert" className="mt-2 px-2 text-[12px] leading-snug text-coral">
+                {manageError}
+              </p>
+            )}
+          </div>
+        )}
+
+        {!isOwner && !manageOpen && (
+          <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
+            Only the group owner can add members.
+          </p>
+        )}
       </section>
     </>
   )

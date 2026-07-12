@@ -14,6 +14,7 @@ import {
 import type { GroupInfo, MemberInfo, SessionInfo } from '../lib/api'
 import { participation } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
+import { CtaButton } from './ui'
 import { ScoreRing } from './ScoreRing'
 import { MashMath } from './MashMath'
 
@@ -88,17 +89,12 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
       <section className="mp-rise mp-card rounded-[26px] p-6 text-center">
         <p className="text-[14px] font-semibold">No rounds yet</p>
         <p className="mx-auto mt-1.5 max-w-[280px] text-[13px] leading-snug text-muted">
-          Pick a film or show and invite {group.name} — everyone scores blind, then the
+          Pick a film or show and invite {group.name}: everyone scores blind, then the
           Reveal drops it all at once.
         </p>
-        <button
-          type="button"
-          onClick={onGoRate}
-          className="mt-4 w-full rounded-full py-3 text-[13px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
-          style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
-        >
+        <CtaButton onClick={onGoRate} className="mt-4 w-full py-3 text-[13px]">
           Pick a movie
-        </button>
+        </CtaButton>
       </section>
     )
   }
@@ -130,7 +126,7 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
         </h2>
         <p className="mt-1 font-mono text-xs text-muted">
           {session.mediaType === 'movie' ? 'Film' : 'TV'}
-          {session.titleYear ? ` · ${session.titleYear}` : ''}
+          {session.titleYear ? ` ${session.titleYear}` : ''}
         </p>
 
         <div className="mt-6 flex items-center justify-between rounded-2xl bg-surface-2 px-4 py-3.5">
@@ -160,8 +156,8 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
         {showRsvps && (
           <p className="mt-2.5 px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
             {part.inIds.length} in
-            {part.passedIds.length > 0 ? ` · ${part.passedIds.length} passed` : ''}
-            {part.invitedIds.length > 0 ? ` · ${part.invitedIds.length} invited` : ''}
+            {part.passedIds.length > 0 ? `, ${part.passedIds.length} passed` : ''}
+            {part.invitedIds.length > 0 ? `, ${part.invitedIds.length} invited` : ''}
           </p>
         )}
 
@@ -169,14 +165,9 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
           Ratings stay hidden until the reveal.
         </p>
         {!iAmIn && (
-          <button
-            type="button"
-            onClick={onGoRate}
-            className="mt-4 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
-            style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
-          >
+          <CtaButton onClick={onGoRate} className="mt-4 w-full py-3.5 text-[14px]">
             Score it now
-          </button>
+          </CtaButton>
         )}
       </section>
     )
@@ -247,7 +238,7 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
             <div className="flex items-center justify-between gap-2">
               <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
                 {session.mediaType === 'movie' ? 'Film' : 'TV'}
-                {session.titleYear ? ` · ${session.titleYear}` : ''}
+                {session.titleYear ? ` ${session.titleYear}` : ''}
               </p>
               <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-teal">
                 <span className="h-1.5 w-1.5 rounded-full bg-teal" />
@@ -298,7 +289,7 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
 
         <p className="mt-3 text-center text-[11px] leading-snug text-muted">
           <span className="font-semibold text-teal">Mashed</span> is your group's weighted
-          average — everyone's locked scores, combined.
+          average: everyone's locked scores, combined.
         </p>
 
         <div className="mt-4 flex items-center justify-between border-t border-line/60 pt-4 font-mono text-[10px] uppercase tracking-[0.14em]">
@@ -335,11 +326,11 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
           </p>
           <h3 className="mt-2.5 font-display text-[27px] font-medium leading-[1.22]">
             United on{' '}
-            <span className="italic text-teal">{labelFor(aligned.category)}</span> — split
+            <span className="italic text-teal">{labelFor(aligned.category)}</span>. Split
             over <span className="italic text-coral">{labelFor(clash.category)}</span>.
           </h3>
           <p className="mt-2 font-mono text-[11px] text-muted">
-            agreement range {aligned.range} · clash range {clash.range}
+            agreement range {aligned.range}, clash range {clash.range}
           </p>
           {outlier && (
             <div className="mt-4 flex items-center gap-2.5">
@@ -351,7 +342,7 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
               </span>
               <p className="text-[13px] leading-snug text-muted">
                 <span className="font-semibold text-text">{memberName(outlier.memberId)}</span>{' '}
-                broke away — scored {labelFor(outlier.category)}{' '}
+                broke away, scoring {labelFor(outlier.category)}{' '}
                 <span className="tabular font-mono text-gold">{outlier.score}</span> against the
                 group's <span className="tabular font-mono">{formatScore(outlier.mean)}</span>
               </p>

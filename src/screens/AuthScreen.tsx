@@ -2,13 +2,10 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { signIn, signUp } from '../lib/api'
 import { Logo } from '../components/Logo'
+import { CtaButton, fieldClass } from '../components/ui'
 
 // Email + password auth against local/hosted Supabase. On success the
 // onAuthStateChange listener in App flips the screen — no navigation here.
-
-const inputClass =
-  'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
-  'placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60'
 
 export function AuthScreen() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
@@ -81,7 +78,7 @@ export function AuthScreen() {
                 autoComplete="nickname"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className={inputClass}
+                className={fieldClass}
               />
             )}
             <input
@@ -91,7 +88,7 @@ export function AuthScreen() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className={inputClass}
+              className={fieldClass}
             />
             <input
               type="password"
@@ -101,7 +98,7 @@ export function AuthScreen() {
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={inputClass}
+              className={fieldClass}
             />
           </div>
 
@@ -111,12 +108,7 @@ export function AuthScreen() {
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="mt-5 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98] disabled:opacity-60"
-            style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
-          >
+          <CtaButton type="submit" disabled={busy} className="mt-5 w-full py-3.5 text-[14px]">
             {busy
               ? mode === 'signin'
                 ? 'Signing in…'
@@ -124,7 +116,7 @@ export function AuthScreen() {
               : mode === 'signin'
                 ? 'Sign in'
                 : 'Create account'}
-          </button>
+          </CtaButton>
         </form>
 
         <p

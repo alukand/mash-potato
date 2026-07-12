@@ -3,7 +3,13 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import { fetchMyGroups, fetchMembers } from './lib/api'
 import type { GroupInfo, MemberInfo } from './lib/api'
-import { pickActiveGroup, readStoredGroupId, storeGroupId } from './lib/activeGroup'
+import {
+  pickActiveGroup,
+  readStoredGroupId,
+  readStoredTab,
+  storeGroupId,
+  storeTab,
+} from './lib/activeGroup'
 import { colorForMember } from './lib/palette'
 import { Logo } from './components/Logo'
 import { BottomNav } from './components/BottomNav'
@@ -46,7 +52,7 @@ function Splash({ note }: { note?: string }) {
 }
 
 function App() {
-  const [tab, setTab] = useState<TabId>('home')
+  const [tab, setTab] = useState<TabId>(() => readStoredTab() ?? 'home')
   // undefined = still resolving; null = signed out / no groups
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [groups, setGroups] = useState<GroupInfo[] | undefined>(undefined)
@@ -118,6 +124,15 @@ function App() {
       .catch(() => {})
   }, [groupId])
 
+  // Refetch the group list after a rename / leave / delete. If the active
+  // group is gone the picker falls back (or the create-group gate shows).
+  const refreshGroups = useCallback(async () => {
+    if (!session) return
+    const gs = await fetchMyGroups(session.user.id)
+    setGroups(gs)
+    setActiveGroupId((prev) => pickActiveGroup(gs, prev)?.id ?? null)
+  }, [session])
+
   function openTitle(tmdbId: number, mediaType: 'movie' | 'tv') {
     setStack((s) => [...s, { kind: 'title', tmdbId, mediaType }])
     window.scrollTo(0, 0)
@@ -132,6 +147,7 @@ function App() {
   function selectTab(next: TabId) {
     setStack([])
     setTab(next)
+    storeTab(next)
   }
   function switchGroup(id: string) {
     setActiveGroupId(id)
@@ -207,6 +223,7 @@ function App() {
                 onSwitchGroup={switchGroup}
                 onCreateGroup={() => pushView({ kind: 'createGroup' })}
                 onOpenTitle={openTitle}
+                onNameChanged={refreshMembers}
                 onBack={popView}
               />
             )}
@@ -276,6 +293,7 @@ function App() {
                 members={members}
                 userId={userId}
                 onMembersChanged={refreshMembers}
+                onGroupsChanged={refreshGroups}
                 onOpenTitle={openTitle}
                 onSwitchGroup={switchGroup}
                 onCreateGroup={() => pushView({ kind: 'createGroup' })}

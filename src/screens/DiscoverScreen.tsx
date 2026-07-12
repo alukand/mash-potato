@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchBrowse, fetchDiscover, fetchGenres, searchPeople } from '../lib/api'
 import type { TmdbGenre, TmdbPerson, TmdbResult } from '../lib/api'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
+import { fieldClass } from '../components/ui'
 import { PosterShelf } from '../components/PosterShelf'
 import { PosterResultGrid } from '../components/PosterResultGrid'
 
@@ -9,15 +10,28 @@ interface DiscoverScreenProps {
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
 }
 
-const inputClass =
-  'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
-  'placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60'
+const MEDIA_KEY = 'mp.discoverMedia'
 
 // Discover: free-text search, filter by genre / actor / director / year, and
 // trending / popular shelves. Every result opens that title's detail page.
 export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
   const [query, setQuery] = useState('')
-  const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie')
+  // The films/TV switch persists: coming back lands where you were browsing.
+  const [mediaType, setMediaTypeState] = useState<'movie' | 'tv'>(() => {
+    try {
+      return localStorage.getItem(MEDIA_KEY) === 'tv' ? 'tv' : 'movie'
+    } catch {
+      return 'movie'
+    }
+  })
+  const setMediaType = (m: 'movie' | 'tv') => {
+    setMediaTypeState(m)
+    try {
+      localStorage.setItem(MEDIA_KEY, m)
+    } catch {
+      // ignore
+    }
+  }
   const { results, searching } = useTmdbSearch(query, mediaType)
 
   // filters
@@ -144,7 +158,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
     <div className="flex flex-col gap-6">
       <section className="mp-rise">
         <p className="mb-3 px-1 text-[12px] leading-snug text-muted">
-          Look up any film or show — rate it solo on the standard rubric and see how it stacks up
+          Look up any film or show: rate it solo on the standard rubric and see how it stacks up
           against everyone else on Mash Potato.
         </p>
         <div className="mb-3 flex rounded-full border border-line bg-surface-2 p-1">
@@ -167,7 +181,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
           placeholder={`Search ${mediaType === 'movie' ? 'films' : 'TV shows'}…`}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className={inputClass}
+          className={fieldClass}
         />
 
         {/* filter toggle */}
@@ -180,7 +194,10 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 5h18M6 12h12M10 19h4" />
             </svg>
-            Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="tabular text-teal">{activeFilterCount}</span>
+            )}
           </button>
           {activeFilterCount > 0 && (
             <button
@@ -195,7 +212,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
         {searching && <p className="mt-1 px-1 font-mono text-[10px] text-muted">searching…</p>}
         {textActive && hasFilters && (
           <p className="mt-1 px-1 text-[11px] leading-snug text-muted">
-            Showing text matches — clear the search box to browse by filters.
+            Showing text matches. Clear the search box to browse by filters.
           </p>
         )}
 
@@ -260,7 +277,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
                     placeholder="e.g. Christopher Nolan"
                     value={personQuery}
                     onChange={(e) => setPersonQuery(e.target.value)}
-                    className={inputClass}
+                    className={fieldClass}
                   />
                   {personResults.length > 0 && (
                     <ul className="mt-2 overflow-hidden rounded-xl border border-line bg-surface-2">
@@ -272,11 +289,11 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
                               setSelectedPerson(p)
                               setPersonResults([])
                             }}
-                            className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface ${
+                            className={`group flex w-full items-center gap-2 px-3 py-2 text-left ${
                               i > 0 ? 'border-t border-line/50' : ''
                             }`}
                           >
-                            <span className="flex-1 truncate text-[13px]">{p.name}</span>
+                            <span className="flex-1 truncate text-[13px] transition-colors group-hover:text-teal">{p.name}</span>
                             {p.department && (
                               <span className="shrink-0 font-mono text-[10px] text-muted">
                                 {p.department}
@@ -302,7 +319,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
                 placeholder="e.g. 2014"
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
-                className={inputClass}
+                className={fieldClass}
               />
             </div>
           </div>
