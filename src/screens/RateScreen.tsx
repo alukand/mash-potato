@@ -186,6 +186,22 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
     }
   }
 
+  async function handleUnlock() {
+    if (!session) return
+    setBusy(true)
+    setError(null)
+    try {
+      // keep the row (you stay "in") but drop the lock so sliders re-open
+      await saveMyScore(session.id, userId, scores, false)
+      setLocked(false)
+      setLockStatus(await fetchLockStatus(session.id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not unlock')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handleRespond(status: 'in' | 'pass') {
     if (!session) return
     setBusy(true)
@@ -587,14 +603,24 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
         )}
 
         {locked ? (
-          <div className="mt-4 flex items-center justify-center gap-2 rounded-full border border-teal/30 bg-teal/10 py-3.5 text-[14px] font-semibold text-teal">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="m4.5 12.5 5 5 10-11" />
-            </svg>
-            {waiting.length === 0
-              ? 'Everyone is locked in'
-              : `Locked in — waiting on ${waiting.map((m) => m.displayName).join(', ')}`}
-          </div>
+          <>
+            <div className="mt-4 flex items-center justify-center gap-2 rounded-full border border-teal/30 bg-teal/10 py-3.5 text-[14px] font-semibold text-teal">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="m4.5 12.5 5 5 10-11" />
+              </svg>
+              {waiting.length === 0
+                ? 'Everyone is locked in'
+                : `Locked in — waiting on ${waiting.map((m) => m.displayName).join(', ')}`}
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleUnlock()}
+              disabled={busy}
+              className="mt-2 w-full rounded-full py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text disabled:opacity-60"
+            >
+              {busy ? 'Unlocking…' : 'Unlock to change my scores'}
+            </button>
+          </>
         ) : (
           <button
             type="button"

@@ -971,6 +971,28 @@ export async function saveGlobalRating(
   if (error) throw new Error(error.message)
 }
 
+/** Remove my solo rating for a title (self-only by RLS). No-op if unrated. */
+export async function deleteGlobalRating(
+  userId: string,
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+): Promise<void> {
+  const { data: title, error: titleError } = await supabase
+    .from('titles')
+    .select('id')
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .maybeSingle()
+  if (titleError) throw new Error(titleError.message)
+  if (!title) return
+  const { error } = await supabase
+    .from('global_ratings')
+    .delete()
+    .eq('user_id', userId)
+    .eq('title_id', title.id)
+  if (error) throw new Error(error.message)
+}
+
 export interface RatedTitle {
   titleId: string
   tmdbId: number | null

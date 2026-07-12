@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import {
   backdropUrl,
   createSession,
+  deleteGlobalRating,
   fetchCommunityScore,
   fetchGroupRubrics,
   fetchLatestSession,
@@ -86,6 +87,7 @@ export function TitleDetailScreen({
   const [rating, setRating] = useState(false)
   const [soloScores, setSoloScores] = useState<CategoryScores>({})
   const [savingRating, setSavingRating] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const [saving, setSaving] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -183,6 +185,22 @@ export function TitleDetailScreen({
       setRating(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your rating')
+    } finally {
+      setSavingRating(false)
+    }
+  }
+
+  async function handleRemoveRating() {
+    setSavingRating(true)
+    setError(null)
+    try {
+      await deleteGlobalRating(userId, tmdbId, mediaType)
+      setMyScores(null)
+      setConfirmRemove(false)
+      setRating(false)
+      setCommunity(await fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove your rating')
     } finally {
       setSavingRating(false)
     }
@@ -415,13 +433,49 @@ export function TitleDetailScreen({
                     Rate it yourself — it counts toward the community score.
                   </p>
                 )}
-                <button
-                  type="button"
-                  onClick={openRating}
-                  className="shrink-0 rounded-full border border-teal/40 bg-teal/10 px-4 py-2 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20"
-                >
-                  {myScores ? 'Edit rating' : 'Rate it'}
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  {myScores && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRemove(true)}
+                      className="rounded-full border border-line px-3 py-2 text-[12px] font-semibold text-muted transition-colors hover:border-coral/50 hover:text-coral"
+                    >
+                      Remove
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={openRating}
+                    className="rounded-full border border-teal/40 bg-teal/10 px-4 py-2 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20"
+                  >
+                    {myScores ? 'Edit rating' : 'Rate it'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {confirmRemove && myScores && !rating && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-coral/30 bg-coral/5 px-4 py-3">
+                <p className="text-[12px] leading-snug text-muted">
+                  Remove your rating? It drops out of the community score.
+                </p>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRemove(false)}
+                    className="rounded-full px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-text"
+                  >
+                    Keep
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRemoveRating()}
+                    disabled={savingRating}
+                    className="rounded-full bg-coral/90 px-3.5 py-1.5 text-[12px] font-bold text-bg transition-transform active:scale-[0.98] disabled:opacity-60"
+                  >
+                    {savingRating ? 'Removing…' : 'Remove'}
+                  </button>
+                </div>
               </div>
             )}
 

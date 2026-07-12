@@ -186,6 +186,10 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
   return (
     <div className="flex flex-col gap-6">
       <section className="mp-rise">
+        <p className="mb-3 px-1 text-[12px] leading-snug text-muted">
+          Look up any film or show — rate it solo on the standard rubric and see how it stacks up
+          against everyone else on Mash Potato.
+        </p>
         <div className="mb-3 flex rounded-full border border-line bg-surface-2 p-1">
           {(['movie', 'tv'] as const).map((m) => (
             <button
