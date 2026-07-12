@@ -9,9 +9,11 @@ import {
   fetchLatestSession,
   fetchLockStatus,
   fetchMyScore,
+  fetchSessionRsvps,
   fetchTitleDetail,
   onSessionChange,
   posterUrl,
+  respondToSession,
   revealSession,
   saveMyScore,
 } from '../lib/api'
@@ -25,6 +27,7 @@ import type {
 } from '../lib/api'
 import { weightsFromRubric } from '../lib/mapping'
 import { defaultRubricRows, mashRubrics, resolveSessionRubric } from '../lib/rubricCatalog'
+import { participation, formatWindow } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 
@@ -53,6 +56,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
   const [scores, setScores] = useState<CategoryScores>({})
   const [locked, setLocked] = useState(false)
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
+  const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -71,9 +75,10 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
       const s = await fetchLatestSession(group.id)
       setSession(s)
       if (s?.state === 'blind') {
-        const [mine, locks] = await Promise.all([
+        const [mine, locks, answers] = await Promise.all([
           fetchMyScore(s.id, userId),
           fetchLockStatus(s.id),
+          fetchSessionRsvps(s.id).catch(() => []),
         ])
         const base = defaultScores(s.rubric ?? [])
         if (mine) {
@@ -84,6 +89,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
           setLocked(false)
         }
         setLockStatus(locks)
+        setRsvps(answers)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
@@ -175,6 +181,20 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
       setLockStatus(await fetchLockStatus(session.id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not lock in')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleRespond(status: 'in' | 'pass') {
+    if (!session) return
+    setBusy(true)
+    setError(null)
+    try {
+      await respondToSession(session.id, userId, status)
+      setRsvps(await fetchSessionRsvps(session.id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save your answer')
     } finally {
       setBusy(false)
     }
@@ -376,11 +396,61 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
   const weighted = rubric.length > 0 ? memberWeightedScore(scores, weights) : null
   const weightTotal = rubric.reduce((sum, e) => sum + e.weight, 0)
   const lockedIds = new Set(lockStatus.filter((l) => l.locked).map((l) => l.memberId))
-  const waiting = members.filter((m) => !lockedIds.has(m.userId))
+  // Rounds with RSVPs: groups of 3+ answer in/pass; unanswered invites expire
+  // after 24h; scoring always counts as in. Pairs skip the ceremony.
+  const showRsvps = members.length > 2
+  const part = participation({
+    memberIds: members.map((m) => m.userId),
+    rsvps,
+    scoredMemberIds: lockStatus.map((l) => l.memberId),
+    sessionCreatedAt: session.createdAt,
+  })
+  const inIds = new Set(showRsvps ? part.inIds : members.map((m) => m.userId))
+  const myPart = showRsvps ? (part.status.get(userId) ?? 'invited') : 'in'
+  const waiting = members.filter((m) => inIds.has(m.userId) && !lockedIds.has(m.userId))
   const canReveal = group.role === 'owner' || session.createdBy === userId
 
   return (
     <>
+      {/* ---- round invite (groups of 3+) ---- */}
+      {showRsvps && myPart === 'invited' && !locked && (
+        <section className="mp-rise mp-card mb-4 rounded-[26px] border border-teal/20 p-5">
+          <p className="text-[14px] font-semibold leading-snug">
+            In for this one?
+          </p>
+          <p className="mt-1 text-[12px] leading-snug text-muted">
+            {session.titleName} — answers close in {formatWindow(part.windowRemainingMs)}; no
+            answer counts as a pass. You can always jump in later.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleRespond('in')}
+              className="flex-1 rounded-full py-2.5 text-[13px] font-bold text-bg shadow-[0_10px_28px_-12px_rgba(81,197,190,0.5)] transition-transform active:scale-[0.98] disabled:opacity-60"
+              style={{ backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }}
+            >
+              I'm in
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleRespond('pass')}
+              className="flex-1 rounded-full border border-line py-2.5 text-[13px] font-semibold text-muted transition-colors hover:text-text disabled:opacity-60"
+            >
+              Pass
+            </button>
+          </div>
+        </section>
+      )}
+      {showRsvps && myPart === 'passed' && !locked && (
+        <section className="mp-rise mb-4 rounded-2xl border border-line bg-surface-2 px-4 py-3">
+          <p className="text-[12px] leading-snug text-muted">
+            You passed on this one — score it below anytime to jump back in.
+          </p>
+        </section>
+      )}
+
       {/* ---- Title being scored ---- */}
       <section className="mp-rise mp-card rounded-[26px] p-6">
         <div className="flex items-start gap-4">
@@ -425,6 +495,9 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
             <p className="mt-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-gold">
               Your weighted
             </p>
+            <p className="mt-1 text-[10px] leading-snug text-muted">
+              each slider × its weight, added up
+            </p>
           </div>
           <div className="mb-1 flex flex-col items-end gap-1.5">
             <div className="flex -space-x-1.5">
@@ -442,8 +515,15 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                 ))}
             </div>
             <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-              {lockedIds.size}/{members.length} locked
+              {lockedIds.size}/{inIds.size} locked
             </p>
+            {showRsvps && (part.passedIds.length > 0 || part.invitedIds.length > 0) && (
+              <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+                {part.passedIds.length > 0 ? `${part.passedIds.length} passed` : ''}
+                {part.passedIds.length > 0 && part.invitedIds.length > 0 ? ' · ' : ''}
+                {part.invitedIds.length > 0 ? `${part.invitedIds.length} invited` : ''}
+              </p>
+            )}
           </div>
         </div>
       </section>

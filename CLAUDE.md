@@ -63,7 +63,9 @@ fine client-side.
   `user_rubrics` (one ★ favorite — it's what seed_member_rubric submits when
   the user joins/creates a group, else the app default); solo/community
   ratings in `global_ratings` (self-only RLS, aggregate via
-  `title_community_score`).
+  `title_community_score`). Per-round participation in `session_rsvps`
+  (in/pass; unanswered expires 24h → pass, computed at read time in
+  `src/lib/rsvp.ts` — scoring always counts as in; groups of 3+ only).
 - `src/screens/` — Auth, CreateGroup, Home (latest session, realtime reveal),
   Discover (TMDB browse/filters), TitleDetail, Profile, Rate (search → blind
   scoring → lock → reveal), Group (members + owner-editable rubric with

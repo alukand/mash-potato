@@ -53,7 +53,13 @@ export function ScoreRing({
       if (p < 1) raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
+    // Guarantee the final value even if rAF is throttled (e.g. a backgrounded
+    // tab never fires the frames) — the number must never freeze mid-count.
+    const settle = setTimeout(() => setShown(value), duration + 100)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(settle)
+    }
   }, [value])
 
   return (

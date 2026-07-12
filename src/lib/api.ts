@@ -188,6 +188,7 @@ export interface SessionInfo {
   id: string
   state: 'blind' | 'revealed'
   createdBy: string | null
+  createdAt: string
   titleName: string
   titleYear: number | null
   mediaType: 'movie' | 'tv'
@@ -209,7 +210,7 @@ export interface NewTitle {
 export async function fetchLatestSession(groupId: string): Promise<SessionInfo | null> {
   const { data, error } = await supabase
     .from('reveal_sessions')
-    .select('id, state, created_by, rubric, titles(name, year, media_type, poster_path)')
+    .select('id, state, created_by, created_at, rubric, titles(name, year, media_type, poster_path)')
     .eq('group_id', groupId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -220,6 +221,7 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
     id: row.id,
     state: row.state,
     createdBy: row.created_by,
+    createdAt: row.created_at,
     titleName: row.titles.name,
     titleYear: row.titles.year,
     mediaType: row.titles.media_type,
@@ -296,19 +298,57 @@ export async function createSession(
       // index signature the generated Json type wants)
       rubric: rubric.map((e) => ({ key: e.key, label: e.label, weight: e.weight })),
     })
-    .select('id, state, created_by')
+    .select('id, state, created_by, created_at')
     .single()
   if (error) throw new Error(error.message)
+
+  // Starting a round means you're in it (non-fatal if it races).
+  await respondToSession(data.id, userId, 'in').catch(() => {})
+
   return {
     id: data.id,
     state: data.state,
     createdBy: data.created_by,
+    createdAt: data.created_at,
     titleName: title.name,
     titleYear: title.year,
     mediaType: title.mediaType,
     posterPath: title.posterPath,
     rubric,
   }
+}
+
+// ---- session RSVPs ("who's in this round") --------------------------------
+
+export type { RsvpStatus } from './rsvp'
+
+export async function fetchSessionRsvps(
+  sessionId: string,
+): Promise<{ memberId: string; status: 'in' | 'pass' }[]> {
+  const { data, error } = await supabase
+    .from('session_rsvps')
+    .select('member_id, status')
+    .eq('session_id', sessionId)
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    memberId: r.member_id,
+    status: r.status as 'in' | 'pass',
+  }))
+}
+
+/** Answer (or change your answer) for a session: in or pass. */
+export async function respondToSession(
+  sessionId: string,
+  userId: string,
+  status: 'in' | 'pass',
+): Promise<void> {
+  const { error } = await supabase
+    .from('session_rsvps')
+    .upsert(
+      { session_id: sessionId, member_id: userId, status },
+      { onConflict: 'session_id,member_id' },
+    )
+  if (error) throw new Error(error.message)
 }
 
 // ---- TMDB search (proxied through an Edge Function; key stays server-side) --

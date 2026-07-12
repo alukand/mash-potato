@@ -8,12 +8,15 @@ import {
   fetchGroupLog,
   fetchLatestSession,
   fetchLockStatus,
+  fetchSessionRsvps,
   onSessionChange,
   posterUrl,
 } from '../lib/api'
 import type { GroupInfo, GroupLogEntry, MemberInfo, SessionInfo } from '../lib/api'
+import { participation } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
 import { ScoreRing } from '../components/ScoreRing'
+import { MashMath } from '../components/MashMath'
 import { Logo } from '../components/Logo'
 
 interface HomeScreenProps {
@@ -146,6 +149,7 @@ export function HomeScreen({ group, members, userId, onStartSession, onOpenTitle
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
   const [scorecards, setScorecards] = useState<MemberScorecard[]>([])
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
+  const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
   const [log, setLog] = useState<GroupLogEntry[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -161,7 +165,12 @@ export function HomeScreen({ group, members, userId, onStartSession, onOpenTitle
       if (s.state === 'revealed') {
         setScorecards(await fetchAllScorecards(s.id))
       } else {
-        setLockStatus(await fetchLockStatus(s.id))
+        const [locks, answers] = await Promise.all([
+          fetchLockStatus(s.id),
+          fetchSessionRsvps(s.id).catch(() => []),
+        ])
+        setLockStatus(locks)
+        setRsvps(answers)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
@@ -232,6 +241,14 @@ export function HomeScreen({ group, members, userId, onStartSession, onOpenTitle
   if (session.state === 'blind') {
     const lockedIds = new Set(lockStatus.filter((l) => l.locked).map((l) => l.memberId))
     const iAmIn = lockedIds.has(userId)
+    // RSVP rounds only matter for groups of 3+; a pair is always just both.
+    const part = participation({
+      memberIds: members.map((m) => m.userId),
+      rsvps,
+      scoredMemberIds: lockStatus.map((l) => l.memberId),
+      sessionCreatedAt: session.createdAt,
+    })
+    const showRsvps = members.length > 2
     return (
       <>
       <section className="mp-rise mp-card rounded-[26px] p-6">
@@ -272,9 +289,17 @@ export function HomeScreen({ group, members, userId, onStartSession, onOpenTitle
             ))}
           </div>
           <p className="tabular font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            {lockedIds.size}/{members.length} locked
+            {lockedIds.size}/{showRsvps ? part.inIds.length : members.length} locked
           </p>
         </div>
+
+        {showRsvps && (
+          <p className="mt-2.5 px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+            {part.inIds.length} in
+            {part.passedIds.length > 0 ? ` · ${part.passedIds.length} passed` : ''}
+            {part.invitedIds.length > 0 ? ` · ${part.invitedIds.length} invited` : ''}
+          </p>
+        )}
 
         <p className="mt-4 text-[13px] leading-snug text-muted">
           Ratings stay hidden until the reveal.
@@ -472,6 +497,15 @@ export function HomeScreen({ group, members, userId, onStartSession, onOpenTitle
           )}
         </section>
       )}
+
+      {/* ---- how the math works (staged walkthrough) ---- */}
+      <MashMath
+        rubric={rubric}
+        scorecards={locked}
+        userId={userId}
+        memberName={memberName}
+        mashed={result.mashed}
+      />
 
       {/* ---- Category dot plot: every member's score, per category ---- */}
       <section className="mp-rise mt-7" style={{ animationDelay: '160ms' }}>

@@ -365,6 +365,45 @@ export type Database = {
           },
         ]
       }
+      session_rsvps: {
+        Row: {
+          created_at: string
+          member_id: string
+          session_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          member_id: string
+          session_id: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          member_id?: string
+          session_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_rsvps_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_rsvps_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "reveal_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       titles: {
         Row: {
           created_at: string
