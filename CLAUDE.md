@@ -69,8 +69,8 @@ fine client-side.
   `src/lib/rsvp.ts` — scoring always counts as in; groups of 3+ only).
 - `src/screens/` — Auth, CreateGroup, Home (latest session, realtime reveal),
   Discover (TMDB browse/filters), TitleDetail, Profile, Rate (search → blind
-  scoring → lock → reveal), Group (members + owner-editable rubric with
-  toggles + add-categories).
+  scoring → lock → reveal), Group (members + group log + mashed rubric with a
+  collapsed per-member editor).
 - `supabase/migrations/` — schema + RLS as code (grants included — do not
   rely on platform default privileges).
 

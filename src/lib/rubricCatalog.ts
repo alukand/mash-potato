@@ -23,14 +23,15 @@ export interface CatalogCategory {
 
 export const RUBRIC_CATALOG: CatalogCategory[] = [
   // ---- base: seeded into every group -------------------------------------
-  { key: 'story', label: 'Story', blurb: 'Writing, plot, structure', kind: 'base' },
+  { key: 'story', label: 'Story', blurb: 'Plot, structure, payoff', kind: 'base' },
   { key: 'acting', label: 'Acting', blurb: 'Performances and chemistry', kind: 'base' },
-  { key: 'directing', label: 'Directing', blurb: 'Vision, tone, cohesion', kind: 'base' },
+  { key: 'writing', label: 'Writing', blurb: 'Script, dialogue, how it’s told', kind: 'base' },
   { key: 'cinematography', label: 'Cinematography', blurb: 'Framing, lighting, visuals', kind: 'base' },
   { key: 'pacing', label: 'Pacing', blurb: 'Flow, rhythm, runtime discipline', kind: 'base' },
   { key: 'scoreSound', label: 'Score & Soundtrack', blurb: 'Music, sound design', kind: 'base' },
 
   // ---- optional: group toggles --------------------------------------------
+  { key: 'directing', label: 'Directing', blurb: 'Vision, tone, cohesion', kind: 'optional' },
   { key: 'emotionalImpact', label: 'Emotional Impact', blurb: 'Did it land?', kind: 'optional' },
   { key: 'originality', label: 'Originality', blurb: 'Fresh ideas, surprises', kind: 'optional' },
   { key: 'rewatchability', label: 'Rewatchability', blurb: 'Would you watch it again?', kind: 'optional' },
@@ -61,7 +62,7 @@ export const BASE_CATEGORIES = RUBRIC_CATALOG.filter((c) => c.kind === 'base')
 export const DEFAULT_WEIGHTS: Record<string, number> = {
   story: 30,
   acting: 25,
-  directing: 20,
+  writing: 20,
   cinematography: 25,
   pacing: 15,
   scoreSound: 15,

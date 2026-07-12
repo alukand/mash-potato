@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import {
   addMember,
   deleteRubricPreset,
+  fetchGroupLog,
   fetchGroupRubrics,
   fetchMyRubricPresets,
   saveMyRubric,
@@ -13,6 +14,7 @@ import {
 } from '../lib/api'
 import type {
   GroupInfo,
+  GroupLogEntry,
   GroupRubricRow,
   MemberInfo,
   UserRubricPreset,
@@ -21,6 +23,7 @@ import type {
 import { RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from '../lib/rubricCatalog'
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
+import { GroupLog } from '../components/GroupLog'
 
 interface GroupScreenProps {
   group: GroupInfo
@@ -28,6 +31,7 @@ interface GroupScreenProps {
   userId: string
   /** Refetch the group's members (called after adding someone). */
   onMembersChanged: () => void
+  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
 }
 
 const searchInputClass =
@@ -40,12 +44,14 @@ const searchInputClass =
 // rubric is the mash — each category's weight is the mean across members,
 // counting 0 for anyone who doesn't carry it (see rubricCatalog.mashRubrics).
 
-export function GroupScreen({ group, members, userId, onMembersChanged }: GroupScreenProps) {
+export function GroupScreen({ group, members, userId, onMembersChanged, onOpenTitle }: GroupScreenProps) {
   const isOwner = group.role === 'owner'
 
   const [others, setOthers] = useState<MemberRubric[]>([])
   const [saved, setSaved] = useState<GroupRubricRow[] | null>(null)
   const [rows, setRows] = useState<GroupRubricRow[] | null>(null)
+  const [log, setLog] = useState<GroupLogEntry[]>([])
+  const [editOpen, setEditOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [justSaved, setJustSaved] = useState(false)
@@ -78,6 +84,9 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Load failed'))
     fetchMyRubricPresets(userId)
       .then((p) => !cancelled && setPresets(p))
+      .catch(() => {})
+    fetchGroupLog(group.id)
+      .then((entries) => !cancelled && setLog(entries))
       .catch(() => {})
     return () => {
       cancelled = true
@@ -324,8 +333,66 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
         )}
       </section>
 
-      {/* ---- Your rubric (everyone edits their own) ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '80ms' }}>
+      {/* ---- Group log: everything rated together ---- */}
+      {log.length > 0 && (
+        <div className="mt-7">
+          <GroupLog entries={log} onOpenTitle={onOpenTitle} animationDelay="80ms" />
+        </div>
+      )}
+
+      {/* ---- The group's mashed rubric (compact) + editor toggle ---- */}
+      <section className="mp-rise mt-7" style={{ animationDelay: '160ms' }}>
+        <div className="mb-3 flex items-baseline justify-between px-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Group rubric
+          </p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">Mashed</p>
+        </div>
+        <div className="mp-card rounded-[26px] px-5 py-1">
+          {effective.length === 0 ? (
+            <p className="py-4 text-[13px] text-muted">Loading…</p>
+          ) : (
+            effective.map((row, i) => (
+              <div key={row.key} className={`py-3 ${i > 0 ? 'border-t border-line/50' : ''}`}>
+                <div className="flex items-baseline justify-between">
+                  <p className="text-[13px] font-medium">{row.label}</p>
+                  <span className="tabular font-mono text-[13px] font-semibold text-teal">
+                    {row.weight}
+                  </span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${(row.weight / effectiveMax) * 100}%`,
+                      backgroundImage: 'linear-gradient(90deg, #3FA9A2, #6FE3DB)',
+                    }}
+                  />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
+          The average of {others.length + 1} rubric{others.length === 0 ? '' : 's'} — a category
+          someone doesn't carry counts as 0 for them, so lone picks weigh less.
+        </p>
+        <button
+          type="button"
+          onClick={() => setEditOpen((o) => !o)}
+          aria-expanded={editOpen}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+        >
+          {editOpen ? 'Close the editor' : dirty ? 'Edit your rubric · unsaved changes' : 'Edit your rubric'}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 transition-transform ${editOpen ? 'rotate-180' : ''}`} aria-hidden>
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      </section>
+
+      {/* ---- Your rubric (everyone edits their own; collapsed by default) ---- */}
+      {editOpen && (
+      <section className="mp-rise mt-5">
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
             Your rubric
@@ -555,48 +622,10 @@ export function GroupScreen({ group, members, userId, onMembersChanged }: GroupS
         </button>
         <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
           Every member sets their own rubric — the group scores with the mash of everyone's,
-          below. New sessions use it; past reveals keep the rubric they were scored under.
+          above. New sessions use it; past reveals keep the rubric they were scored under.
         </p>
       </section>
-
-      {/* ---- The group's mashed rubric ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '160ms' }}>
-        <div className="mb-3 flex items-baseline justify-between px-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-            Group rubric
-          </p>
-          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">Mashed</p>
-        </div>
-        <div className="mp-card rounded-[26px] px-5 py-1">
-          {effective.length === 0 ? (
-            <p className="py-4 text-[13px] text-muted">Loading…</p>
-          ) : (
-            effective.map((row, i) => (
-              <div key={row.key} className={`py-3 ${i > 0 ? 'border-t border-line/50' : ''}`}>
-                <div className="flex items-baseline justify-between">
-                  <p className="text-[13px] font-medium">{row.label}</p>
-                  <span className="tabular font-mono text-[13px] font-semibold text-teal">
-                    {row.weight}
-                  </span>
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${(row.weight / effectiveMax) * 100}%`,
-                      backgroundImage: 'linear-gradient(90deg, #3FA9A2, #6FE3DB)',
-                    }}
-                  />
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-        <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
-          The average of {others.length + 1} rubric{others.length === 0 ? '' : 's'} — a category
-          someone doesn't carry counts as 0 for them, so lone picks weigh less.
-        </p>
-      </section>
+      )}
 
       {/* ---- Sign out ---- */}
       <section className="mp-rise mt-8 text-center" style={{ animationDelay: '240ms' }}>

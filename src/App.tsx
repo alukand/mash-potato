@@ -325,7 +325,7 @@ function App() {
                 members={members}
                 userId={userId}
                 onStartSession={() => setTab('rate')}
-                onOpenTitle={openTitle}
+                onShowLog={() => setTab('group')}
               />
             )}
             {tab === 'discover' && <DiscoverScreen onOpenTitle={openTitle} />}
@@ -343,6 +343,7 @@ function App() {
                 members={members}
                 userId={userId}
                 onMembersChanged={refreshMembers}
+                onOpenTitle={openTitle}
               />
             )}
           </main>

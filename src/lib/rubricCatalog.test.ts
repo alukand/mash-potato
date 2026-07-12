@@ -15,9 +15,11 @@ const row = (key: string, over: Partial<GroupRubricRow> = {}): GroupRubricRow =>
 const baseRows = BASE_CATEGORIES.map((c, i) => row(c.key, { sort: i }))
 
 describe('the catalog', () => {
-  it('has exactly six base categories, including directing', () => {
+  it('has exactly six base categories, including writing (directing is optional)', () => {
     expect(BASE_CATEGORIES).toHaveLength(6)
-    expect(BASE_CATEGORIES.map((c) => c.key)).toContain('directing')
+    expect(BASE_CATEGORIES.map((c) => c.key)).toContain('writing')
+    expect(BASE_CATEGORIES.map((c) => c.key)).not.toContain('directing')
+    expect(RUBRIC_CATALOG.find((c) => c.key === 'directing')?.kind).toBe('optional')
   })
 
   it('has unique keys throughout', () => {
