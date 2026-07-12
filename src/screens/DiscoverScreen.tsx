@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { fetchBrowse, fetchDiscover, fetchGenres, posterUrl, searchPeople } from '../lib/api'
+import { fetchBrowse, fetchDiscover, fetchGenres, searchPeople } from '../lib/api'
 import type { TmdbGenre, TmdbPerson, TmdbResult } from '../lib/api'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 import { PosterShelf } from '../components/PosterShelf'
+import { PosterResultGrid } from '../components/PosterResultGrid'
 
 interface DiscoverScreenProps {
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
@@ -11,50 +12,6 @@ interface DiscoverScreenProps {
 const inputClass =
   'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
   'placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60'
-
-// A tappable list of result rows (shared by text search and filtered discover).
-function ResultList({
-  results,
-  mediaType,
-  onOpenTitle,
-}: {
-  results: TmdbResult[]
-  mediaType: 'movie' | 'tv'
-  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
-}) {
-  return (
-    <ul className="overflow-hidden rounded-2xl border border-line bg-surface-2">
-      {results.map((r, i) => (
-        <li key={`${r.tmdbId}`}>
-          <button
-            type="button"
-            onClick={() => onOpenTitle(r.tmdbId, mediaType)}
-            className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface ${
-              i > 0 ? 'border-t border-line/50' : ''
-            }`}
-          >
-            {r.posterPath ? (
-              <img
-                src={posterUrl(r.posterPath, 'w92')}
-                alt=""
-                className="h-12 w-8 shrink-0 rounded-md object-cover"
-              />
-            ) : (
-              <span
-                aria-hidden
-                className="grid h-12 w-8 shrink-0 place-items-center rounded-md bg-line font-display text-sm font-semibold text-bg"
-              >
-                {r.name.charAt(0)}
-              </span>
-            )}
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{r.name}</span>
-            <span className="shrink-0 font-mono text-[11px] text-muted">{r.year ?? '—'}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  )
-}
 
 // Discover: free-text search, filter by genre / actor / director / year, and
 // trending / popular shelves. Every result opens that title's detail page.
@@ -355,7 +312,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
       {textActive ? (
         <section className="mp-rise">
           {results.length > 0 ? (
-            <ResultList results={results} mediaType={mediaType} onOpenTitle={onOpenTitle} />
+            <PosterResultGrid results={results} mediaType={mediaType} onOpenTitle={onOpenTitle} />
           ) : (
             !searching && (
               <p className="px-1 text-[13px] text-muted">No matches for “{query.trim()}”.</p>
@@ -367,7 +324,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
           {discovering ? (
             <p className="px-1 font-mono text-[10px] text-muted">finding titles…</p>
           ) : discoverResults.length > 0 ? (
-            <ResultList results={discoverResults} mediaType={mediaType} onOpenTitle={onOpenTitle} />
+            <PosterResultGrid results={discoverResults} mediaType={mediaType} onOpenTitle={onOpenTitle} />
           ) : (
             <p className="px-1 text-[13px] text-muted">No titles match those filters.</p>
           )}

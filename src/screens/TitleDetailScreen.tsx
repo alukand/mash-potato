@@ -4,6 +4,7 @@ import {
   backdropUrl,
   createSession,
   deleteGlobalRating,
+  fetchCommunityHistogram,
   fetchCommunityScore,
   fetchGroupRubrics,
   fetchLatestSession,
@@ -35,6 +36,7 @@ import {
   resolveSessionRubric,
 } from '../lib/rubricCatalog'
 import { scoreColor } from '../lib/scoreColor'
+import { CommunityHistogram } from '../components/CommunityHistogram'
 
 // The default rubric everyone's solo/community rating uses.
 const SOLO_RUBRIC = defaultRubricEntries()
@@ -83,6 +85,7 @@ export function TitleDetailScreen({
   const [groupRubric, setGroupRubric] = useState<GroupRubricRow[]>([])
   const [history, setHistory] = useState<TitleHistoryEntry[]>([])
   const [community, setCommunity] = useState<CommunityScore | null>(null)
+  const [communityBins, setCommunityBins] = useState<number[]>([])
   const [myScores, setMyScores] = useState<CategoryScores | null>(null)
   const [rating, setRating] = useState(false)
   const [soloScores, setSoloScores] = useState<CategoryScores>({})
@@ -109,8 +112,9 @@ export function TitleDetailScreen({
         : Promise.resolve([]),
       fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
       fetchMyGlobalRating(userId, tmdbId, mediaType),
+      fetchCommunityHistogram(tmdbId, mediaType, DEFAULT_WEIGHTS),
     ])
-      .then(([d, savedId, hist, latestSession, rubricRows, comm, mine]) => {
+      .then(([d, savedId, hist, latestSession, rubricRows, comm, mine, histogram]) => {
         if (cancelled) return
         setDetail(d)
         setNotFound(d === null)
@@ -120,6 +124,7 @@ export function TitleDetailScreen({
         setGroupRubric(rubricRows)
         setCommunity(comm)
         setMyScores(mine)
+        setCommunityBins(histogram)
       })
       .catch((err) => {
         if (!cancelled) {
@@ -181,7 +186,12 @@ export function TitleDetailScreen({
         soloScores,
       )
       setMyScores({ ...soloScores })
-      setCommunity(await fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS))
+      const [comm, histogram] = await Promise.all([
+        fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
+        fetchCommunityHistogram(tmdbId, mediaType, DEFAULT_WEIGHTS),
+      ])
+      setCommunity(comm)
+      setCommunityBins(histogram)
       setRating(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your rating')
@@ -198,7 +208,12 @@ export function TitleDetailScreen({
       setMyScores(null)
       setConfirmRemove(false)
       setRating(false)
-      setCommunity(await fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS))
+      const [comm, histogram] = await Promise.all([
+        fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
+        fetchCommunityHistogram(tmdbId, mediaType, DEFAULT_WEIGHTS),
+      ])
+      setCommunity(comm)
+      setCommunityBins(histogram)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not remove your rating')
     } finally {
@@ -418,6 +433,8 @@ export function TitleDetailScreen({
                   : 'No ratings yet'}
               </p>
             </div>
+
+            <CommunityHistogram bins={communityBins} mashed={community?.mashed ?? null} />
 
             {!rating && (
               <div className="mt-4 flex items-center justify-between gap-3 border-t border-line/60 pt-4">

@@ -933,6 +933,38 @@ export async function fetchCommunityScore(
   return { count: row?.rating_count ?? 0, mashed: row?.mashed ?? null }
 }
 
+/**
+ * The community rating distribution for a title: a 10-slot array where index i
+ * is how many users' weighted score rounded to (i + 1). Aggregate-only (the
+ * RPC never returns individual rows).
+ */
+export async function fetchCommunityHistogram(
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+  weights: Record<string, number>,
+): Promise<number[]> {
+  const empty = Array<number>(10).fill(0)
+  const { data: title, error: titleError } = await supabase
+    .from('titles')
+    .select('id')
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .maybeSingle()
+  if (titleError) throw new Error(titleError.message)
+  if (!title) return empty
+
+  const { data, error } = await supabase.rpc('title_community_histogram', {
+    p_title_id: title.id,
+    p_weights: weights,
+  })
+  if (error) throw new Error(error.message)
+  const bins = [...empty]
+  for (const row of data ?? []) {
+    if (row.bucket >= 1 && row.bucket <= 10) bins[row.bucket - 1] = row.n
+  }
+  return bins
+}
+
 /** My own solo rating for a title (always self-readable), or null. */
 export async function fetchMyGlobalRating(
   userId: string,

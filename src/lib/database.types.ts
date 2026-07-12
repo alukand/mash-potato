@@ -468,6 +468,13 @@ export type Database = {
           mashed: number
         }[]
       }
+      title_community_histogram: {
+        Args: { p_title_id: string; p_weights: Json }
+        Returns: {
+          bucket: number
+          n: number
+        }[]
+      }
       session_is_revealed: { Args: { p_session_id: string }; Returns: boolean }
       session_lock_status: {
         Args: { p_session_id: string }

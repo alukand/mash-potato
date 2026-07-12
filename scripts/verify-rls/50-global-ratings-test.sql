@@ -73,6 +73,23 @@ begin
   raise notice 'PASS 4: community aggregate spans all users (count=2, mean=7) without exposing rows';
 end $$;
 
-do $$ begin raise notice '=== ALL 4 GLOBAL-RATINGS ASSERTIONS PASSED ==='; end $$;
+-- The histogram likewise spans everyone but returns only bucketed counts:
+-- Ana's 8 and Ben's 6 land in buckets 8 and 6, one each (total 2).
+do $$
+declare total int; b8 int; b6 int;
+begin
+  select coalesce(sum(n), 0) into total
+    from public.title_community_histogram('77777777-7777-7777-7777-777777777777', '{"story":1}'::jsonb);
+  select coalesce(sum(n) filter (where bucket = 8), 0),
+         coalesce(sum(n) filter (where bucket = 6), 0)
+    into b8, b6
+    from public.title_community_histogram('77777777-7777-7777-7777-777777777777', '{"story":1}'::jsonb);
+  if total <> 2 or b8 <> 1 or b6 <> 1 then
+    raise exception 'FAIL 5: histogram total=%, b8=%, b6=% (want 2,1,1)', total, b8, b6;
+  end if;
+  raise notice 'PASS 5: community histogram spans all users (buckets 6 & 8, one each)';
+end $$;
+
+do $$ begin raise notice '=== ALL 5 GLOBAL-RATINGS ASSERTIONS PASSED ==='; end $$;
 
 rollback;
