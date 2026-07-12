@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   backdropUrl,
@@ -91,6 +91,7 @@ export function TitleDetailScreen({
   const [soloScores, setSoloScores] = useState<CategoryScores>({})
   const [savingRating, setSavingRating] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const communityRef = useRef<HTMLElement | null>(null)
   const [saving, setSaving] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -167,6 +168,14 @@ export function TitleDetailScreen({
       Object.fromEntries(SOLO_RUBRIC.map((e) => [e.key, myScores?.[e.key] ?? 5])),
     )
     setRating(true)
+  }
+
+  // From the action row: open the solo sliders and bring them into view.
+  function rateFromActions() {
+    openRating()
+    setTimeout(() => {
+      communityRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
   }
 
   async function handleSaveRating() {
@@ -395,22 +404,44 @@ export function TitleDetailScreen({
             </p>
           )}
 
-          <button
-            type="button"
-            onClick={() => void toggleSave()}
-            disabled={saving}
-            className={`w-full rounded-full border py-3 text-[13px] font-semibold transition-colors disabled:opacity-60 ${
-              savedTitleId
-                ? 'border-teal/40 bg-teal/10 text-teal'
-                : 'border-line text-muted hover:text-text'
-            }`}
-          >
-            {savedTitleId ? '✓ Saved to your list' : 'Save to your list'}
-          </button>
+          {/* consolidated secondary actions: solo rate + save, one cluster */}
+          <div className="flex items-stretch gap-3">
+            <button
+              type="button"
+              onClick={rateFromActions}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-full border py-3 text-[13px] font-semibold transition-colors ${
+                myScores
+                  ? 'border-gold/40 bg-gold/10 text-gold'
+                  : 'border-line text-muted hover:border-teal/50 hover:text-text'
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill={myScores ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5Z" />
+              </svg>
+              {myScores
+                ? `Solo ${formatScore(memberWeightedScore(myScores, DEFAULT_WEIGHTS))}`
+                : 'Rate it solo'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void toggleSave()}
+              disabled={saving}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-full border py-3 text-[13px] font-semibold transition-colors disabled:opacity-60 ${
+                savedTitleId
+                  ? 'border-teal/40 bg-teal/10 text-teal'
+                  : 'border-line text-muted hover:border-teal/50 hover:text-text'
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill={savedTitleId ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M19 21 12 16.5 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z" />
+              </svg>
+              {savedTitleId ? 'Saved' : 'Save'}
+            </button>
+          </div>
         </div>
 
         {/* ---- community rating (solo, default rubric) ---- */}
-        <section className="mt-7">
+        <section ref={communityRef} className="mt-7 scroll-mt-4">
           <div className="mb-2.5 flex items-baseline justify-between px-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
               Community rating
