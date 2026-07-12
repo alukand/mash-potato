@@ -1,75 +1,113 @@
 import { useCallback, useEffect, useState } from 'react'
-import { analyze, categoryStat, formatScore } from '../lib/scoring'
-import type { MemberScorecard } from '../lib/scoring'
-import { scoreColor } from '../lib/scoreColor'
+import { formatScore, mashedScore } from '../lib/scoring'
 import { weightsFromRubric } from '../lib/mapping'
 import {
   fetchAllScorecards,
+  fetchBrowse,
   fetchLatestSession,
   fetchLockStatus,
+  fetchMembers,
   fetchSessionRsvps,
   onSessionChange,
   posterUrl,
+  respondToSession,
 } from '../lib/api'
-import type { GroupInfo, MemberInfo, SessionInfo } from '../lib/api'
-import { participation } from '../lib/rsvp'
-import { colorForMember } from '../lib/palette'
-import { ScoreRing } from '../components/ScoreRing'
-import { MashMath } from '../components/MashMath'
+import type { GroupInfo, MemberInfo, SessionInfo, TmdbResult } from '../lib/api'
+import { participation, formatWindow } from '../lib/rsvp'
+import { PosterShelf } from '../components/PosterShelf'
 import { Logo } from '../components/Logo'
 
 interface HomeScreenProps {
-  group: GroupInfo
-  members: MemberInfo[]
+  groups: GroupInfo[]
   userId: string
-  onStartSession: () => void
-  /** Jump to the Group tab (where the full log lives). */
-  onShowLog: () => void
+  /** Switch to that group and land on the given tab. */
+  onOpenGroup: (groupId: string, dest: 'rate' | 'group') => void
+  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  /** Jump to Discover. */
+  onExplore: () => void
 }
 
-// The group's latest session, live. Blind sessions show lock progress only;
-// the moment the reveal fires (realtime), the full Mashed layout drops in.
+/** One group's latest activity, hydrated for the dashboard. */
+interface GroupPulse {
+  group: GroupInfo
+  session: SessionInfo | null
+  members: MemberInfo[]
+  rsvps: { memberId: string; status: 'in' | 'pass' }[]
+  lockStatus: { memberId: string; locked: boolean }[]
+  /** Mashed score when the latest session is revealed. */
+  mashed: number | null
+}
 
-/** Position of a 1..10 score along the plot track, as a percentage. */
-const pct = (score: number) => ((score - 1) / 9) * 100
-
-export function HomeScreen({ group, members, userId, onStartSession, onShowLog }: HomeScreenProps) {
-  const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
-  const [scorecards, setScorecards] = useState<MemberScorecard[]>([])
-  const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
-  const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
+// Home is the cross-group dashboard: every live round (with the RSVP right
+// here), the freshest reveals, then somewhere to explore. Group-specific
+// depth — the full Reveal, log, rubric — lives on the Group tab.
+export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore }: HomeScreenProps) {
+  const [pulses, setPulses] = useState<GroupPulse[] | undefined>(undefined)
+  const [trending, setTrending] = useState<TmdbResult[]>([])
+  const [busyRsvp, setBusyRsvp] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const s = await fetchLatestSession(group.id)
-      setSession(s)
-      if (!s) return
-      if (s.state === 'revealed') {
-        setScorecards(await fetchAllScorecards(s.id))
-      } else {
-        const [locks, answers] = await Promise.all([
-          fetchLockStatus(s.id),
-          fetchSessionRsvps(s.id).catch(() => []),
-        ])
-        setLockStatus(locks)
-        setRsvps(answers)
-      }
+      const results = await Promise.all(
+        groups.map(async (group): Promise<GroupPulse> => {
+          const session = await fetchLatestSession(group.id)
+          if (!session) {
+            return { group, session, members: [], rsvps: [], lockStatus: [], mashed: null }
+          }
+          if (session.state === 'blind') {
+            const [members, locks, answers] = await Promise.all([
+              fetchMembers(group.id),
+              fetchLockStatus(session.id),
+              fetchSessionRsvps(session.id).catch(() => []),
+            ])
+            return { group, session, members, rsvps: answers, lockStatus: locks, mashed: null }
+          }
+          const cards = await fetchAllScorecards(session.id)
+          const weights = weightsFromRubric(session.rubric ?? [])
+          return {
+            group,
+            session,
+            members: [],
+            rsvps: [],
+            lockStatus: [],
+            mashed: mashedScore(cards, weights),
+          }
+        }),
+      )
+      setPulses(results)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
     }
-  }, [group.id])
+  }, [groups])
 
   useEffect(() => {
     void load()
-    const unsubscribe = onSessionChange(group.id, () => void load())
-    return unsubscribe
-  }, [load, group.id])
+    const unsubscribes = groups.map((g) => onSessionChange(g.id, () => void load()))
+    return () => unsubscribes.forEach((u) => u())
+  }, [load, groups])
 
-  const memberName = (id: string) =>
-    id === userId
-      ? 'You'
-      : (members.find((m) => m.userId === id)?.displayName ?? 'Member')
+  useEffect(() => {
+    let cancelled = false
+    fetchBrowse('trending', 'movie')
+      .then((r) => !cancelled && setTrending(r))
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function answer(sessionId: string, status: 'in' | 'pass') {
+    setBusyRsvp(sessionId)
+    try {
+      await respondToSession(sessionId, userId, status)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save your answer')
+    } finally {
+      setBusyRsvp(null)
+    }
+  }
 
   if (error) {
     return (
@@ -78,405 +116,219 @@ export function HomeScreen({ group, members, userId, onStartSession, onShowLog }
       </p>
     )
   }
-
-  if (session === undefined) {
+  if (pulses === undefined) {
     return <p className="mp-rise py-10 text-center text-[13px] text-muted">Loading…</p>
   }
 
-  // ---- no sessions yet ----------------------------------------------------
-  if (session === null) {
-    return (
-      <section className="mp-rise mp-card rounded-[26px] p-7 text-center">
-        <Logo className="mx-auto h-12 w-12" />
-        <h2 className="mt-4 font-display text-[24px] font-semibold leading-tight">
-          Rate your first movie
-        </h2>
-        <p className="mx-auto mt-2 max-w-[280px] text-[13px] leading-snug text-muted">
-          Here's how {group.name} does it:
-        </p>
-        <ol className="mx-auto mt-5 flex max-w-[300px] flex-col gap-3 text-left">
-          {[
-            'Pick a film or show to rate together.',
-            'Everyone scores it privately — no peeking.',
-            'Reveal at once to see your group’s Mashed score, and where you agreed or clashed.',
-          ].map((step, i) => (
-            <li key={i} className="flex items-start gap-3">
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-teal/15 font-mono text-[11px] font-bold text-teal">
-                {i + 1}
-              </span>
-              <span className="text-[13px] leading-snug text-text/90">{step}</span>
-            </li>
-          ))}
-        </ol>
-        <button
-          type="button"
-          onClick={onStartSession}
-          className="mt-6 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
-          style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
-        >
-          Pick a movie
-        </button>
-      </section>
+  const live = pulses.filter((p) => p.session?.state === 'blind')
+  const revealed = pulses
+    .filter((p) => p.session?.state === 'revealed')
+    .sort((a, b) =>
+      (b.session?.createdAt ?? '').localeCompare(a.session?.createdAt ?? ''),
     )
-  }
-
-  // ---- blind session in progress -------------------------------------------
-  if (session.state === 'blind') {
-    const lockedIds = new Set(lockStatus.filter((l) => l.locked).map((l) => l.memberId))
-    const iAmIn = lockedIds.has(userId)
-    // RSVP rounds only matter for groups of 3+; a pair is always just both.
-    const part = participation({
-      memberIds: members.map((m) => m.userId),
-      rsvps,
-      scoredMemberIds: lockStatus.map((l) => l.memberId),
-      sessionCreatedAt: session.createdAt,
-    })
-    const showRsvps = members.length > 2
-    return (
-      <>
-      <section className="mp-rise mp-card rounded-[26px] p-6">
-        <div className="flex items-center justify-between gap-2">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-            Scoring in progress
-          </p>
-          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-gold/30 bg-gold/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-gold">
-            <span className="h-1.5 w-1.5 rounded-full bg-gold" />
-            Blind
-          </span>
-        </div>
-        <h2 className="mt-2 font-display text-[27px] font-semibold leading-[1.05]">
-          {session.titleName}
-        </h2>
-        <p className="mt-1 font-mono text-xs text-muted">
-          {session.mediaType === 'movie' ? 'Film' : 'TV'}
-          {session.titleYear ? ` · ${session.titleYear}` : ''}
-        </p>
-
-        <div className="mt-6 flex items-center justify-between rounded-2xl bg-surface-2 px-4 py-3.5">
-          <div className="flex -space-x-1.5">
-            {members.map((m) => (
-              <span
-                key={m.userId}
-                title={m.displayName}
-                className={`grid h-7 w-7 place-items-center rounded-full border-2 border-surface font-mono text-[10px] font-bold ${
-                  lockedIds.has(m.userId) ? 'text-bg' : 'text-muted'
-                }`}
-                style={{
-                  backgroundColor: lockedIds.has(m.userId)
-                    ? colorForMember(members, m.userId)
-                    : 'var(--color-surface)',
-                }}
-              >
-                {m.displayName.charAt(0).toUpperCase()}
-              </span>
-            ))}
-          </div>
-          <p className="tabular font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            {lockedIds.size}/{showRsvps ? part.inIds.length : members.length} locked
-          </p>
-        </div>
-
-        {showRsvps && (
-          <p className="mt-2.5 px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-            {part.inIds.length} in
-            {part.passedIds.length > 0 ? ` · ${part.passedIds.length} passed` : ''}
-            {part.invitedIds.length > 0 ? ` · ${part.invitedIds.length} invited` : ''}
-          </p>
-        )}
-
-        <p className="mt-4 text-[13px] leading-snug text-muted">
-          Ratings stay hidden until the reveal.
-        </p>
-        {!iAmIn && (
-          <button
-            type="button"
-            onClick={onStartSession}
-            className="mt-4 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
-            style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
-          >
-            Score it now
-          </button>
-        )}
-      </section>
-      <section className="mp-rise mt-5 text-center" style={{ animationDelay: '160ms' }}>
-        <button
-          type="button"
-          onClick={onShowLog}
-          className="rounded-full px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
-        >
-          Everything you've rated → Group log
-        </button>
-      </section>
-      </>
-    )
-  }
-
-  // ---- revealed: the Mashed result -----------------------------------------
-  const locked = scorecards.filter((s) => s.locked)
-  if (locked.length === 0) {
-    return <p className="mp-rise py-10 text-center text-[13px] text-muted">Loading…</p>
-  }
-
-  // The session's snapshot is the rubric of record for this reveal.
-  const rubric = session.rubric ?? []
-  const weights = weightsFromRubric(rubric)
-  const categoryKeys = rubric.map((e) => e.key)
-  const labelFor = (key: string) => rubric.find((e) => e.key === key)?.label ?? key
-
-  const result = analyze(categoryKeys, scorecards, weights)
-  const youWeighted = result.perMember.find((m) => m.memberId === userId)?.weighted ?? null
-  const delta =
-    youWeighted !== null && result.mashed !== null ? youWeighted - result.mashed : null
-  const weightTotal = rubric.reduce((sum, e) => sum + e.weight, 0)
-  const leaderboard = [...result.perMember]
-    .filter((m) => m.locked)
-    .sort((a, b) => b.weighted - a.weighted)
-
-  const categories = rubric.map((entry) => {
-    const stat = categoryStat(entry.key, locked)
-    return {
-      id: entry.key,
-      label: entry.label,
-      weightPct: weightTotal > 0 ? Math.round((entry.weight / weightTotal) * 100) : 0,
-      mean: stat?.mean ?? 0,
-      min: stat?.min ?? 0,
-      max: stat?.max ?? 0,
-      dots: locked
-        .filter((s) => typeof s.scores[entry.key] === 'number')
-        .map((s) => ({ memberId: s.memberId, score: s.scores[entry.key] })),
-    }
-  })
-
-  const aligned = result.mostUnited
-  const clash = result.mostContested
-  const outlier = result.outlier
+  const quiet = live.length === 0 && revealed.length === 0
 
   return (
-    <>
-      {/* ---- Hero: title + Mashed ring + member leaderboard ---- */}
-      <section className="mp-rise mp-card rounded-[26px] p-6">
-        <div className="flex items-start gap-4">
-          <div
-            aria-hidden
-            className="relative grid h-[84px] w-14 shrink-0 place-items-center overflow-hidden rounded-xl font-display text-2xl font-semibold text-bg"
-            style={{ backgroundImage: 'linear-gradient(160deg, #E7B24E, #E07A5F)' }}
-          >
-            {session.posterPath ? (
-              <img
-                src={posterUrl(session.posterPath)}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-            ) : (
-              session.titleName.charAt(0)
-            )}
-            <span className="mp-poster-grain" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-                {session.mediaType === 'movie' ? 'Film' : 'TV'}
-                {session.titleYear ? ` · ${session.titleYear}` : ''}
-              </p>
-              <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-teal">
-                <span className="h-1.5 w-1.5 rounded-full bg-teal" />
-                Revealed
-              </span>
-            </div>
-            <h2 className="mt-1.5 font-display text-[27px] font-semibold leading-[1.05]">
-              {session.titleName}
-            </h2>
-          </div>
-        </div>
-
-        <div className="mt-6 flex items-center gap-4">
-          <ScoreRing value={result.mashed} size={150} stroke={11} />
-          <ul className="flex min-w-0 flex-1 flex-col gap-1">
-            {leaderboard.map((m) => {
-              const isYou = m.memberId === userId
+    <div className="flex flex-col gap-7">
+      {/* ---- live rounds across every group ---- */}
+      {live.length > 0 && (
+        <section className="mp-rise">
+          <p className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Live rounds
+          </p>
+          <div className="flex flex-col gap-3">
+            {live.map(({ group, session, members, rsvps, lockStatus }) => {
+              if (!session) return null
+              const part = participation({
+                memberIds: members.map((m) => m.userId),
+                rsvps,
+                scoredMemberIds: lockStatus.map((l) => l.memberId),
+                sessionCreatedAt: session.createdAt,
+              })
+              const mine = part.status.get(userId) ?? 'invited'
+              const iLocked = lockStatus.some((l) => l.memberId === userId && l.locked)
+              const inviter =
+                session.createdBy === userId
+                  ? 'You'
+                  : (members.find((m) => m.userId === session.createdBy)?.displayName ??
+                    'Someone')
               return (
-                <li
-                  key={m.memberId}
-                  className={`flex items-center justify-between rounded-lg px-2 py-1.5 ${
-                    isYou ? 'bg-gold/10' : ''
-                  }`}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: colorForMember(members, m.memberId) }}
-                    />
-                    <span
-                      className={`truncate text-[13px] ${isYou ? 'font-semibold text-gold' : ''}`}
+                <div key={session.id} className="mp-card rounded-[24px] p-5">
+                  <div className="flex items-start gap-3.5">
+                    <div
+                      aria-hidden
+                      className="relative grid h-[72px] w-12 shrink-0 place-items-center overflow-hidden rounded-lg font-display text-xl font-semibold text-bg"
+                      style={{ backgroundImage: 'linear-gradient(160deg, #E7B24E, #E07A5F)' }}
                     >
-                      {memberName(m.memberId)}
-                    </span>
-                  </span>
-                  <span
-                    className={`tabular font-mono text-[13px] ${
-                      isYou ? 'font-semibold text-gold' : 'text-muted'
-                    }`}
-                  >
-                    {formatScore(m.weighted)}
-                  </span>
-                </li>
+                      {session.posterPath ? (
+                        <img
+                          src={posterUrl(session.posterPath, 'w185')}
+                          alt=""
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      ) : (
+                        session.titleName.charAt(0)
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-gold">
+                        {inviter} invited {group.name}
+                      </p>
+                      <p className="mt-1 truncate font-display text-[19px] font-semibold leading-tight">
+                        {session.titleName}
+                      </p>
+                      <p className="mt-1 font-mono text-[10px] text-muted">
+                        {part.inIds.length} in
+                        {part.passedIds.length > 0 ? ` · ${part.passedIds.length} passed` : ''}
+                        {part.invitedIds.length > 0
+                          ? ` · ${part.invitedIds.length} invited (closes in ${formatWindow(part.windowRemainingMs)})`
+                          : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  {iLocked ? (
+                    <p className="mt-3.5 rounded-full border border-teal/30 bg-teal/10 py-2.5 text-center text-[12px] font-semibold text-teal">
+                      You're locked in — waiting on the reveal
+                    </p>
+                  ) : mine === 'invited' ? (
+                    <div className="mt-3.5 flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={busyRsvp === session.id}
+                        onClick={() => void answer(session.id, 'in')}
+                        className="flex-1 rounded-full py-2.5 text-[13px] font-bold text-bg shadow-[0_10px_28px_-12px_rgba(81,197,190,0.5)] transition-transform active:scale-[0.98] disabled:opacity-60"
+                        style={{ backgroundImage: 'linear-gradient(180deg, #6FE3DB, #3FA9A2)' }}
+                      >
+                        I'm in
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyRsvp === session.id}
+                        onClick={() => void answer(session.id, 'pass')}
+                        className="flex-1 rounded-full border border-line py-2.5 text-[13px] font-semibold text-muted transition-colors hover:text-text disabled:opacity-60"
+                      >
+                        Pass
+                      </button>
+                    </div>
+                  ) : mine === 'passed' ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenGroup(group.id, 'rate')}
+                      className="mt-3.5 w-full rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+                    >
+                      You passed — jump back in →
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onOpenGroup(group.id, 'rate')}
+                      className="mt-3.5 w-full rounded-full py-2.5 text-[13px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
+                      style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
+                    >
+                      Score it blind →
+                    </button>
+                  )}
+                </div>
               )
             })}
-          </ul>
-        </div>
-
-        <p className="mt-3 text-center text-[11px] leading-snug text-muted">
-          <span className="font-semibold text-teal">Mashed</span> is your group's weighted
-          average — everyone's locked scores, combined.
-        </p>
-
-        <div className="mt-4 flex items-center justify-between border-t border-line/60 pt-4 font-mono text-[10px] uppercase tracking-[0.14em]">
-          <span className="text-muted">
-            Spread <span className="text-text">{formatScore(result.spread)}</span>
-          </span>
-          <span className="text-gold">
-            You{' '}
-            {delta === null ? '—' : `${delta >= 0 ? '+' : '−'}${formatScore(Math.abs(delta))}`} vs
-            group
-          </span>
-          <span className="text-muted">
-            <span className="text-text">
-              {result.lockedCount}/{result.totalCount}
-            </span>{' '}
-            locked
-          </span>
-        </div>
-      </section>
-
-      {/* ---- The Reveal: disagreement as a headline (the moat) ---- */}
-      {aligned && clash && (
-        <section className="mp-rise mt-8 px-1" style={{ animationDelay: '80ms' }}>
-          <div
-            aria-hidden
-            className="mb-5 h-px w-full"
-            style={{
-              background:
-                'linear-gradient(90deg, color-mix(in oklab, var(--color-teal) 45%, transparent), var(--color-line) 40%, transparent)',
-            }}
-          />
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-teal">
-            The Reveal
-          </p>
-          <h3 className="mt-2.5 font-display text-[27px] font-medium leading-[1.22]">
-            United on{' '}
-            <span className="italic text-teal">{labelFor(aligned.category)}</span> — split
-            over <span className="italic text-coral">{labelFor(clash.category)}</span>.
-          </h3>
-          <p className="mt-2 font-mono text-[11px] text-muted">
-            agreement range {aligned.range} · clash range {clash.range}
-          </p>
-          {outlier && (
-            <div className="mt-4 flex items-center gap-2.5">
-              <span
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-full font-mono text-[11px] font-bold text-bg"
-                style={{ backgroundColor: colorForMember(members, outlier.memberId) }}
-              >
-                {memberName(outlier.memberId).charAt(0).toUpperCase()}
-              </span>
-              <p className="text-[13px] leading-snug text-muted">
-                <span className="font-semibold text-text">{memberName(outlier.memberId)}</span>{' '}
-                broke away — scored {labelFor(outlier.category)}{' '}
-                <span className="tabular font-mono text-gold">{outlier.score}</span> against the
-                group's <span className="tabular font-mono">{formatScore(outlier.mean)}</span>
-              </p>
-            </div>
-          )}
+          </div>
         </section>
       )}
 
-      {/* ---- how the math works (staged walkthrough) ---- */}
-      <MashMath
-        rubric={rubric}
-        scorecards={locked}
-        userId={userId}
-        memberName={memberName}
-        mashed={result.mashed}
-      />
-
-      {/* ---- Category dot plot: every member's score, per category ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '160ms' }}>
-        <div className="mb-3 flex items-baseline justify-between px-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-            Category breakdown
+      {/* ---- freshest reveals ---- */}
+      {revealed.length > 0 && (
+        <section className="mp-rise" style={{ animationDelay: live.length > 0 ? '80ms' : undefined }}>
+          <p className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Latest reveals
           </p>
-          <p className="font-mono text-[10px] text-muted">1 – 10</p>
-        </div>
-        <div className="mp-card rounded-[26px] px-4 pb-1 pt-1">
-          <ul>
-            {categories.map((c, i) => (
-              <li
-                key={c.id}
-                className={`flex items-center gap-3 py-3.5 ${i > 0 ? 'border-t border-line/50' : ''}`}
-              >
-                <div className="w-[96px] shrink-0">
-                  <p className="text-[13px] font-medium leading-tight">{c.label}</p>
-                  <p className="mt-0.5 font-mono text-[10px] text-muted">weight {c.weightPct}%</p>
-                </div>
-                <div className="relative h-5 flex-1">
-                  <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-line/50" />
-                  <span
-                    className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full bg-line/80"
-                    style={{ left: `${pct(c.min)}%`, width: `${pct(c.max) - pct(c.min)}%` }}
-                  />
-                  {c.dots.map((d) => (
-                    <span
-                      key={d.memberId}
-                      className={`absolute top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full ${
-                        d.memberId === userId ? 'bg-gold' : 'bg-muted'
-                      }`}
-                      style={{ left: `${pct(d.score)}%` }}
-                    />
-                  ))}
-                  <span
-                    className="absolute top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-teal"
-                    style={{ left: `${pct(c.mean)}%` }}
-                  />
-                </div>
-                <span
-                  className="tabular w-8 shrink-0 text-right font-mono text-[13px] font-semibold"
-                  style={{ color: scoreColor(c.mean) }}
+          <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
+            {revealed.map(({ group, session, mashed }) => {
+              if (!session) return null
+              return (
+                <button
+                  key={session.id}
+                  type="button"
+                  onClick={() => onOpenGroup(group.id, 'group')}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface"
                 >
-                  {c.mean.toFixed(1)}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className="flex items-center gap-4 border-t border-line/50 px-1 pb-3 pt-3 font-mono text-[10px] text-muted">
-            <span className="flex items-center gap-1.5">
-              <span className="h-[7px] w-[7px] rounded-full bg-gold" /> you
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-[7px] w-[7px] rounded-full bg-muted" /> others
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-3 w-[3px] rounded-full bg-teal" /> group mean
-            </span>
+                  {session.posterPath ? (
+                    <img
+                      src={posterUrl(session.posterPath, 'w92')}
+                      alt=""
+                      loading="lazy"
+                      className="h-14 w-9 shrink-0 rounded-md object-cover"
+                    />
+                  ) : (
+                    <span
+                      aria-hidden
+                      className="grid h-14 w-9 shrink-0 place-items-center rounded-md bg-line font-display text-sm font-semibold text-bg"
+                    >
+                      {session.titleName.charAt(0)}
+                    </span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-medium leading-tight">
+                      {session.titleName}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[10px] text-muted">
+                      {group.name} · see the reveal →
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="tabular font-display text-[22px] font-semibold leading-none text-teal">
+                      {formatScore(mashed)}
+                    </span>
+                    <p className="font-mono text-[8px] font-bold uppercase tracking-[0.2em] text-teal">
+                      Mashed
+                    </p>
+                  </div>
+                </button>
+              )
+            })}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* ---- Next session ---- */}
-      <section className="mp-rise mt-6 text-center" style={{ animationDelay: '220ms' }}>
-        <button
-          type="button"
-          onClick={onStartSession}
-          className="rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text"
-        >
-          Start the next session →
-        </button>
-        <button
-          type="button"
-          onClick={onShowLog}
-          className="mt-2 block w-full rounded-full px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
-        >
-          Everything you've rated → Group log
-        </button>
-      </section>
-    </>
+      {/* ---- quiet: nudge toward exploring ---- */}
+      {quiet && (
+        <section className="mp-rise mp-card rounded-[26px] p-7 text-center">
+          <Logo className="mx-auto h-12 w-12" />
+          <h2 className="mt-4 font-display text-[22px] font-semibold leading-tight">
+            Nothing live right now
+          </h2>
+          <p className="mx-auto mt-2 max-w-[280px] text-[13px] leading-snug text-muted">
+            Find something worth arguing about — rate it solo, or invite a group and score it
+            blind.
+          </p>
+          <button
+            type="button"
+            onClick={onExplore}
+            className="mt-5 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98]"
+            style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
+          >
+            Explore titles
+          </button>
+        </section>
+      )}
+
+      {/* ---- exploratory tail ---- */}
+      {trending.length > 0 && (
+        <div className="mp-rise" style={{ animationDelay: '160ms' }}>
+          <PosterShelf
+            heading="Trending this week"
+            items={trending}
+            onPick={(it) => onOpenTitle(it.tmdbId, 'movie')}
+          />
+          <button
+            type="button"
+            onClick={onExplore}
+            className="mt-2 w-full rounded-full px-4 py-2 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
+          >
+            More in Discover →
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

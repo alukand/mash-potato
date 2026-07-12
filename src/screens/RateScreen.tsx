@@ -386,7 +386,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
               className="mt-4 w-full rounded-full py-3.5 text-[14px] font-bold text-bg shadow-[0_12px_32px_-12px_rgba(231,178,78,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] transition-transform active:scale-[0.98] disabled:opacity-60"
               style={{ backgroundImage: 'linear-gradient(180deg, #F2CD77, #DFA338)' }}
             >
-              {busy ? 'Starting…' : 'Start blind scoring'}
+              {busy ? 'Sending…' : `Invite ${group.name} — blind scoring`}
             </button>
           </form>
           <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
@@ -412,9 +412,9 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
   const weighted = rubric.length > 0 ? memberWeightedScore(scores, weights) : null
   const weightTotal = rubric.reduce((sum, e) => sum + e.weight, 0)
   const lockedIds = new Set(lockStatus.filter((l) => l.locked).map((l) => l.memberId))
-  // Rounds with RSVPs: groups of 3+ answer in/pass; unanswered invites expire
-  // after 24h; scoring always counts as in. Pairs skip the ceremony.
-  const showRsvps = members.length > 2
+  // Every round is an invite: members answer in/pass; unanswered invites
+  // expire after 24h; scoring always counts as in. Only solo groups skip it.
+  const showRsvps = members.length > 1
   const part = participation({
     memberIds: members.map((m) => m.userId),
     rsvps,

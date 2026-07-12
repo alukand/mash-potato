@@ -24,14 +24,20 @@ import { RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from '../lib/rubricCat
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
 import { GroupLog } from '../components/GroupLog'
+import { SessionPanel } from '../components/SessionPanel'
 
 interface GroupScreenProps {
   group: GroupInfo
+  groups: GroupInfo[]
   members: MemberInfo[]
   userId: string
   /** Refetch the group's members (called after adding someone). */
   onMembersChanged: () => void
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  onSwitchGroup: (groupId: string) => void
+  onCreateGroup: () => void
+  /** Jump to the Rate tab for the active group. */
+  onGoRate: () => void
 }
 
 const searchInputClass =
@@ -44,7 +50,17 @@ const searchInputClass =
 // rubric is the mash — each category's weight is the mean across members,
 // counting 0 for anyone who doesn't carry it (see rubricCatalog.mashRubrics).
 
-export function GroupScreen({ group, members, userId, onMembersChanged, onOpenTitle }: GroupScreenProps) {
+export function GroupScreen({
+  group,
+  groups,
+  members,
+  userId,
+  onMembersChanged,
+  onOpenTitle,
+  onSwitchGroup,
+  onCreateGroup,
+  onGoRate,
+}: GroupScreenProps) {
   const isOwner = group.role === 'owner'
 
   const [others, setOthers] = useState<MemberRubric[]>([])
@@ -221,8 +237,45 @@ export function GroupScreen({ group, members, userId, onMembersChanged, onOpenTi
 
   return (
     <>
+      {/* ---- your groups: pick which one you're looking at ---- */}
+      <div className="mp-rise -mx-5 mb-5 flex gap-1.5 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {groups.map((g) => {
+          const active = g.id === group.id
+          return (
+            <button
+              key={g.id}
+              type="button"
+              onClick={() => !active && onSwitchGroup(g.id)}
+              className={`shrink-0 rounded-full border px-3.5 py-2 text-[12px] font-semibold transition-colors ${
+                active
+                  ? 'border-teal/50 bg-teal/10 text-teal'
+                  : 'border-line bg-surface-2 text-muted hover:text-text'
+              }`}
+            >
+              {g.name}
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          onClick={onCreateGroup}
+          aria-label="Create a group"
+          className="flex shrink-0 items-center gap-1 rounded-full border border-dashed border-line px-3 py-2 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          New
+        </button>
+      </div>
+
+      {/* ---- the group's latest round: invite / blind progress / the Reveal ---- */}
+      <div className="mb-7">
+        <SessionPanel group={group} members={members} userId={userId} onGoRate={onGoRate} />
+      </div>
+
       {/* ---- Members ---- */}
-      <section className="mp-rise">
+      <section className="mp-rise" style={{ animationDelay: '60ms' }}>
         <p className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           Members
         </p>

@@ -395,7 +395,7 @@ export function TitleDetailScreen({
             {starting
               ? 'Starting…'
               : group
-                ? `Score this with ${group.name}`
+                ? `Invite ${group.name} to rate it`
                 : 'Score with your group'}
           </button>
           {blindElsewhere && (

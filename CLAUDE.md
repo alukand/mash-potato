@@ -67,10 +67,14 @@ fine client-side.
   SECURITY DEFINER count-only). Per-round participation in `session_rsvps`
   (in/pass; unanswered expires 24h → pass, computed at read time in
   `src/lib/rsvp.ts` — scoring always counts as in; groups of 3+ only).
-- `src/screens/` — Auth, CreateGroup, Home (latest session, realtime reveal),
-  Discover (TMDB browse/filters), TitleDetail, Profile, Rate (search → blind
-  scoring → lock → reveal), Group (members + group log + mashed rubric with a
-  collapsed per-member editor).
+- `src/screens/` — Auth, CreateGroup, Home (CROSS-GROUP dashboard: live
+  rounds w/ inline RSVP + latest reveals + trending; group-agnostic),
+  Discover (TMDB browse/filters), TitleDetail, Profile, Rate (search →
+  invite the group → blind scoring → lock → reveal), Group (group switcher +
+  SessionPanel [blind progress / the full Reveal] + members + log + mashed
+  rubric with a collapsed per-member editor). Every round is an invite
+  (RSVP shows for groups of 2+; the header has no group chip — switching is
+  Group-tab only).
 - `supabase/migrations/` — schema + RLS as code (grants included — do not
   rely on platform default privileges).
 
