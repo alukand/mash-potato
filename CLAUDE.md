@@ -54,8 +54,12 @@ fine client-side.
   ordered category list.
 - `src/lib/rubricCatalog.ts` — the category catalog (base/optional/genre),
   DEFAULT_WEIGHTS, `mashRubrics` (per-member rubrics → effective group rubric;
-  absent/disabled counts as 0), and `resolveSessionRubric` (effective rubric ∪
-  TMDB-genre add-ons).
+  absent/disabled counts as 0), and `resolveSessionRubric[Tagged]` (effective
+  rubric ∪ TMDB-genre add-ons; pass `configuredCategoryKeys(raw rubrics)` so
+  a category the whole group disabled stays out). PRODUCT LAW (researched
+  2026-07-12, see DESIGN.md "Rubric cadence"): weights never change per
+  movie — per-round flexibility is only the binary genre add-on opt-out in
+  `RubricReceipt` at session creation.
 - `src/lib/mapping.ts` — jsonb `scores` / `rubric` snapshot validators.
 - `src/lib/api.ts` — every Supabase call; screens never import the client.
   Member ratings live in `member_scores.scores` (jsonb map); rubrics are PER

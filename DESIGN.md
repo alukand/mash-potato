@@ -90,6 +90,27 @@ top highlight, deep ambient shadow). Poster tiles add `.mp-poster-grain`.
 - Management always happens inline (disclosures, inline confirms), never on
   detour pages. Destructive confirms are two-step, in place, coral-framed.
 
+## Rubric cadence (product law, research-backed 2026-07-12)
+
+Weights live on the GROUP and never change per movie. Three layers, matching
+how healthy group rituals set rules everywhere (fantasy leagues, Olympic
+diving's published difficulty table, game-jam N/A opt-outs):
+
+1. **Per group ("season")**: the mashed member rubrics — renegotiated at
+   boundaries (new member, rubric retro), never at round time.
+2. **Per genre (automatic)**: genre add-on categories resolve from TMDB
+   genres via the catalog table; the group consented to the table once.
+   Deliberate disables stick (configuredCategoryKeys).
+3. **Per round (binary only)**: the creator may leave a genre add-on out
+   (on/off chip in the RubricReceipt, locked by the session snapshot).
+   NEVER weight sliders per movie: it's a studied manipulation vector that
+   would bypass the blind moat, and per-event rule-setting kills group
+   momentum.
+
+The RubricReceipt is a receipt, not a form: read-only base chips + toggleable
+genre chips at creation; fully read-only on the blind card. Scoring copy sets
+the intent-relative norm: "Score each part for what it's trying to be."
+
 ## View state
 
 Persist by default (localStorage, `mp.*` keys): active tab (`mp.activeTab`),
@@ -109,6 +130,11 @@ disclosures, in-flight flags.
 
 ## Changelog
 
+- 2026-07-12 (later): Rubric-cadence decision shipped after 3-track market
+  research (fixed group rubric wins on psychology, friction, and integrity;
+  per-movie weights rejected). Added RubricReceipt (creation + blind card),
+  binary genre add-on opt-outs, intent-relative scoring copy; fixed the
+  disabled-by-everyone genre re-add bug via configuredCategoryKeys.
 - 2026-07-12: Enhance pass (lunacraft). Extracted `ui.tsx` primitives
   (fieldClass, CtaButton, GroupMark); group management shipped (rename,
   remove member, leave, delete — all RLS-backed, no schema changes); profile

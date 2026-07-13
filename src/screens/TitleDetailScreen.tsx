@@ -20,7 +20,6 @@ import {
 import type {
   CommunityScore,
   GroupInfo,
-  GroupRubricRow,
   SessionInfo,
   TitleDetail,
   TitleHistoryEntry,
@@ -30,13 +29,17 @@ import { mashedScore, memberWeightedScore, formatScore } from '../lib/scoring'
 import { weightsFromRubric } from '../lib/mapping'
 import {
   DEFAULT_WEIGHTS,
+  configuredCategoryKeys,
   defaultRubricEntries,
   defaultRubricRows,
   mashRubrics,
   resolveSessionRubric,
+  resolveSessionRubricTagged,
 } from '../lib/rubricCatalog'
+import type { MemberRubric } from '../lib/rubricCatalog'
 import { scoreColor, scoreWord } from '../lib/scoreColor'
 import { CommunityHistogram } from '../components/CommunityHistogram'
+import { RubricReceipt } from '../components/RubricReceipt'
 import { CtaButton } from '../components/ui'
 
 // The default rubric everyone's solo/community rating uses.
@@ -83,7 +86,9 @@ export function TitleDetailScreen({
   const [notFound, setNotFound] = useState(false)
   const [savedTitleId, setSavedTitleId] = useState<string | null>(null)
   const [latest, setLatest] = useState<SessionInfo | null>(null)
-  const [groupRubric, setGroupRubric] = useState<GroupRubricRow[]>([])
+  const [memberRubrics, setMemberRubrics] = useState<MemberRubric[]>([])
+  // Genre add-ons left out of the round being started (on/off only).
+  const [excludedAddOns, setExcludedAddOns] = useState<Set<string>>(new Set())
   const [history, setHistory] = useState<TitleHistoryEntry[]>([])
   const [community, setCommunity] = useState<CommunityScore | null>(null)
   const [communityBins, setCommunityBins] = useState<number[]>([])
@@ -102,16 +107,13 @@ export function TitleDetailScreen({
     setDetail(undefined)
     setNotFound(false)
     setRating(false)
+    setExcludedAddOns(new Set())
     Promise.all([
       fetchTitleDetail(tmdbId, mediaType),
       fetchSavedTitleId(userId, tmdbId, mediaType),
       fetchTitleHistory(tmdbId, mediaType),
       group ? fetchLatestSession(group.id) : Promise.resolve(null),
-      group
-        ? fetchGroupRubrics(group.id)
-            .then(mashRubrics)
-            .catch(() => [])
-        : Promise.resolve([]),
+      group ? fetchGroupRubrics(group.id).catch(() => []) : Promise.resolve([]),
       fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
       fetchMyGlobalRating(userId, tmdbId, mediaType),
       fetchCommunityHistogram(tmdbId, mediaType, DEFAULT_WEIGHTS),
@@ -123,7 +125,7 @@ export function TitleDetailScreen({
         setSavedTitleId(savedId)
         setHistory(hist)
         setLatest(latestSession)
-        setGroupRubric(rubricRows)
+        setMemberRubrics(rubricRows)
         setCommunity(comm)
         setMyScores(mine)
         setCommunityBins(histogram)
@@ -236,8 +238,13 @@ export function TitleDetailScreen({
     setStarting(true)
     setError(null)
     try {
-      const rows = groupRubric.length > 0 ? groupRubric : defaultRubricRows()
-      const rubric = resolveSessionRubric(rows, detail.genreIds)
+      const mashed = mashRubrics(memberRubrics)
+      const rows = mashed.length > 0 ? mashed : defaultRubricRows()
+      const rubric = resolveSessionRubric(
+        rows,
+        detail.genreIds,
+        configuredCategoryKeys(memberRubrics),
+      ).filter((entry) => !excludedAddOns.has(entry.key))
       await createSession(
         group.id,
         userId,
@@ -301,6 +308,17 @@ export function TitleDetailScreen({
 
   const blindElsewhere = latest?.state === 'blind'
   const canStart = !!group && !blindElsewhere
+
+  // The receipt for the round this screen can start: the group's base rubric
+  // plus this title's genre add-ons (leave-out-able, on/off only).
+  const mashedRows = mashRubrics(memberRubrics)
+  const receiptEntries = canStart
+    ? resolveSessionRubricTagged(
+        mashedRows.length > 0 ? mashedRows : defaultRubricRows(),
+        detail.genreIds,
+        configuredCategoryKeys(memberRubrics),
+      )
+    : []
 
   return (
     <div className="pb-4">
@@ -386,6 +404,20 @@ export function TitleDetailScreen({
 
         {/* ---- actions ---- */}
         <div className="mt-5 flex flex-col gap-3">
+          {receiptEntries.length > 0 && (
+            <RubricReceipt
+              entries={receiptEntries}
+              excludedKeys={excludedAddOns}
+              onToggleGenre={(key) =>
+                setExcludedAddOns((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(key)) next.delete(key)
+                  else next.add(key)
+                  return next
+                })
+              }
+            />
+          )}
           <CtaButton
             onClick={() => void handleStartSession()}
             disabled={!canStart || starting}
@@ -528,6 +560,9 @@ export function TitleDetailScreen({
 
             {rating && (
               <div className="mt-4 border-t border-line/60 pt-2">
+                <p className="pt-1.5 text-[11px] leading-snug text-muted">
+                  Score each part for what it's trying to be.
+                </p>
                 {SOLO_RUBRIC.map((entry, i) => {
                   const value = soloScores[entry.key] ?? 5
                   const color = scoreColor(value)

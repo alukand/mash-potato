@@ -8,6 +8,15 @@
       "port": 5180
     },
     {
+      "name": "sev-tick",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:\\Users\\thede\\Sev & Tick Unindexed V1\\sev-tick\\node_modules\\vite\\bin\\vite.js",
+        "C:\\Users\\thede\\Sev & Tick Unindexed V1\\sev-tick"
+      ],
+      "port": 5178
+    },
+    {
       "name": "preview",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "preview", "--", "--host"],
@@ -18,6 +27,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "preview", "--", "--host", "--port", "4180"],
       "port": 4180
+    },
+    {
+      "name": "dev-alt",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5185"],
+      "port": 5185
     }
   ]
 }

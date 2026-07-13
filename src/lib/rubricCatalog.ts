@@ -164,26 +164,66 @@ export function mashRubrics(memberRubrics: MemberRubric[]): GroupRubricRow[] {
 }
 
 /**
+ * The union of category keys ANY member has configured, enabled or not.
+ * This is what makes deliberate disables stick: mashRubrics drops a category
+ * everyone disabled, so the mashed rows alone can't tell "never configured"
+ * from "configured off" — the raw member rubrics can.
+ */
+export function configuredCategoryKeys(memberRubrics: MemberRubric[]): Set<string> {
+  const keys = new Set<string>()
+  for (const member of memberRubrics) {
+    for (const r of member.rows) keys.add(r.key)
+  }
+  return keys
+}
+
+/** A resolved session category with its provenance. */
+export interface ResolvedRubricEntry extends SessionRubricEntry {
+  /** 'group': from the mashed member rubrics. 'genre': auto-added for this title. */
+  source: 'group' | 'genre'
+}
+
+/**
  * Resolve the category set for a NEW session: the group's enabled categories
  * (in their configured order) plus any genre categories matching the title's
  * TMDB genres that the group hasn't already configured (a group that added —
  * or deliberately disabled — a genre category keeps its own setting).
+ *
+ * `configuredKeys` should be configuredCategoryKeys(raw member rubrics); it
+ * defaults to the groupRows' own keys for callers without the raw rubrics,
+ * which cannot see disabled-by-everyone categories (they get re-added).
  */
-export function resolveSessionRubric(
+export function resolveSessionRubricTagged(
   groupRows: GroupRubricRow[],
   genreIds: number[],
-): SessionRubricEntry[] {
-  const configured = new Set(groupRows.map((r) => r.key))
-  const entries: SessionRubricEntry[] = [...groupRows]
+  configuredKeys?: Iterable<string>,
+): ResolvedRubricEntry[] {
+  const configured = new Set(configuredKeys ?? [])
+  for (const r of groupRows) configured.add(r.key)
+
+  const entries: ResolvedRubricEntry[] = [...groupRows]
     .sort((a, b) => a.sort - b.sort)
     .filter((r) => r.enabled)
-    .map((r) => ({ key: r.key, label: r.label, weight: r.weight }))
+    .map((r) => ({ key: r.key, label: r.label, weight: r.weight, source: 'group' as const }))
 
   for (const cat of RUBRIC_CATALOG) {
     if (cat.kind !== 'genre' || configured.has(cat.key)) continue
     if (cat.genreIds?.some((id) => genreIds.includes(id))) {
-      entries.push({ key: cat.key, label: cat.label, weight: 20 })
+      entries.push({ key: cat.key, label: cat.label, weight: 20, source: 'genre' })
     }
   }
   return entries
+}
+
+/** resolveSessionRubricTagged without the provenance tags (snapshot shape). */
+export function resolveSessionRubric(
+  groupRows: GroupRubricRow[],
+  genreIds: number[],
+  configuredKeys?: Iterable<string>,
+): SessionRubricEntry[] {
+  return resolveSessionRubricTagged(groupRows, genreIds, configuredKeys).map((e) => ({
+    key: e.key,
+    label: e.label,
+    weight: e.weight,
+  }))
 }

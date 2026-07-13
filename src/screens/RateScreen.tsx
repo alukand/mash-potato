@@ -19,18 +19,25 @@ import {
 } from '../lib/api'
 import type {
   GroupInfo,
-  GroupRubricRow,
   MemberInfo,
   SessionInfo,
   SessionRubricEntry,
   TmdbResult,
 } from '../lib/api'
 import { weightsFromRubric } from '../lib/mapping'
-import { defaultRubricRows, mashRubrics, resolveSessionRubric } from '../lib/rubricCatalog'
+import {
+  configuredCategoryKeys,
+  defaultRubricRows,
+  mashRubrics,
+  resolveSessionRubric,
+  resolveSessionRubricTagged,
+} from '../lib/rubricCatalog'
+import type { MemberRubric } from '../lib/rubricCatalog'
 import { participation, formatWindow } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 import { CtaButton, fieldClass } from '../components/ui'
+import { RubricReceipt } from '../components/RubricReceipt'
 
 interface RateScreenProps {
   group: GroupInfo
@@ -49,7 +56,7 @@ const defaultScores = (rubric: SessionRubricEntry[]): CategoryScores =>
 
 export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps) {
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
-  const [groupRubric, setGroupRubric] = useState<GroupRubricRow[] | null>(null)
+  const [memberRubrics, setMemberRubrics] = useState<MemberRubric[] | null>(null)
   const [scores, setScores] = useState<CategoryScores>({})
   const [locked, setLocked] = useState(false)
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
@@ -62,6 +69,12 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
   const [titleYear, setTitleYear] = useState('')
   const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie')
   const [picked, setPicked] = useState<TmdbResult | null>(null)
+  // Genres of the picked title (drives the rubric receipt's auto add-ons);
+  // null while loading or for manual entries.
+  const [pickedGenres, setPickedGenres] = useState<number[] | null>(null)
+  // Genre add-ons the round creator left out of THIS round (on/off only —
+  // base weights are never editable per movie).
+  const [excludedAddOns, setExcludedAddOns] = useState<Set<string>>(new Set())
 
   // Debounced TMDB search (through the Edge Function); paused once a result is
   // picked. Shared with Discover via the hook.
@@ -93,16 +106,33 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
     }
   }, [group.id, userId])
 
-  // The group's EFFECTIVE rubric (everyone's mashed) — snapshots a NEW session.
+  // The group's raw member rubrics: mashed for a NEW session's snapshot, and
+  // the union of configured keys keeps deliberate disables out of auto-adds.
   useEffect(() => {
     let cancelled = false
     fetchGroupRubrics(group.id)
-      .then((all) => !cancelled && setGroupRubric(mashRubrics(all)))
-      .catch(() => !cancelled && setGroupRubric(null))
+      .then((all) => !cancelled && setMemberRubrics(all))
+      .catch(() => !cancelled && setMemberRubrics(null))
     return () => {
       cancelled = true
     }
   }, [group.id])
+
+  // Fetch the picked title's genres so the receipt can show its add-ons.
+  useEffect(() => {
+    setExcludedAddOns(new Set())
+    if (!picked) {
+      setPickedGenres(null)
+      return
+    }
+    let cancelled = false
+    fetchTitleDetail(picked.tmdbId, mediaType)
+      .then((d) => !cancelled && setPickedGenres(d?.genreIds ?? []))
+      .catch(() => !cancelled && setPickedGenres([]))
+    return () => {
+      cancelled = true
+    }
+  }, [picked, mediaType])
 
   useEffect(() => {
     void load()
@@ -125,17 +155,22 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
     setError(null)
     try {
       // Genre add-ons (Humor for a comedy, Fear Factor for a horror, …) come
-      // from the title's TMDB genres; manual entries have none.
-      let genreIds: number[] = []
-      if (picked) {
+      // from the title's TMDB genres; manual entries have none. Usually
+      // already loaded for the receipt; fall back to fetching here.
+      let genreIds: number[] = pickedGenres ?? []
+      if (picked && pickedGenres === null) {
         try {
           genreIds = (await fetchTitleDetail(picked.tmdbId, mediaType))?.genreIds ?? []
         } catch {
           // non-fatal: the session just starts without genre categories
         }
       }
-      const rows = groupRubric && groupRubric.length > 0 ? groupRubric : defaultRubricRows()
-      const rubric = resolveSessionRubric(rows, genreIds)
+      const mashed = memberRubrics ? mashRubrics(memberRubrics) : []
+      const rows = mashed.length > 0 ? mashed : defaultRubricRows()
+      const configured = memberRubrics ? configuredCategoryKeys(memberRubrics) : undefined
+      const rubric = resolveSessionRubric(rows, genreIds, configured).filter(
+        (entry) => !excludedAddOns.has(entry.key),
+      )
 
       await createSession(
         group.id,
@@ -232,6 +267,16 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
 
   // ---- no active blind session: start one --------------------------------
   if (session === null || session.state === 'revealed') {
+    // The receipt: what this round WILL be scored on. Base weights are the
+    // group's (read-only here, always); genre add-ons can be left out.
+    const mashedRows = memberRubrics ? mashRubrics(memberRubrics) : []
+    const receiptEntries = resolveSessionRubricTagged(
+      mashedRows.length > 0 ? mashedRows : defaultRubricRows(),
+      pickedGenres ?? [],
+      memberRubrics ? configuredCategoryKeys(memberRubrics) : undefined,
+    )
+    const manualEntry =
+      !picked && titleName.trim().length >= 2 && !searching && results.length === 0
     return (
       <>
         {session?.state === 'revealed' && (
@@ -370,6 +415,22 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
                   </div>
                 )}
               </>
+            )}
+
+            {(picked || manualEntry) && (
+              <RubricReceipt
+                entries={receiptEntries}
+                excludedKeys={excludedAddOns}
+                onToggleGenre={(key) =>
+                  setExcludedAddOns((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(key)) next.delete(key)
+                    else next.add(key)
+                    return next
+                  })
+                }
+                className="mt-4 border-t border-line/60 pt-4"
+              />
             )}
 
             {error && (
@@ -539,8 +600,11 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
         </div>
       </section>
 
-      {/* ---- The five category sliders ---- */}
+      {/* ---- The category sliders ---- */}
       <section className="mp-rise mt-4" style={{ animationDelay: '80ms' }}>
+        <p className="mb-2 px-2 text-[11px] leading-snug text-muted">
+          Score each part for what it's trying to be.
+        </p>
         <div className="mp-card rounded-[26px] px-5 py-1">
           {rubric.map((entry, i) => {
             const value = scores[entry.key] ?? 5

@@ -14,7 +14,9 @@ import {
 import type { GroupInfo, MemberInfo, SessionInfo } from '../lib/api'
 import { participation } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
+import { catalogCategory } from '../lib/rubricCatalog'
 import { CtaButton } from './ui'
+import { RubricReceipt } from './RubricReceipt'
 import { ScoreRing } from './ScoreRing'
 import { MashMath } from './MashMath'
 
@@ -103,6 +105,13 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
   if (session.state === 'blind') {
     const lockedIds = new Set(lockStatus.filter((l) => l.locked).map((l) => l.memberId))
     const iAmIn = lockedIds.has(userId)
+    // The snapshot is the round's rubric of record; mark genre-flavored
+    // categories so the receipt reads the same as it did at creation.
+    const receiptEntries = (session.rubric ?? []).map((e) => ({
+      ...e,
+      source:
+        catalogCategory(e.key)?.kind === 'genre' ? ('genre' as const) : ('group' as const),
+    }))
     const part = participation({
       memberIds: members.map((m) => m.userId),
       rsvps,
@@ -159,6 +168,14 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
             {part.passedIds.length > 0 ? `, ${part.passedIds.length} passed` : ''}
             {part.invitedIds.length > 0 ? `, ${part.invitedIds.length} invited` : ''}
           </p>
+        )}
+
+        {receiptEntries.length > 0 && (
+          <RubricReceipt
+            entries={receiptEntries}
+            title="This round's rubric"
+            className="mt-4 border-t border-line/60 pt-4"
+          />
         )}
 
         <p className="mt-4 text-[13px] leading-snug text-muted">

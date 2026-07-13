@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   BASE_CATEGORIES,
+  configuredCategoryKeys,
   mashRubrics,
   resolveSessionRubric,
+  resolveSessionRubricTagged,
   RUBRIC_CATALOG,
 } from './rubricCatalog'
 import type { GroupRubricRow } from './api'
@@ -113,5 +115,70 @@ describe('resolveSessionRubric', () => {
 
   it('adds nothing for unmatched genres', () => {
     expect(resolveSessionRubric(baseRows, [36])).toHaveLength(baseRows.length) // History
+  })
+})
+
+describe('configuredCategoryKeys + the disabled-by-everyone pipeline', () => {
+  const members = [
+    { userId: 'a', rows: [row('story', { weight: 20 }), row('humor', { sort: 9, enabled: false })] },
+    { userId: 'b', rows: [row('story', { weight: 20 })] },
+  ]
+
+  it('collects keys from every member, enabled or not', () => {
+    const keys = configuredCategoryKeys(members)
+    expect(keys.has('story')).toBe(true)
+    expect(keys.has('humor')).toBe(true)
+    expect(configuredCategoryKeys([])).toEqual(new Set())
+  })
+
+  it('a category the whole group disabled stays out on genre nights', () => {
+    // mashRubrics drops humor (nobody enabled) -> without configuredKeys the
+    // comedy auto-add would re-add it; with them, the disable sticks.
+    const mashed = mashRubrics(members)
+    expect(mashed.map((r) => r.key)).not.toContain('humor')
+
+    const withoutFix = resolveSessionRubric(mashed, [35])
+    expect(withoutFix.map((e) => e.key)).toContain('humor') // the old bug
+
+    const withFix = resolveSessionRubric(mashed, [35], configuredCategoryKeys(members))
+    expect(withFix.map((e) => e.key)).not.toContain('humor')
+  })
+
+  it('a category one member carries keeps its mashed weight (no duplicate add)', () => {
+    const carried = [
+      { userId: 'a', rows: [row('story', { weight: 20 }), row('humor', { sort: 9, weight: 20 })] },
+      { userId: 'b', rows: [row('story', { weight: 20 })] },
+    ]
+    const mashed = mashRubrics(carried)
+    const entries = resolveSessionRubric(mashed, [35], configuredCategoryKeys(carried))
+    expect(entries.filter((e) => e.key === 'humor')).toHaveLength(1)
+    expect(entries.find((e) => e.key === 'humor')?.weight).toBe(10)
+  })
+
+  it('an unconfigured genre category is still auto-added', () => {
+    const mashed = mashRubrics(members)
+    const entries = resolveSessionRubric(mashed, [27], configuredCategoryKeys(members))
+    expect(entries.find((e) => e.key === 'fearFactor')?.weight).toBe(20)
+  })
+})
+
+describe('resolveSessionRubricTagged', () => {
+  it('tags group rows as group and auto-adds as genre', () => {
+    const entries = resolveSessionRubricTagged(baseRows, [27])
+    expect(entries.find((e) => e.key === 'story')?.source).toBe('group')
+    expect(entries.find((e) => e.key === 'fearFactor')?.source).toBe('genre')
+  })
+
+  it('a group-configured genre category is tagged group, not genre', () => {
+    const withHumor = [...baseRows, row('humor', { sort: 10, weight: 50 })]
+    const entries = resolveSessionRubricTagged(withHumor, [35])
+    expect(entries.find((e) => e.key === 'humor')?.source).toBe('group')
+  })
+
+  it('the untagged wrapper strips provenance but keeps the same entries', () => {
+    const tagged = resolveSessionRubricTagged(baseRows, [35])
+    const plain = resolveSessionRubric(baseRows, [35])
+    expect(plain).toEqual(tagged.map(({ key, label, weight }) => ({ key, label, weight })))
+    expect(Object.keys(plain[0])).not.toContain('source')
   })
 })
