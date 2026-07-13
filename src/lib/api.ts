@@ -576,6 +576,41 @@ export async function saveMyScore(
  * Everyone's scorecards. Before the reveal RLS returns only your own row;
  * after it, the whole group. The blind rule lives server-side.
  */
+/**
+ * Score a REVEALED session you never locked: a member who joined the group
+ * later, or sat the round out. Constrained server-side (RPC): revealed
+ * sessions only, group members only, keys validated against the snapshot,
+ * locked cards never re-scored. The Mashed recomputes for everyone.
+ */
+export async function lateScoreSession(
+  sessionId: string,
+  scores: CategoryScores,
+): Promise<void> {
+  const { error } = await supabase.rpc('late_score_session', {
+    p_session_id: sessionId,
+    p_scores: scores,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Fill in ONE missing category on your locked card after the group's rubric
+ * grew. Server-side: never overwrites an existing score; appends the category
+ * to the session's rubric snapshot (current effective weight) the first time.
+ */
+export async function backfillCategoryScore(
+  sessionId: string,
+  categoryKey: string,
+  score: number,
+): Promise<void> {
+  const { error } = await supabase.rpc('backfill_category_score', {
+    p_session_id: sessionId,
+    p_category_key: categoryKey,
+    p_score: score,
+  })
+  if (error) throw new Error(error.message)
+}
+
 export async function fetchAllScorecards(sessionId: string): Promise<MemberScorecard[]> {
   const { data, error } = await supabase
     .from('member_scores')

@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { analyze, categoryStat, formatScore } from '../lib/scoring'
-import type { MemberScorecard } from '../lib/scoring'
-import { scoreColor } from '../lib/scoreColor'
+import type { CategoryScores, MemberScorecard } from '../lib/scoring'
+import { scoreColor, scoreWord } from '../lib/scoreColor'
 import { weightsFromRubric } from '../lib/mapping'
 import {
+  backfillCategoryScore,
   fetchAllScorecards,
+  fetchGroupRubrics,
   fetchLatestSession,
   fetchLockStatus,
   fetchSessionRsvps,
+  lateScoreSession,
   onSessionChange,
   posterUrl,
 } from '../lib/api'
 import type { GroupInfo, MemberInfo, SessionInfo } from '../lib/api'
 import { participation } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
-import { catalogCategory } from '../lib/rubricCatalog'
+import { catalogCategory, mashRubrics } from '../lib/rubricCatalog'
+import type { MemberRubric } from '../lib/rubricCatalog'
 import { CtaButton } from './ui'
 import { RubricReceipt } from './RubricReceipt'
 import { ScoreRing } from './ScoreRing'
@@ -40,7 +45,16 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
   const [scorecards, setScorecards] = useState<MemberScorecard[]>([])
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
   const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
+  const [memberRubrics, setMemberRubrics] = useState<MemberRubric[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  // ---- living reveal: late scoring + category backfill ----
+  const [lateOpen, setLateOpen] = useState(false)
+  const [lateScores, setLateScores] = useState<CategoryScores>({})
+  const [lateBusy, setLateBusy] = useState(false)
+  const [backfillValues, setBackfillValues] = useState<Record<string, number>>({})
+  const [backfillBusy, setBackfillBusy] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -48,7 +62,12 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
       setSession(s)
       if (!s) return
       if (s.state === 'revealed') {
-        setScorecards(await fetchAllScorecards(s.id))
+        const [cards, rubrics] = await Promise.all([
+          fetchAllScorecards(s.id),
+          fetchGroupRubrics(group.id).catch(() => []),
+        ])
+        setScorecards(cards)
+        setMemberRubrics(rubrics)
       } else {
         const [locks, answers] = await Promise.all([
           fetchLockStatus(s.id),
@@ -61,6 +80,33 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
       setError(err instanceof Error ? err.message : 'Load failed')
     }
   }, [group.id])
+
+  async function handleLateScore(sessionId: string) {
+    setLateBusy(true)
+    setActionError(null)
+    try {
+      await lateScoreSession(sessionId, lateScores)
+      setLateOpen(false)
+      await load()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not add your scores')
+    } finally {
+      setLateBusy(false)
+    }
+  }
+
+  async function handleBackfill(sessionId: string, key: string) {
+    setBackfillBusy(key)
+    setActionError(null)
+    try {
+      await backfillCategoryScore(sessionId, key, backfillValues[key] ?? 5)
+      await load()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not save that score')
+    } finally {
+      setBackfillBusy(null)
+    }
+  }
 
   useEffect(() => {
     void load()
@@ -202,6 +248,22 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
   const categoryKeys = rubric.map((e) => e.key)
   const labelFor = (key: string) => rubric.find((e) => e.key === key)?.label ?? key
 
+  // The reveal stays open: a member with no locked card can add scores, and a
+  // locked member fills in categories the rubric gained since (snapshot keys
+  // they lack, plus enabled categories from the group's CURRENT mashed rubric).
+  const myCard = locked.find((s) => s.memberId === userId)
+  const effectiveNow = mashRubrics(memberRubrics)
+  const labelForAny = (key: string) =>
+    rubric.find((e) => e.key === key)?.label ??
+    effectiveNow.find((r) => r.key === key)?.label ??
+    catalogCategory(key)?.label ??
+    key
+  const missingKeys = myCard
+    ? [...new Set([...categoryKeys, ...effectiveNow.map((r) => r.key)])].filter(
+        (k) => typeof myCard.scores[k] !== 'number',
+      )
+    : []
+
   const result = analyze(categoryKeys, scorecards, weights)
   const youWeighted = result.perMember.find((m) => m.memberId === userId)?.weighted ?? null
   const delta =
@@ -327,6 +389,143 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
         </div>
       </section>
 
+      {/* ---- the reveal stays open: score it late ---- */}
+      {!myCard && (
+        <section className="mp-rise mp-card mt-4 rounded-[26px] p-5">
+          <p className="text-[14px] font-semibold leading-snug">
+            You haven't scored this one
+          </p>
+          <p className="mt-1 text-[12px] leading-snug text-muted">
+            The Mashed is the score so far. Add yours anytime and it recomputes with you
+            in it.
+          </p>
+          {lateOpen ? (
+            <>
+              <div className="mt-2">
+                {rubric.map((entry) => {
+                  const value = lateScores[entry.key] ?? 5
+                  const color = scoreColor(value)
+                  return (
+                    <div key={entry.key} className="border-t border-line/40 py-3">
+                      <div className="flex items-baseline justify-between">
+                        <p className="text-[13px] font-medium leading-tight">{entry.label}</p>
+                        <span className="flex items-baseline gap-1.5">
+                          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+                            {scoreWord(value)}
+                          </span>
+                          <span className="tabular font-mono text-lg font-bold" style={{ color }}>
+                            {value}
+                          </span>
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={10}
+                        step={1}
+                        value={value}
+                        disabled={lateBusy}
+                        aria-label={`${entry.label} score`}
+                        onChange={(e) =>
+                          setLateScores((prev) => ({
+                            ...prev,
+                            [entry.key]: Number(e.target.value),
+                          }))
+                        }
+                        className="mp-slider mt-1"
+                        style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+              <CtaButton
+                tone="teal"
+                disabled={lateBusy}
+                onClick={() => void handleLateScore(session.id)}
+                className="mt-2 w-full py-2.5 text-[13px]"
+              >
+                {lateBusy ? 'Adding…' : 'Fold my scores into the Mashed'}
+              </CtaButton>
+            </>
+          ) : (
+            <CtaButton
+              onClick={() => {
+                setLateScores(Object.fromEntries(rubric.map((e) => [e.key, 5])))
+                setLateOpen(true)
+              }}
+              className="mt-3 w-full py-2.5 text-[13px]"
+            >
+              Add your scores
+            </CtaButton>
+          )}
+          {actionError && (
+            <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
+              {actionError}
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ---- the rubric grew: fill in just the gap ---- */}
+      {myCard && missingKeys.length > 0 && (
+        <section className="mp-rise mp-card mt-4 rounded-[26px] p-5">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-teal">
+            The rubric grew
+          </p>
+          <p className="mt-1.5 text-[12px] leading-snug text-muted">
+            New categor{missingKeys.length === 1 ? 'y' : 'ies'} since this reveal. Add your
+            take and the Mashed updates; scores already locked never change.
+          </p>
+          {missingKeys.map((key) => {
+            const value = backfillValues[key] ?? 5
+            const color = scoreColor(value)
+            return (
+              <div key={key} className="mt-3 border-t border-line/40 pt-3">
+                <div className="flex items-baseline justify-between">
+                  <p className="text-[13px] font-medium leading-tight">{labelForAny(key)}</p>
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+                      {scoreWord(value)}
+                    </span>
+                    <span className="tabular font-mono text-lg font-bold" style={{ color }}>
+                      {value}
+                    </span>
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={value}
+                  disabled={backfillBusy !== null}
+                  aria-label={`${labelForAny(key)} score`}
+                  onChange={(e) =>
+                    setBackfillValues((prev) => ({ ...prev, [key]: Number(e.target.value) }))
+                  }
+                  className="mp-slider mt-1"
+                  style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
+                />
+                <button
+                  type="button"
+                  disabled={backfillBusy !== null}
+                  onClick={() => void handleBackfill(session.id, key)}
+                  className="mt-1.5 w-full rounded-full border border-teal/40 bg-teal/10 py-2 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20 disabled:opacity-50"
+                >
+                  {backfillBusy === key ? 'Saving…' : `Add my ${labelForAny(key)} score`}
+                </button>
+              </div>
+            )
+          })}
+          {actionError && (
+            <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
+              {actionError}
+            </p>
+          )}
+        </section>
+      )}
+
       {/* ---- The Reveal: disagreement as a headline (the moat) ---- */}
       {aligned && clash && (
         <section className="mp-rise mt-8 px-1" style={{ animationDelay: '80ms' }}>
@@ -394,7 +593,10 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
               >
                 <div className="w-[96px] shrink-0">
                   <p className="text-[13px] font-medium leading-tight">{c.label}</p>
-                  <p className="mt-0.5 font-mono text-[10px] text-muted">weight {c.weightPct}%</p>
+                  <p className="mt-0.5 font-mono text-[10px] text-muted">
+                    weight {c.weightPct}%
+                    {c.dots.length < locked.length ? ` (${c.dots.length}/${locked.length})` : ''}
+                  </p>
                 </div>
                 <div className="relative h-5 flex-1">
                   <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-line/50" />

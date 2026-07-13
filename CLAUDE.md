@@ -26,8 +26,12 @@ agreement vs. clash. Each session snapshots its rubric at creation
 
 Blind scores are enforced SERVER-SIDE by RLS on `public.member_scores`: a
 member reads others' scores ONLY when the session is `revealed`. UI hiding is
-never the boundary. Any schema change touching this needs both test suites
-updated and passing:
+never the boundary. Write paths: direct INSERT is blind-only; post-reveal
+writes exist ONLY via two constrained SECURITY DEFINER RPCs
+(`late_score_session` for members with no locked card, and
+`backfill_category_score` which can add a missing category but NEVER change a
+locked score — it also grows the session's rubric snapshot append-only).
+Any schema change touching this needs both test suites updated and passing:
 
 - `npx supabase test db` — pgTAP, `supabase/tests/blind_read_test.sql`
 - `powershell -File scripts\verify-rls.ps1` — portable-Postgres twin

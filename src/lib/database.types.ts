@@ -138,6 +138,44 @@ export type Database = {
           },
         ]
       }
+      member_rubrics: {
+        Row: {
+          category_key: string
+          enabled: boolean
+          group_id: string
+          label: string
+          sort: number
+          user_id: string
+          weight: number
+        }
+        Insert: {
+          category_key: string
+          enabled?: boolean
+          group_id: string
+          label: string
+          sort?: number
+          user_id: string
+          weight?: number
+        }
+        Update: {
+          category_key?: string
+          enabled?: boolean
+          group_id?: string
+          label?: string
+          sort?: number
+          user_id?: string
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_rubrics_group_id_user_id_fkey"
+            columns: ["group_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "group_members"
+            referencedColumns: ["group_id", "user_id"]
+          },
+        ]
+      }
       member_scores: {
         Row: {
           created_at: string
@@ -256,44 +294,6 @@ export type Database = {
           },
         ]
       }
-      member_rubrics: {
-        Row: {
-          category_key: string
-          enabled: boolean
-          group_id: string
-          label: string
-          sort: number
-          user_id: string
-          weight: number
-        }
-        Insert: {
-          category_key: string
-          enabled?: boolean
-          group_id: string
-          label: string
-          sort?: number
-          user_id: string
-          weight?: number
-        }
-        Update: {
-          category_key?: string
-          enabled?: boolean
-          group_id?: string
-          label?: string
-          sort?: number
-          user_id?: string
-          weight?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "member_rubrics_group_id_user_id_fkey"
-            columns: ["group_id", "user_id"]
-            isOneToOne: false
-            referencedRelation: "group_members"
-            referencedColumns: ["group_id", "user_id"]
-          },
-        ]
-      }
       saved_titles: {
         Row: {
           created_at: string
@@ -320,44 +320,6 @@ export type Database = {
           },
           {
             foreignKeyName: "saved_titles_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      user_rubrics: {
-        Row: {
-          created_at: string
-          id: string
-          is_favorite: boolean
-          name: string
-          rows: Json
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          is_favorite?: boolean
-          name: string
-          rows: Json
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          is_favorite?: boolean
-          name?: string
-          rows?: Json
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_rubrics_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -434,13 +396,59 @@ export type Database = {
         }
         Relationships: []
       }
+      user_rubrics: {
+        Row: {
+          created_at: string
+          id: string
+          is_favorite: boolean
+          name: string
+          rows: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_favorite?: boolean
+          name: string
+          rows: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_favorite?: boolean
+          name?: string
+          rows?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_rubrics_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      backfill_category_score: {
+        Args: { p_category_key: string; p_score: number; p_session_id: string }
+        Returns: undefined
+      }
       is_group_member: { Args: { p_group_id: string }; Returns: boolean }
       is_group_owner: { Args: { p_group_id: string }; Returns: boolean }
+      late_score_session: {
+        Args: { p_scores: Json; p_session_id: string }
+        Returns: undefined
+      }
       reveal_session: {
         Args: { p_session_id: string }
         Returns: {
@@ -461,11 +469,12 @@ export type Database = {
         }
       }
       session_group_id: { Args: { p_session_id: string }; Returns: string }
-      title_community_score: {
-        Args: { p_title_id: string; p_weights: Json }
+      session_is_revealed: { Args: { p_session_id: string }; Returns: boolean }
+      session_lock_status: {
+        Args: { p_session_id: string }
         Returns: {
-          rating_count: number
-          mashed: number
+          locked: boolean
+          member_id: string
         }[]
       }
       title_community_histogram: {
@@ -475,12 +484,11 @@ export type Database = {
           n: number
         }[]
       }
-      session_is_revealed: { Args: { p_session_id: string }; Returns: boolean }
-      session_lock_status: {
-        Args: { p_session_id: string }
+      title_community_score: {
+        Args: { p_title_id: string; p_weights: Json }
         Returns: {
-          locked: boolean
-          member_id: string
+          mashed: number
+          rating_count: number
         }[]
       }
     }

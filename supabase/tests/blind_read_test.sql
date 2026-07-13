@@ -4,7 +4,7 @@
 create extension if not exists pgtap with schema extensions;
 
 begin;
-select plan(9);
+select plan(21);
 
 -- ---- seed as the test superuser (RLS bypassed) ----
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
@@ -34,11 +34,16 @@ insert into public.group_members (group_id, user_id, role)
 values ('99999999-9999-9999-9999-999999999999',
         'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'member');
 
-insert into public.reveal_sessions (id, group_id, title_id, created_by)
+insert into public.reveal_sessions (id, group_id, title_id, created_by, rubric)
 values ('66666666-6666-6666-6666-666666666666',
         '99999999-9999-9999-9999-999999999999',
         '77777777-7777-7777-7777-777777777777',
-        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        '[{"key":"story","label":"Story","weight":20},
+          {"key":"acting","label":"Acting","weight":20},
+          {"key":"cinematography","label":"Cinematography","weight":20},
+          {"key":"pacing","label":"Editing & Pacing","weight":20},
+          {"key":"scoreSound","label":"Sound & Music","weight":20}]');
 
 insert into public.member_scores (session_id, member_id, scores, locked)
 values ('66666666-6666-6666-6666-666666666666',
@@ -121,6 +126,106 @@ select results_eq(
   $$,
   $$values (0)$$,
   'revealed: Ben still cannot modify Ana''s row');
+
+-- ============== LIVING REVEALS: late scoring + category backfill ==============
+
+-- Cara is authenticated but not (yet) in the group.
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+select throws_ok(
+  $$select public.late_score_session('66666666-6666-6666-6666-666666666666',
+      '{"story":7}'::jsonb)$$,
+  'P0001', 'not a member of this group',
+  'late scoring: an outsider is rejected');
+
+-- Ana adds Cara: a member who joined AFTER the reveal.
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+insert into public.group_members (group_id, user_id, role)
+values ('99999999-9999-9999-9999-999999999999',
+        'cccccccc-cccc-cccc-cccc-cccccccccccc', 'member');
+
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+
+-- Direct inserts are blind-only now; revealed writes exist only via the RPCs.
+select throws_ok(
+  $$insert into public.member_scores (session_id, member_id, scores, locked)
+    values ('66666666-6666-6666-6666-666666666666',
+            'cccccccc-cccc-cccc-cccc-cccccccccccc', '{"story":7}'::jsonb, true)$$,
+  '42501', null,
+  'revealed: direct inserts are blocked once a session is revealed');
+
+select throws_ok(
+  $$select public.late_score_session('66666666-6666-6666-6666-666666666666',
+      '{"nonsense":7}'::jsonb)$$,
+  'P0001', 'scores must map this session''s categories to whole numbers 1-10',
+  'late scoring: keys outside the session rubric are rejected');
+
+select lives_ok(
+  $$select public.late_score_session('66666666-6666-6666-6666-666666666666',
+      '{"story":7,"acting":6,"cinematography":8,"pacing":7,"scoreSound":5}'::jsonb)$$,
+  'late scoring: a new member scores a revealed session');
+
+select is(
+  (select count(*)::int from public.member_scores
+     where session_id = '66666666-6666-6666-6666-666666666666'),
+  3, 'late scoring: Cara''s card joins the reveal (she sees all three)');
+
+select throws_ok(
+  $$select public.late_score_session('66666666-6666-6666-6666-666666666666',
+      '{"story":9}'::jsonb)$$,
+  'P0001', 'already locked in for this session',
+  'late scoring: a locked card cannot be re-scored');
+
+-- A second, still-blind session: late scoring keeps its hands off.
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+insert into public.reveal_sessions (id, group_id, title_id, created_by)
+values ('55555555-5555-5555-5555-555555555555',
+        '99999999-9999-9999-9999-999999999999',
+        '77777777-7777-7777-7777-777777777777',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+select throws_ok(
+  $$select public.late_score_session('55555555-5555-5555-5555-555555555555',
+      '{"story":5}'::jsonb)$$,
+  'P0001', 'late scoring is only for revealed sessions',
+  'late scoring: blind sessions are untouched');
+
+-- Backfill: Ben starts carrying Rewatchability (rubric growth after the fact).
+set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+insert into public.member_rubrics (group_id, user_id, category_key, label, weight, enabled, sort)
+values ('99999999-9999-9999-9999-999999999999',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'rewatchability', 'Rewatchability', 30, true, 9);
+
+select throws_ok(
+  $$select public.backfill_category_score('66666666-6666-6666-6666-666666666666',
+      'nonsense', 8)$$,
+  'P0001', 'category is not part of this group''s rubric',
+  'backfill: a category nobody carries is rejected');
+
+select throws_ok(
+  $$select public.backfill_category_score('66666666-6666-6666-6666-666666666666',
+      'story', 10)$$,
+  'P0001', 'category already scored',
+  'backfill: an already-scored category can never be overwritten');
+
+select lives_ok(
+  $$select public.backfill_category_score('66666666-6666-6666-6666-666666666666',
+      'rewatchability', 9)$$,
+  'backfill: a member fills in the new category');
+
+select is(
+  (select scores->>'rewatchability' from public.member_scores
+     where session_id = '66666666-6666-6666-6666-666666666666'
+       and member_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
+  '9', 'backfill: the score landed on Ben''s card');
+
+-- Appended at the group's effective weight: 30 carried by 1 of 3 members = 10.
+select is(
+  (select (e->>'weight')::numeric
+     from public.reveal_sessions rs,
+          jsonb_array_elements(rs.rubric) e
+     where rs.id = '66666666-6666-6666-6666-666666666666'
+       and e->>'key' = 'rewatchability'),
+  10::numeric,
+  'backfill: the category joined the snapshot at the effective weight');
 
 select * from finish();
 rollback;

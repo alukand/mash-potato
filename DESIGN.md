@@ -111,6 +111,15 @@ The RubricReceipt is a receipt, not a form: read-only base chips + toggleable
 genre chips at creation; fully read-only on the blind card. Scoring copy sets
 the intent-relative norm: "Score each part for what it's trying to be."
 
+**Living reveals (2026-07-12):** a revealed Mashed is the score SO FAR, not a
+frozen verdict. Members without a locked card (late joiners, round-sitters)
+fold their scores in from the reveal panel; when the rubric grows, locked
+members get a per-category backfill prompt ("The rubric grew"), and the
+category joins the session snapshot append-only at the current effective
+weight. Locked scores can NEVER be changed, only missing ones added — both
+paths are constrained SECURITY DEFINER RPCs; direct inserts are blind-only.
+Blind rounds stay fully blind: no running Mashed before the reveal, ever.
+
 ## View state
 
 Persist by default (localStorage, `mp.*` keys): active tab (`mp.activeTab`),
@@ -130,6 +139,10 @@ disclosures, in-flight flags.
 
 ## Changelog
 
+- 2026-07-12 (living reveals): Mashed scores stay open after the reveal —
+  late scoring for members without a locked card, per-category backfill
+  prompts when the rubric grows, snapshot grows append-only, partial-coverage
+  markers in the category breakdown. Both RLS suites extended and green.
 - 2026-07-12 (later): Rubric-cadence decision shipped after 3-track market
   research (fixed group rubric wins on psychology, friction, and integrity;
   per-movie weights rejected). Added RubricReceipt (creation + blind card),
