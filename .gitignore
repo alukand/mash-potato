@@ -28,3 +28,9 @@ dist-ssr
 .env.*
 !.env.example
 !.env.production.example
+
+# Signing keys and secrets — NEVER commit these (APNs .p8, certs, provisioning)
+*.p8
+*.p12
+*.mobileprovision
+*.cer

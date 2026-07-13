@@ -32,6 +32,32 @@ begin
 end
 $$;
 
+-- pg_net stand-in: Supabase provides net.http_post (async HTTP queue). The
+-- stub RECORDS calls into net._requests instead, so the push-trigger test can
+-- assert exactly what would have left the database.
+create schema if not exists net;
+create table if not exists net._requests (
+  id bigserial primary key,
+  url text,
+  headers jsonb,
+  body jsonb
+);
+create or replace function net.http_post(
+  url text,
+  body jsonb default '{}'::jsonb,
+  params jsonb default '{}'::jsonb,
+  headers jsonb default '{"Content-Type": "application/json"}'::jsonb,
+  timeout_milliseconds integer default 5000
+) returns bigint language plpgsql as $$
+declare
+  v_id bigint;
+begin
+  insert into net._requests (url, headers, body)
+  values (http_post.url, http_post.headers, http_post.body)
+  returning id into v_id;
+  return v_id;
+end $$;
+
 create table if not exists auth.users (
   id uuid primary key,
   instance_id uuid,

@@ -44,6 +44,7 @@ Invoke-Sql "GLOBAL-RATINGS TEST" (Join-Path $repo "scripts\verify-rls\50-global-
 Invoke-Sql "MEMBER-RUBRICS TEST" (Join-Path $repo "scripts\verify-rls\60-member-rubrics-test.sql")
 Invoke-Sql "USER-RUBRICS TEST" (Join-Path $repo "scripts\verify-rls\70-user-rubrics-test.sql")
 Invoke-Sql "SESSION-RSVPS TEST" (Join-Path $repo "scripts\verify-rls\80-session-rsvps-test.sql")
+Invoke-Sql "PUSH-TRIGGERS TEST" (Join-Path $repo "scripts\verify-rls\90-push-test.sql")
 
 Write-Host ""
 Write-Host "RLS verification complete - the blind rule holds." -ForegroundColor Green

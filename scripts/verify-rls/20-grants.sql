@@ -6,3 +6,8 @@
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant execute on all functions in schema public to authenticated;
+
+-- Re-apply the deliberate exceptions (the blanket grant above would otherwise
+-- undo migrations' explicit revokes; on real Supabase no such re-grant runs).
+revoke all on public.notification_config from authenticated, anon;
+revoke insert, update on public.device_tokens from authenticated;

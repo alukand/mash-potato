@@ -34,6 +34,35 @@ export type Database = {
   }
   public: {
     Tables: {
+      device_tokens: {
+        Row: {
+          platform: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          platform: string
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          platform?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       global_ratings: {
         Row: {
           created_at: string
@@ -220,6 +249,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notification_config: {
+        Row: {
+          bearer: string
+          endpoint: string
+          secret: string
+          singleton: boolean
+        }
+        Insert: {
+          bearer: string
+          endpoint: string
+          secret: string
+          singleton?: boolean
+        }
+        Update: {
+          bearer?: string
+          endpoint?: string
+          secret?: string
+          singleton?: boolean
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -447,6 +497,11 @@ export type Database = {
       is_group_owner: { Args: { p_group_id: string }; Returns: boolean }
       late_score_session: {
         Args: { p_scores: Json; p_session_id: string }
+        Returns: undefined
+      }
+      push_notify: { Args: { p_payload: Json }; Returns: undefined }
+      register_device_token: {
+        Args: { p_platform: string; p_token: string }
         Returns: undefined
       }
       reveal_session: {

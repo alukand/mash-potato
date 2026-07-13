@@ -137,8 +137,19 @@ disclosures, in-flight flags.
 - 2026-07-12: hover background washes on list rows removed app-wide
   (row-highlight ban); feedback moved onto row elements.
 
+## Notification copy
+
+Push notifications follow the copy rules (no em dashes, no middots, every
+word earns its place) and the two-line shape: title = who did what
+("Sam locked in scores"), body = what it means for you ("Dune is waiting on
+the rest of Friday Film Club."). Score values NEVER appear in a notification;
+the reveal happens in the app, not on the lock screen.
+
 ## Changelog
 
+- 2026-07-12 (push): APNs notifications for group adds, round invites, and
+  groupmate locks. Permission asked at sign-in; foreground alerts enabled
+  (presentationOptions) since mid-round is when the app is open.
 - 2026-07-12 (living reveals): Mashed scores stay open after the reveal —
   late scoring for members without a locked card, per-category backfill
   prompts when the rubric grows, snapshot grows append-only, partial-coverage

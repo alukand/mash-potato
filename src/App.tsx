@@ -10,6 +10,7 @@ import {
   storeGroupId,
   storeTab,
 } from './lib/activeGroup'
+import { enablePush } from './lib/push'
 import { colorForMember } from './lib/palette'
 import { Logo } from './components/Logo'
 import { BottomNav } from './components/BottomNav'
@@ -100,6 +101,12 @@ function App() {
     return () => {
       cancelled = true
     }
+  }, [session])
+
+  // Native only (no-op in the browser): register this device for pushes once
+  // signed in. Permission prompt fires here on first run.
+  useEffect(() => {
+    if (session) void enablePush()
   }, [session])
 
   const groupId = group?.id ?? null

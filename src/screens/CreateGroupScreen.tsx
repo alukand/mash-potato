@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { createGroup, signOut } from '../lib/api'
+import { createGroup } from '../lib/api'
 import type { GroupInfo } from '../lib/api'
+import { signOutWithPushCleanup } from '../lib/push'
 import { Logo } from '../components/Logo'
 import { CtaButton, fieldClass } from '../components/ui'
 
@@ -90,7 +91,7 @@ export function CreateGroupScreen({ userId, onCreated, onBack }: CreateGroupScre
 
         <button
           type="button"
-          onClick={() => (onBack ? onBack() : void signOut())}
+          onClick={() => (onBack ? onBack() : void signOutWithPushCleanup())}
           className="mp-rise mx-auto mt-6 block font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
           style={{ animationDelay: '160ms' }}
         >

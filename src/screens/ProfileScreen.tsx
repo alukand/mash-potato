@@ -5,9 +5,9 @@ import {
   fetchMyReviewedTitles,
   fetchMySavedTitles,
   posterUrl,
-  signOut,
   updateMyDisplayName,
 } from '../lib/api'
+import { signOutWithPushCleanup } from '../lib/push'
 import type { GroupInfo, RatedTitle, ReviewedTitle, SavedTitle } from '../lib/api'
 import { GroupMark, fieldClassSm } from '../components/ui'
 
@@ -192,7 +192,7 @@ export function ProfileScreen({
         </button>
         <button
           type="button"
-          onClick={() => void signOut()}
+          onClick={() => void signOutWithPushCleanup()}
           className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-coral"
         >
           Sign out

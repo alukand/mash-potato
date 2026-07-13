@@ -15,8 +15,8 @@ agreement vs. clash. Each session snapshots its rubric at creation
   (most contested + most united category, per-category outlier).
 - Stack: React + TS + Vite, Tailwind v4 (CSS-first `@theme` in
   `src/index.css` — no tailwind.config.js), Capacitor (android/ + ios/
-  generated), Supabase (Auth + Postgres + Realtime + RLS), FCM (future),
-  TMDB. Mobile-first single ~480px column. Ask before adding dependencies
+  generated), Supabase (Auth + Postgres + Realtime + RLS), push via
+  APNs-direct (FCM when Android ships), TMDB. Mobile-first single ~480px column. Ask before adding dependencies
   (including a router — deliberately absent so far).
 - Design tokens + fonts (Fraunces / Hanken Grotesk / Space Mono) live in
   `src/index.css` and `index.html`. Score ramp 1→10 coral→gold→lime is
@@ -87,6 +87,15 @@ fine client-side.
   chip — switching is Group-tab only). Shared UI recipes (fieldClass,
   CtaButton, GroupMark) live in `src/components/ui.tsx`; the design system
   is documented in `DESIGN.md`.
+- Push notifications (APNs-direct; FCM slots in when Android ships):
+  `device_tokens` (self-only RLS; `register_device_token` RPC handles device
+  hand-me-downs), `notification_config` (service-only singleton; EMPTY row =
+  notifications off — local dev and the twins), and three triggers
+  (group_added / round_started / member_locked) that `push_notify` ships via
+  pg_net to the `send-push` Edge Function, which resolves names and delivers
+  over APNs HTTP/2 (ES256 provider JWT). Payloads are ID-ONLY — score values
+  never ride a notification (enforced in both test suites). Client wiring in
+  `src/lib/push.ts` (native-only no-ops; sign-out via signOutWithPushCleanup).
 - `supabase/migrations/` — schema + RLS as code (grants included — do not
   rely on platform default privileges).
 
@@ -99,6 +108,10 @@ fine client-side.
   `.mcp.json`) — all migrations applied, `TMDB_API_KEY` set as a dashboard
   secret, `tmdb-search` deployed (ops: search/browse/detail/genres/person/
   discover). Auth email-confirmation is OFF (no deep-link handling yet).
+  `send-push` deployed + `notification_config` seeded on hosted; APNs secrets
+  (PUSH_SHARED_SECRET / APNS_AUTH_KEY / APNS_KEY_ID / APPLE_TEAM_ID) still
+  need setting in the dashboard before pushes deliver, and the App ID needs
+  the Push Notifications capability (see the push setup checklist).
 - Dynamic rubric (M8) shipped: `rubric_categories` + jsonb `member_scores.
   scores` + `reveal_sessions.rubric` snapshots; blind-rule suites re-proven.
 

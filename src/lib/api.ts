@@ -47,6 +47,29 @@ export async function signOut() {
   if (error) throw new Error(error.message)
 }
 
+// ---- push notifications -------------------------------------------------
+
+/**
+ * Register this device for pushes. The RPC takes the token over if the device
+ * changed accounts (possessing the token string is proof APNs issued it here).
+ */
+export async function registerDeviceToken(
+  token: string,
+  platform: 'ios' | 'android',
+): Promise<void> {
+  const { error } = await supabase.rpc('register_device_token', {
+    p_token: token,
+    p_platform: platform,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/** Stop pushes to this device (sign-out cleanup; self-only by RLS). */
+export async function removeDeviceToken(token: string): Promise<void> {
+  const { error } = await supabase.from('device_tokens').delete().eq('token', token)
+  if (error) throw new Error(error.message)
+}
+
 // ---- groups -----------------------------------------------------------
 
 /** Every group the user belongs to, oldest membership first. */
