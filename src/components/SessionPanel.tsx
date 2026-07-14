@@ -42,7 +42,10 @@ const pct = (score: number) => ((score - 1) / 9) * 100
 
 export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelProps) {
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
-  const [scorecards, setScorecards] = useState<MemberScorecard[]>([])
+  // undefined = cards not fetched yet. Distinct from []: an empty visible set
+  // means "sealed for you" (RLS), and treating "still loading" as sealed
+  // flashes the seal card at every mount.
+  const [scorecards, setScorecards] = useState<MemberScorecard[] | undefined>(undefined)
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
   const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
   const [memberRubrics, setMemberRubrics] = useState<MemberRubric[]>([])
@@ -55,6 +58,19 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
   const [backfillValues, setBackfillValues] = useState<Record<string, number>>({})
   const [backfillBusy, setBackfillBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  // Reset per-session state the moment the session changes (a new round can
+  // replace the latest session without remounting this component). Render-time
+  // reset so the old session's cards never paint a frame against the new one.
+  const [prevSessionId, setPrevSessionId] = useState<string | null>(null)
+  if (session && session.id !== prevSessionId) {
+    setPrevSessionId(session.id)
+    setScorecards(undefined)
+    setLateOpen(false)
+    setLateScores({})
+    setBackfillValues({})
+    setActionError(null)
+  }
 
   const load = useCallback(async () => {
     try {
@@ -237,9 +253,113 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
   }
 
   // ---- revealed: the Mashed result -----------------------------------------
-  const locked = scorecards.filter((s) => s.locked)
-  if (locked.length === 0) {
+  if (scorecards === undefined) {
     return <p className="mp-rise py-6 text-center text-[13px] text-muted">Loading…</p>
+  }
+  const locked = scorecards.filter((s) => s.locked)
+  // A draft the viewer saved blind but never locked: seed the sliders with it
+  // so those scores aren't silently replaced by flat 5s.
+  const myDraft = scorecards.find((s) => s.memberId === userId && !s.locked)
+  if (locked.length === 0) {
+    // Revealed, but SEALED for you: RLS hides everyone's scores until your
+    // own card is locked, so scoring here is still genuinely blind.
+    const sealedRubric = session.rubric ?? []
+    return (
+      <section className="mp-rise mp-card rounded-[26px] p-6">
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
+            {session.mediaType === 'movie' ? 'Film' : 'TV'}
+            {session.titleYear ? ` ${session.titleYear}` : ''}
+          </p>
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-teal">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="4" y="10" width="16" height="11" rx="2.5" />
+              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+            </svg>
+            Sealed
+          </span>
+        </div>
+        <h2 className="mt-2 font-display text-[27px] font-semibold leading-[1.05]">
+          {session.titleName}
+        </h2>
+        <p className="mt-3 text-[13px] leading-snug text-muted">
+          The reveal is in, sealed for you until you score. Lock in your card and the
+          group's scores open up, with yours folded into the Mashed.
+        </p>
+        {lateOpen ? (
+          <>
+            <div className="mt-2">
+              {sealedRubric.map((entry) => {
+                const value = lateScores[entry.key] ?? 5
+                const color = scoreColor(value)
+                return (
+                  <div key={entry.key} className="border-t border-line/40 py-3">
+                    <div className="flex items-baseline justify-between">
+                      <p className="text-[13px] font-medium leading-tight">{entry.label}</p>
+                      <span className="flex items-baseline gap-1.5">
+                        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+                          {scoreWord(value)}
+                        </span>
+                        <span className="tabular font-mono text-lg font-bold" style={{ color }}>
+                          {value}
+                        </span>
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={10}
+                      step={1}
+                      value={value}
+                      disabled={lateBusy}
+                      aria-label={`${entry.label} score`}
+                      onChange={(e) =>
+                        setLateScores((prev) => ({
+                          ...prev,
+                          [entry.key]: Number(e.target.value),
+                        }))
+                      }
+                      className="mp-slider mt-1"
+                      style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+            <CtaButton
+              tone="teal"
+              disabled={lateBusy}
+              onClick={() => void handleLateScore(session.id)}
+              className="mt-2 w-full py-3 text-[13px]"
+            >
+              {lateBusy ? 'Opening…' : 'Lock in and open the reveal'}
+            </CtaButton>
+          </>
+        ) : (
+          <CtaButton
+            onClick={() => {
+              setLateScores(
+                Object.fromEntries(
+                  sealedRubric.map((e) => [
+                    e.key,
+                    typeof myDraft?.scores[e.key] === 'number' ? myDraft.scores[e.key] : 5,
+                  ]),
+                ),
+              )
+              setLateOpen(true)
+            }}
+            className="mt-4 w-full py-3 text-[13px]"
+          >
+            Add your scores
+          </CtaButton>
+        )}
+        {actionError && (
+          <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
+            {actionError}
+          </p>
+        )}
+      </section>
+    )
   }
 
   // The session's snapshot is the rubric of record for this reveal.
@@ -451,7 +571,14 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
           ) : (
             <CtaButton
               onClick={() => {
-                setLateScores(Object.fromEntries(rubric.map((e) => [e.key, 5])))
+                setLateScores(
+                  Object.fromEntries(
+                    rubric.map((e) => [
+                      e.key,
+                      typeof myDraft?.scores[e.key] === 'number' ? myDraft.scores[e.key] : 5,
+                    ]),
+                  ),
+                )
                 setLateOpen(true)
               }}
               className="mt-3 w-full py-2.5 text-[13px]"
@@ -542,8 +669,10 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
           </p>
           <h3 className="mt-2.5 font-display text-[27px] font-medium leading-[1.22]">
             United on{' '}
-            <span className="italic text-teal">{labelFor(aligned.category)}</span>. Split
-            over <span className="italic text-coral">{labelFor(clash.category)}</span>.
+            {/* Bricolage carries no italic (faux-oblique only); the stress
+                comes from color + a true weight step instead. */}
+            <span className="font-semibold text-teal">{labelFor(aligned.category)}</span>. Split
+            over <span className="font-semibold text-coral">{labelFor(clash.category)}</span>.
           </h3>
           <p className="mt-2 font-mono text-[11px] text-muted">
             agreement range {aligned.range}, clash range {clash.range}

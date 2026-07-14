@@ -7,6 +7,7 @@ import {
   fetchGroupLog,
   fetchGroupRubrics,
   fetchMyRubricPresets,
+  fetchRecommendations,
   removeMember,
   renameGroup,
   saveMyRubric,
@@ -19,14 +20,16 @@ import type {
   GroupLogEntry,
   GroupRubricRow,
   MemberInfo,
+  TmdbResult,
   UserRubricPreset,
   UserSearchResult,
 } from '../lib/api'
-import { RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from '../lib/rubricCatalog'
+import { DEFAULT_WEIGHTS, RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from '../lib/rubricCatalog'
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
 import { CtaButton, GroupMark, fieldClass, fieldClassSm } from '../components/ui'
 import { GroupLog } from '../components/GroupLog'
+import { PosterShelf } from '../components/PosterShelf'
 import { SessionPanel } from '../components/SessionPanel'
 
 interface GroupScreenProps {
@@ -39,6 +42,8 @@ interface GroupScreenProps {
   /** Refetch the group list itself (rename / leave / delete). */
   onGroupsChanged: () => Promise<void>
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  /** Open a member's public profile. */
+  onOpenUser: (userId: string) => void
   onSwitchGroup: (groupId: string) => void
   onCreateGroup: () => void
   /** Jump to the Rate tab for the active group. */
@@ -63,6 +68,7 @@ export function GroupScreen({
   onMembersChanged,
   onGroupsChanged,
   onOpenTitle,
+  onOpenUser,
   onSwitchGroup,
   onCreateGroup,
   onGoRate,
@@ -73,6 +79,11 @@ export function GroupScreen({
   const [saved, setSaved] = useState<GroupRubricRow[] | null>(null)
   const [rows, setRows] = useState<GroupRubricRow[] | null>(null)
   const [log, setLog] = useState<GroupLogEntry[]>([])
+  const [recs, setRecs] = useState<{
+    seed: string
+    mediaType: 'movie' | 'tv'
+    items: TmdbResult[]
+  } | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -116,8 +127,32 @@ export function GroupScreen({
     fetchMyRubricPresets(userId)
       .then((p) => !cancelled && setPresets(p))
       .catch(() => {})
+    setRecs(null)
     fetchGroupLog(group.id)
-      .then((entries) => !cancelled && setLog(entries))
+      .then((entries) => {
+        if (cancelled) return
+        setLog(entries)
+        // Recommendations seed from the group's best-rated title.
+        const seed = [...entries]
+          .filter((e) => e.tmdbId !== null && e.mashed !== null)
+          .sort((a, b) => (b.mashed ?? 0) - (a.mashed ?? 0))[0]
+        if (!seed || seed.tmdbId === null) return
+        const seedTmdbId = seed.tmdbId
+        const ratedIds = new Set(
+          entries.filter((e) => e.mediaType === seed.mediaType).map((e) => e.tmdbId),
+        )
+        fetchRecommendations(seedTmdbId, seed.mediaType)
+          .then(
+            (items) =>
+              !cancelled &&
+              setRecs({
+                seed: seed.titleName,
+                mediaType: seed.mediaType,
+                items: items.filter((it) => !ratedIds.has(it.tmdbId)).slice(0, 12),
+              }),
+          )
+          .catch(() => {})
+      })
       .catch(() => {})
     return () => {
       cancelled = true
@@ -271,8 +306,11 @@ export function GroupScreen({
   const dirty = rows !== null && saved !== null && JSON.stringify(rows) !== JSON.stringify(saved)
   const enabledRows = (rows ?? []).filter((r) => r.enabled)
   const total = enabledRows.reduce((sum, r) => sum + r.weight, 0)
+  // Anything you don't already carry is addable, base categories included: a
+  // member seeded from an old preset may be missing a base row entirely, and
+  // this is their only non-destructive way back in.
   const addable = RUBRIC_CATALOG.filter(
-    (c) => c.kind !== 'base' && !(rows ?? []).some((r) => r.key === c.key),
+    (c) => !(rows ?? []).some((r) => r.key === c.key),
   )
 
   // Live preview: the group's mashed rubric with YOUR current (unsaved) edits.
@@ -292,7 +330,10 @@ export function GroupScreen({
     setRows((prev) => {
       if (prev === null) return prev
       const nextSort = Math.max(0, ...prev.map((r) => r.sort)) + 1
-      return [...prev, { key: cat.key, label: cat.label, weight: 20, enabled: true, sort: nextSort }]
+      return [
+        ...prev,
+        { key: cat.key, label: cat.label, weight: DEFAULT_WEIGHTS[cat.key] ?? 20, enabled: true, sort: nextSort },
+      ]
     })
   }
 
@@ -356,6 +397,17 @@ export function GroupScreen({
       {log.length > 0 && (
         <div className="mb-7">
           <GroupLog entries={log} onOpenTitle={onOpenTitle} animationDelay="60ms" />
+        </div>
+      )}
+
+      {/* ---- what to mash next, seeded by the group's best round ---- */}
+      {recs && recs.items.length > 0 && (
+        <div className="mp-rise mb-7" style={{ animationDelay: '90ms' }}>
+          <PosterShelf
+            heading={`Because you loved ${recs.seed}`}
+            items={recs.items}
+            onPick={(it) => onOpenTitle(it.tmdbId, recs.mediaType)}
+          />
         </div>
       )}
 
@@ -678,16 +730,23 @@ export function GroupScreen({
                   className={`py-3.5 ${i > 0 ? 'border-t border-line/50' : ''}`}
                 >
                   <div className="flex items-center gap-3">
-                    <span
-                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[13px] font-bold text-bg"
-                      style={{ backgroundColor: AVATAR_PALETTE[i % AVATAR_PALETTE.length] }}
+                    <button
+                      type="button"
+                      disabled={isYou}
+                      onClick={() => !isYou && onOpenUser(m.userId)}
+                      className="group flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
                     >
-                      {m.displayName.charAt(0).toUpperCase()}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
-                      {m.displayName}
-                      {isYou && <span className="ml-1.5 text-muted">(you)</span>}
-                    </span>
+                      <span
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[13px] font-bold text-bg transition-transform group-active:scale-95"
+                        style={{ backgroundColor: AVATAR_PALETTE[i % AVATAR_PALETTE.length] }}
+                      >
+                        {m.displayName.charAt(0).toUpperCase()}
+                      </span>
+                      <span className={`min-w-0 flex-1 truncate text-[14px] font-medium ${isYou ? '' : 'transition-colors group-hover:text-teal'}`}>
+                        {m.displayName}
+                        {isYou && <span className="ml-1.5 text-muted">(you)</span>}
+                      </span>
+                    </button>
                     {m.role === 'owner' && (
                       <span className="shrink-0 rounded-full border border-line bg-surface-2 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted">
                         Owner

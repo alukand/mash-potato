@@ -1,8 +1,9 @@
 # Mash Potato — project instructions
 
-Mobile movie/TV review app: a GROUP composes a weighted rubric (base six —
-Story, Acting, Directing, Cinematography, Editing & Pacing, Sound & Music —
-plus optional and genre-matched add-ons like Humor or Fear Factor), members
+Mobile movie/TV review app: a GROUP composes a weighted rubric (base seven —
+Story, Acting, Writing, Cinematography, Pacing, Score & Soundtrack, Emotional
+Impact — plus optional and genre-matched add-ons; Humor and Fear Factor land
+HEAVY at 35 on comedy/horror nights), members
 rate each category blind, the app mashes weighted scores into one group
 "Mashed" score, then THE REVEAL drops everyone's scores at once and headlines
 agreement vs. clash. Each session snapshots its rubric at creation
@@ -18,15 +19,16 @@ agreement vs. clash. Each session snapshots its rubric at creation
   generated), Supabase (Auth + Postgres + Realtime + RLS), push via
   APNs-direct (FCM when Android ships), TMDB. Mobile-first single ~480px column. Ask before adding dependencies
   (including a router — deliberately absent so far).
-- Design tokens + fonts (Fraunces / Hanken Grotesk / Space Mono) live in
-  `src/index.css` and `index.html`. Score ramp 1→10 coral→gold→lime is
+- Design tokens + fonts (Bricolage Grotesque / Hanken Grotesk / Azeret Mono)
+  live in `src/index.css` and `index.html`. Score ramp 1→10 coral→gold→lime is
   `src/lib/scoreColor.ts`.
 
 ## THE ONE RULE THAT MUST NOT BE WRONG
 
 Blind scores are enforced SERVER-SIDE by RLS on `public.member_scores`: a
-member reads others' scores ONLY when the session is `revealed`. UI hiding is
-never the boundary. Write paths: direct INSERT is blind-only; post-reveal
+member reads others' scores ONLY when the session is `revealed` AND their own
+scorecard is locked (`has_locked_scorecard` — reveals open PER MEMBER, so
+late scorers stay genuinely blind too). UI hiding is never the boundary. Write paths: direct INSERT is blind-only; post-reveal
 writes exist ONLY via two constrained SECURITY DEFINER RPCs
 (`late_score_session` for members with no locked card, and
 `backfill_category_score` which can add a missing category but NEVER change a
@@ -74,19 +76,32 @@ fine client-side.
   `title_community_score`; distribution via `title_community_histogram`, both
   SECURITY DEFINER count-only). Per-round participation in `session_rsvps`
   (in/pass; unanswered expires 24h → pass, computed at read time in
-  `src/lib/rsvp.ts` — scoring always counts as in; groups of 3+ only).
+  `src/lib/rsvp.ts` — scoring always counts as in; groups of 3+ only). The
+  reveal quorum mirrors it server-side: `reveal_session` needs
+  least(2, eligible) locks where eligible = in + scored + unanswered-window-
+  open, so a round everyone else passed on still reveals. The `interval
+  '24 hours'` in the RPC must stay in sync with RSVP_WINDOW_MS.
+- Public profiles + playlists (private by default in EVERY direction):
+  `group_members.is_public` (per-member per-group, flipped via
+  `set_group_visibility` RPC), `playlists` + `playlist_items` (visibility
+  rides `playlists.is_public`; items readable iff the playlist is), and the
+  `public_profile` definer RPC (name + shown groups + public playlists —
+  the ONLY shape others see; ratings are never auto-public). Friends = your
+  groupmates (fetchMyFriends dedupes across groups); PublicProfileScreen +
+  PlaylistScreen live on the App view-stack.
 - `src/screens/` — Auth, CreateGroup, Home (CROSS-GROUP dashboard: live
   rounds w/ inline RSVP + latest reveals + trending; group-agnostic),
-  Discover (TMDB browse/filters), TitleDetail, Profile (editable display
-  name, groups, poster grids, JSON export), Rate (search → invite the group
+  Discover (TMDB browse/filters), TitleDetail (+ add-to-playlist sheet),
+  Profile (editable display name, groups w/ visibility toggles, playlists,
+  friends, poster grids, JSON export), Rate (search → invite the group
   → blind scoring → lock → reveal), Group (group switcher → SessionPanel
   [blind progress / the full Reveal] → log w/ avg+best strip → mashed rubric
   with a collapsed per-member editor → members + Manage: rename / remove
   member / leave / delete, all via existing RLS — no schema changes). Every
   round is an invite (RSVP shows for groups of 2+; the header has no group
   chip — switching is Group-tab only). Shared UI recipes (fieldClass,
-  CtaButton, GroupMark) live in `src/components/ui.tsx`; the design system
-  is documented in `DESIGN.md`.
+  CtaButton, GroupMark, VisibilityChip) live in `src/components/ui.tsx`; the
+  design system is documented in `DESIGN.md`.
 - Push notifications (APNs-direct; FCM slots in when Android ships):
   `device_tokens` (self-only RLS; `register_device_token` RPC handles device
   hand-me-downs), `notification_config` (service-only singleton; EMPTY row =

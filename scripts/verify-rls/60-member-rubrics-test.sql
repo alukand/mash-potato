@@ -27,8 +27,8 @@ declare c int;
 begin
   select count(*) into c from public.member_rubrics
     where user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-  if c <> 6 then raise exception 'FAIL 1: owner rubric not seeded on group creation (rows=%)', c; end if;
-  raise notice 'PASS 1: creating a group seeds the owner''s default rubric (6 rows)';
+  if c <> 7 then raise exception 'FAIL 1: owner rubric not seeded on group creation (rows=%)', c; end if;
+  raise notice 'PASS 1: creating a group seeds the owner''s default rubric (base seven)';
 end $$;
 
 -- ---- Ana adds Ben; his rubric is seeded too ----
@@ -40,8 +40,8 @@ do $$
 declare c int;
 begin
   select count(*) into c from public.member_rubrics;
-  if c <> 12 then raise exception 'FAIL 2: expected 12 rubric rows after Ben joined (rows=%)', c; end if;
-  raise notice 'PASS 2: adding a member seeds their default rubric (12 rows total)';
+  if c <> 14 then raise exception 'FAIL 2: expected 14 rubric rows after Ben joined (rows=%)', c; end if;
+  raise notice 'PASS 2: adding a member seeds their default rubric (14 rows total)';
 end $$;
 
 -- ---- Ben can see everyone's rubric in his group (needed to mash) ----
@@ -83,6 +83,50 @@ begin
   raise notice 'PASS 5: an outsider sees no rubrics';
 end $$;
 
-do $$ begin raise notice '=== ALL 5 MEMBER-RUBRICS ASSERTIONS PASSED ==='; end $$;
+-- ---- ★ preset seeding gets base coverage ----
+-- Cara saved a favorite preset BEFORE Emotional Impact joined the base set
+-- (base six, Story deliberately disabled). Joining must copy her preset AND
+-- fill the missing base category; her deliberate disable sticks.
+insert into public.user_rubrics (user_id, name, is_favorite, rows)
+values ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'Old six', true,
+        '[{"key":"story","label":"Story","weight":30,"enabled":false,"sort":0},
+          {"key":"acting","label":"Acting","weight":25,"enabled":true,"sort":1},
+          {"key":"writing","label":"Writing","weight":20,"enabled":true,"sort":2},
+          {"key":"cinematography","label":"Cinematography","weight":25,"enabled":true,"sort":3},
+          {"key":"pacing","label":"Pacing","weight":15,"enabled":true,"sort":4},
+          {"key":"scoreSound","label":"Score & Soundtrack","weight":15,"enabled":true,"sort":5}]');
+
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+insert into public.group_members (group_id, user_id, role)
+values ('99999999-9999-9999-9999-999999999999',
+        'cccccccc-cccc-cccc-cccc-cccccccccccc', 'member');
+
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+
+do $$
+declare w int; en boolean;
+begin
+  select weight, enabled into w, en from public.member_rubrics
+    where user_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'
+      and category_key = 'emotionalImpact';
+  if w is distinct from 25 or en is distinct from true then
+    raise exception 'FAIL 6: base-six preset did not gain emotionalImpact at 25/enabled (got %/%)', w, en;
+  end if;
+  raise notice 'PASS 6: a base-six preset gains the missing base category at its default weight';
+end $$;
+
+do $$
+declare en boolean;
+begin
+  select enabled into en from public.member_rubrics
+    where user_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'
+      and category_key = 'story';
+  if en is distinct from false then
+    raise exception 'FAIL 7: preset''s deliberate disable was overridden (enabled=%)', en;
+  end if;
+  raise notice 'PASS 7: a base category the preset deliberately disabled stays disabled';
+end $$;
+
+do $$ begin raise notice '=== ALL 7 MEMBER-RUBRICS ASSERTIONS PASSED ==='; end $$;
 
 rollback;

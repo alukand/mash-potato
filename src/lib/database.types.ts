@@ -105,18 +105,21 @@ export type Database = {
       group_members: {
         Row: {
           group_id: string
+          is_public: boolean
           joined_at: string
           role: Database["public"]["Enums"]["member_role"]
           user_id: string
         }
         Insert: {
           group_id: string
+          is_public?: boolean
           joined_at?: string
           role?: Database["public"]["Enums"]["member_role"]
           user_id: string
         }
         Update: {
           group_id?: string
+          is_public?: boolean
           joined_at?: string
           role?: Database["public"]["Enums"]["member_role"]
           user_id?: string
@@ -270,6 +273,77 @@ export type Database = {
           singleton?: boolean
         }
         Relationships: []
+      }
+      playlist_items: {
+        Row: {
+          added_at: string
+          playlist_id: string
+          title_id: string
+        }
+        Insert: {
+          added_at?: string
+          playlist_id: string
+          title_id: string
+        }
+        Update: {
+          added_at?: string
+          playlist_id?: string
+          title_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "playlist_items_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "playlists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "playlist_items_title_id_fkey"
+            columns: ["title_id"]
+            isOneToOne: false
+            referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      playlists: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_public: boolean
+          name: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean
+          name: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_public?: boolean
+          name?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "playlists_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -493,12 +567,14 @@ export type Database = {
         Args: { p_category_key: string; p_score: number; p_session_id: string }
         Returns: undefined
       }
+      has_locked_scorecard: { Args: { p_session_id: string }; Returns: boolean }
       is_group_member: { Args: { p_group_id: string }; Returns: boolean }
       is_group_owner: { Args: { p_group_id: string }; Returns: boolean }
       late_score_session: {
         Args: { p_scores: Json; p_session_id: string }
         Returns: undefined
       }
+      public_profile: { Args: { p_user_id: string }; Returns: Json }
       push_notify: { Args: { p_payload: Json }; Returns: undefined }
       register_device_token: {
         Args: { p_platform: string; p_token: string }
@@ -531,6 +607,10 @@ export type Database = {
           locked: boolean
           member_id: string
         }[]
+      }
+      set_group_visibility: {
+        Args: { p_group_id: string; p_public: boolean }
+        Returns: undefined
       }
       title_community_histogram: {
         Args: { p_title_id: string; p_weights: Json }

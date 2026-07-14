@@ -9,6 +9,7 @@
 //   { op: 'genres', mediaType }                  -> { genres: {id,name}[] }
 //   { op: 'person', query }                      -> { people: {id,name,profilePath}[] }
 //   { op: 'discover', filters, mediaType }       -> { results: TmdbResult[] }
+//   { op: 'recommendations', tmdbId, mediaType } -> { results: TmdbResult[] }
 // where mediaType is 'movie' | 'tv', feed is 'trending' | 'popular', and
 // filters is { genreIds?: number[]; personId?: number; year?: number }.
 
@@ -224,6 +225,22 @@ async function handleDiscover(body: Record<string, unknown>, apiKey: string): Pr
   return json({ results: (data.results ?? []).slice(0, 20).map(mapListItem) })
 }
 
+// ---- op: recommendations (TMDB's "more like this" for one title) ----------
+async function handleRecommendations(
+  body: Record<string, unknown>,
+  apiKey: string,
+): Promise<Response> {
+  const tmdbId = Number(body.tmdbId)
+  const mediaType = normalizeMediaType(body.mediaType)
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return json({ error: 'invalid tmdbId' }, 400)
+
+  const res = await tmdbFetch(`/${mediaType}/${tmdbId}/recommendations`, apiKey, { page: '1' })
+  if (res.status === 404) return json({ results: [] })
+  if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
+  const data = (await res.json()) as { results?: TmdbListItem[] }
+  return json({ results: (data.results ?? []).slice(0, 16).map(mapListItem) })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -258,6 +275,8 @@ Deno.serve(async (req) => {
       return handlePerson(body, apiKey)
     case 'discover':
       return handleDiscover(body, apiKey)
+    case 'recommendations':
+      return handleRecommendations(body, apiKey)
     default:
       return json({ error: `unknown op: ${String(op)}` }, 400)
   }

@@ -21,7 +21,9 @@ import { HomeScreen } from './screens/HomeScreen'
 import { DiscoverScreen } from './screens/DiscoverScreen'
 import { RateScreen } from './screens/RateScreen'
 import { GroupScreen } from './screens/GroupScreen'
+import { PlaylistScreen } from './screens/PlaylistScreen'
 import { ProfileScreen } from './screens/ProfileScreen'
+import { PublicProfileScreen } from './screens/PublicProfileScreen'
 import { TitleDetailScreen } from './screens/TitleDetailScreen'
 
 // App shell: auth gate -> group bootstrap -> tabbed app, with a lightweight
@@ -33,9 +35,13 @@ type StackView =
   | { kind: 'title'; tmdbId: number; mediaType: 'movie' | 'tv' }
   | { kind: 'profile' }
   | { kind: 'createGroup' }
+  | { kind: 'user'; userId: string }
+  | { kind: 'playlist'; playlistId: string }
 
 function stackKey(v: StackView): string {
   if (v.kind === 'title') return `title:${v.tmdbId}:${v.mediaType}`
+  if (v.kind === 'user') return `user:${v.userId}`
+  if (v.kind === 'playlist') return `playlist:${v.playlistId}`
   return v.kind
 }
 
@@ -156,11 +162,12 @@ function App() {
     setTab(next)
     storeTab(next)
   }
+  // Switching groups stays WHERE YOU ARE (the Group tab switcher swaps the
+  // group in place); flows that want a destination set the tab themselves.
   function switchGroup(id: string) {
     setActiveGroupId(id)
     storeGroupId(id)
     setStack([])
-    setTab('home')
   }
 
   if (loadError) {
@@ -227,11 +234,36 @@ function App() {
                 displayName={myName}
                 groups={groups}
                 activeGroupId={group.id}
-                onSwitchGroup={switchGroup}
+                onSwitchGroup={(id) => {
+                  // From the profile a group tap needs a destination: land on
+                  // the Group tab so the switch is visible (Home is group-agnostic).
+                  switchGroup(id)
+                  selectTab('group')
+                }}
                 onCreateGroup={() => pushView({ kind: 'createGroup' })}
                 onOpenTitle={openTitle}
+                onOpenUser={(id) => pushView({ kind: 'user', userId: id })}
+                onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
                 onNameChanged={refreshMembers}
+                onGroupsChanged={refreshGroups}
                 onBack={popView}
+              />
+            )}
+            {top.kind === 'user' && (
+              <PublicProfileScreen
+                userId={top.userId}
+                onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
+                onBack={popView}
+              />
+            )}
+            {top.kind === 'playlist' && (
+              <PlaylistScreen
+                playlistId={top.playlistId}
+                userId={userId}
+                onOpenTitle={openTitle}
+                onOpenUser={(id) => pushView({ kind: 'user', userId: id })}
+                onBack={popView}
+                onDeleted={popView}
               />
             )}
             {top.kind === 'createGroup' && (
@@ -302,6 +334,7 @@ function App() {
                 onMembersChanged={refreshMembers}
                 onGroupsChanged={refreshGroups}
                 onOpenTitle={openTitle}
+                onOpenUser={(id) => pushView({ kind: 'user', userId: id })}
                 onSwitchGroup={switchGroup}
                 onCreateGroup={() => pushView({ kind: 'createGroup' })}
                 onGoRate={() => setTab('rate')}

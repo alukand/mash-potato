@@ -23,9 +23,9 @@
   --color-lime: #c9d14e; /* top of the 1->10 score ramp     */
 
   /* Type */
-  --font-display: "Fraunces", ui-serif, Georgia, serif; /* display + big scores */
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif; /* display + big scores */
   --font-body: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif; /* UI / body */
-  --font-mono: "Space Mono", ui-monospace, SFMono-Regular, monospace; /* numeric readouts */
+  --font-mono: "Azeret Mono", ui-monospace, SFMono-Regular, monospace; /* numeric readouts */
 }
 
 /* Clears the iOS status bar / Dynamic Island so top-of-screen content isn't

@@ -4,7 +4,7 @@
 create extension if not exists pgtap with schema extensions;
 
 begin;
-select plan(21);
+select plan(26);
 
 -- ---- seed as the test superuser (RLS bypassed) ----
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
@@ -49,6 +49,12 @@ insert into public.member_scores (session_id, member_id, scores, locked)
 values ('66666666-6666-6666-6666-666666666666',
         'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
         '{"story":8,"acting":8,"cinematography":9,"pacing":6,"scoreSound":9}', true);
+
+-- Quorum: one lock in a two-member group cannot drop the reveal on everyone.
+select throws_ok(
+  $$select public.reveal_session('66666666-6666-6666-6666-666666666666')$$,
+  'P0001', 'the reveal needs a second locked scorecard',
+  'reveal: blocked until a second member locks in');
 
 -- ---- act as Ben (member) ----
 set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
@@ -145,6 +151,13 @@ values ('99999999-9999-9999-9999-999999999999',
 
 set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
 
+-- SEALED: a member who hasn't locked their own card sees NOTHING, even
+-- though the session is revealed. The reveal opens per member.
+select is(
+  (select count(*)::int from public.member_scores
+     where session_id = '66666666-6666-6666-6666-666666666666'),
+  0, 'sealed: revealed scores stay hidden until your own card is locked');
+
 -- Direct inserts are blind-only now; revealed writes exist only via the RPCs.
 select throws_ok(
   $$insert into public.member_scores (session_id, member_id, scores, locked)
@@ -226,6 +239,57 @@ select is(
        and e->>'key' = 'rewatchability'),
   10::numeric,
   'backfill: the category joined the snapshot at the effective weight');
+
+-- ============== QUORUM vs RSVP: passes must not deadlock the reveal ==============
+-- Group is now Ana + Ben + Cara. Two fresh blind sessions.
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+insert into public.reveal_sessions (id, group_id, title_id, created_by, rubric)
+values ('44444444-4444-4444-4444-444444444444',
+        '99999999-9999-9999-9999-999999999999',
+        '77777777-7777-7777-7777-777777777777',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        '[{"key":"story","label":"Story","weight":20}]'),
+       ('33333333-3333-3333-3333-333333333333',
+        '99999999-9999-9999-9999-999999999999',
+        '77777777-7777-7777-7777-777777777777',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        '[{"key":"story","label":"Story","weight":20}]');
+insert into public.member_scores (session_id, member_id, scores, locked)
+values ('44444444-4444-4444-4444-444444444444',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '{"story":8}', true),
+       ('33333333-3333-3333-3333-333333333333',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '{"story":8}', true);
+
+-- Session 4444: Ben AND Cara pass. Ana is the only participant left.
+set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+insert into public.session_rsvps (session_id, member_id, status)
+values ('44444444-4444-4444-4444-444444444444', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'pass'),
+       ('33333333-3333-3333-3333-333333333333', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'pass');
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+insert into public.session_rsvps (session_id, member_id, status)
+values ('44444444-4444-4444-4444-444444444444', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'pass');
+
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+select lives_ok(
+  $$select public.reveal_session('44444444-4444-4444-4444-444444444444')$$,
+  'quorum: a round everyone else passed on reveals with one locked card');
+
+-- Session 3333: Cara never answered and the 24h window is still open, so she
+-- still counts as eligible and one lock is not enough.
+select throws_ok(
+  $$select public.reveal_session('33333333-3333-3333-3333-333333333333')$$,
+  'P0001', 'the reveal needs a second locked scorecard',
+  'quorum: an unanswered invite inside the window still holds the reveal');
+
+-- Once the window lapses, the unanswered invite counts as a pass.
+reset role;
+update public.reveal_sessions set created_at = now() - interval '25 hours'
+  where id = '33333333-3333-3333-3333-333333333333';
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+select lives_ok(
+  $$select public.reveal_session('33333333-3333-3333-3333-333333333333')$$,
+  'quorum: after the invite window an unanswered member no longer holds it');
 
 select * from finish();
 rollback;

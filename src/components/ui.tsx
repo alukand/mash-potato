@@ -61,6 +61,58 @@ export function CtaButton({
   )
 }
 
+interface VisibilityChipProps {
+  isPublic: boolean
+  /** When given, the chip is a toggle button; otherwise a static span. */
+  onToggle?: () => void
+  disabled?: boolean
+  ariaLabel?: string
+}
+
+/**
+ * The one visibility vocabulary: globe + teal = public, lock + muted =
+ * private. Static (span) inside other buttons, interactive (button) when
+ * onToggle is given.
+ */
+export function VisibilityChip({ isPublic, onToggle, disabled, ariaLabel }: VisibilityChipProps) {
+  const className = `flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wide ${
+    isPublic
+      ? 'border-teal/30 bg-teal/10 text-teal'
+      : `border-line bg-surface-2 text-muted${onToggle ? ' hover:text-text' : ''}`
+  }${onToggle ? ' transition-colors disabled:opacity-50' : ''}`
+  const content = (
+    <>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {isPublic ? (
+          <>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z" />
+          </>
+        ) : (
+          <>
+            <rect x="4" y="10" width="16" height="11" rx="2.5" />
+            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+          </>
+        )}
+      </svg>
+      {isPublic ? 'Public' : 'Private'}
+    </>
+  )
+  if (!onToggle) return <span className={className}>{content}</span>
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onToggle}
+      aria-pressed={isPublic}
+      aria-label={ariaLabel}
+      className={className}
+    >
+      {content}
+    </button>
+  )
+}
+
 interface GroupMarkProps {
   groupId: string
   name: string

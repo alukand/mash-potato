@@ -32,8 +32,11 @@ movie blind and waiting for the Reveal to drop. Dark theme is scene-driven
 | Low / divergence | `--color-coral` | `#e07a5f` |
 | Ramp top | `--color-lime` | `#c9d14e` |
 
-Fonts: Fraunces (display + big scores), Hanken Grotesk (UI/body), Space Mono
-(numeric readouts, micro-labels). Never more than these three.
+Fonts: Bricolage Grotesque (display + big scores — warm, characterful, and
+deliberately NOT the cinematic-condensed reflex a movie app invites), Hanken
+Grotesk (UI/body), Azeret Mono (numeric readouts, micro-labels; tabular by
+nature). Never more than these three. Bricolage carries true tabular
+numerals under `.tabular`, verified 2026-07-13 — count-ups don't shimmy.
 
 Atmosphere: body carries a teal/gold radial wash + fixed film grain
 (`body::after`); cards use `.mp-card` (gradient fill, hairline border, inner
@@ -120,6 +123,13 @@ weight. Locked scores can NEVER be changed, only missing ones added — both
 paths are constrained SECURITY DEFINER RPCs; direct inserts are blind-only.
 Blind rounds stay fully blind: no running Mashed before the reveal, ever.
 
+**Sealed reveals (2026-07-13):** the reveal opens PER MEMBER — you see the
+group's scores only once your own card is locked (RLS-enforced), so late
+scoring is genuinely blind. Sealed surfaces show a lock + "Sealed" (never a
+bare dash): the reveal panel becomes the seal card with blind sliders and
+"Lock in and open the reveal"; log and Home rows swap the Mashed number for
+the lock mark.
+
 ## View state
 
 Persist by default (localStorage, `mp.*` keys): active tab (`mp.activeTab`),
@@ -128,6 +138,12 @@ active group (`mp.activeGroupId`), Discover films/TV switch
 disclosures, in-flight flags.
 
 ## Tried / rejected log
+
+- 2026-07-13: Fraunces (display) and Space Mono (mono) rejected — both sit on
+  the fonts.md reflex-reject list (converged AI defaults), and the owner
+  flagged the type system as "don't love it". Bebas-style cinematic condensed
+  also rejected: "movie app → film-poster font" is the first-order category
+  reflex. Landed on Bricolage Grotesque + Azeret Mono; Hanken Grotesk stays.
 
 - 2026-07-12: PowerShell one-liner text replacement on source files corrupts
   UTF-8 (PS 5.1 ANSI default) — mangled em dashes/ellipses; restored from git.
@@ -145,8 +161,44 @@ word earns its place) and the two-line shape: title = who did what
 the rest of Friday Film Club."). Score values NEVER appear in a notification;
 the reveal happens in the app, not on the lock screen.
 
+## Privacy model (public profiles, 2026-07-13)
+
+Private by default in every direction. A public profile shows exactly three
+things: display name, groups the member CHOSE to show (per-group toggle on
+their own profile), and playlists they flipped public. Ratings, reviewed,
+and saved are never auto-public; sharing taste happens through curated
+playlists. Friends are simply your groupmates — no follow graph. Visibility
+chips share one vocabulary: globe + teal = public, lock + muted = private.
+
 ## Changelog
 
+- 2026-07-13 (review pass): 8-angle code review over the uncommitted work,
+  10 confirmed findings fixed. Reveal quorum is now RSVP-aware (a round
+  everyone else passed on reveals with one card; unanswered invites hold it
+  only while the 24h window is open — server + client). SessionPanel gained
+  a real loading state (no more sealed-card flash), per-session state resets,
+  and seeds late/sealed sliders from your unlocked blind draft. A base-six ★
+  preset now gains missing base categories on join (server union + repair
+  backfill), and the rubric editor offers missing base categories.
+  TitleDetail history shows the Sealed lock (was a teal dash). VisibilityChip
+  extracted to ui.tsx (3 sites); colorForUser joins the palette for friend
+  avatars; the reveal headline swaps faux italic for true semibold + color.
+  Playlists: covers fetched with per-list server limits, updated_at moved to
+  a DB trigger, playlist toggles patch state locally, Enter-key double-create
+  guards. Suites: pgTAP 70, twin 28 blind-rule assertions.
+- 2026-07-13 (friends + playlists): public profiles (per-group visibility
+  toggles, definer RPC), playlists with per-list visibility, add-to-playlist
+  sheet on TitleDetail, Friends section, PlaylistCard/PosterGrid shared
+  components. Suites extended (pgTAP +14, twin +5).
+- 2026-07-13 (sealed): Reveals open per member — RLS hides everyone's scores
+  until your own card is locked. Seal card with blind sliders on the panel;
+  lock marks in the log and Home lists. Both suites extended (pgTAP 23,
+  twin 25).
+- 2026-07-13: Type system re-picked (Bricolage Grotesque / Hanken Grotesk /
+  Azeret Mono). Emotional Impact joins the base seven at weight 25; Humor and
+  Fear Factor become HEAVY genre add-ons (35) that carry their nights. Reveal
+  now needs a second locked scorecard in multi-member groups. Group switching
+  stays on the Group tab, which gains a "Because you loved X" rec shelf.
 - 2026-07-12 (push): APNs notifications for group adds, round invites, and
   groupmate locks. Permission asked at sign-in; foreground alerts enabled
   (presentationOptions) since mid-round is when the app is open.

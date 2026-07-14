@@ -19,6 +19,12 @@ export interface CatalogCategory {
   kind: 'base' | 'optional' | 'genre'
   /** TMDB genre ids (movie + TV) that auto-suggest this category. */
   genreIds?: number[]
+  /**
+   * Session weight when auto-added for a matching genre (default 20). Part of
+   * the published genre table: Humor carries a comedy night and Fear Factor a
+   * horror night, so they land HEAVIER than any base category.
+   */
+  addOnWeight?: number
 }
 
 export const RUBRIC_CATALOG: CatalogCategory[] = [
@@ -29,10 +35,10 @@ export const RUBRIC_CATALOG: CatalogCategory[] = [
   { key: 'cinematography', label: 'Cinematography', blurb: 'Framing, lighting, visuals', kind: 'base' },
   { key: 'pacing', label: 'Pacing', blurb: 'Flow, rhythm, runtime discipline', kind: 'base' },
   { key: 'scoreSound', label: 'Score & Soundtrack', blurb: 'Music, sound design', kind: 'base' },
+  { key: 'emotionalImpact', label: 'Emotional Impact', blurb: 'Did it land?', kind: 'base' },
 
   // ---- optional: group toggles --------------------------------------------
   { key: 'directing', label: 'Directing', blurb: 'Vision, tone, cohesion', kind: 'optional' },
-  { key: 'emotionalImpact', label: 'Emotional Impact', blurb: 'Did it land?', kind: 'optional' },
   { key: 'originality', label: 'Originality', blurb: 'Fresh ideas, surprises', kind: 'optional' },
   { key: 'rewatchability', label: 'Rewatchability', blurb: 'Would you watch it again?', kind: 'optional' },
   { key: 'dialogue', label: 'Dialogue', blurb: 'Lines worth quoting', kind: 'optional' },
@@ -41,8 +47,9 @@ export const RUBRIC_CATALOG: CatalogCategory[] = [
   { key: 'productionDesign', label: 'Production Design', blurb: 'Sets, costumes, the look', kind: 'optional' },
 
   // ---- genre: auto-included when the title's TMDB genres match ------------
-  { key: 'humor', label: 'Humor', blurb: 'How funny is it?', kind: 'genre', genreIds: [35] },
-  { key: 'fearFactor', label: 'Fear Factor', blurb: 'How scary is it?', kind: 'genre', genreIds: [27] },
+  // Humor and Fear Factor define their nights: heavier than any base weight.
+  { key: 'humor', label: 'Humor', blurb: 'How funny is it?', kind: 'genre', genreIds: [35], addOnWeight: 35 },
+  { key: 'fearFactor', label: 'Fear Factor', blurb: 'How scary is it?', kind: 'genre', genreIds: [27], addOnWeight: 35 },
   { key: 'tension', label: 'Tension', blurb: 'Suspense and grip', kind: 'genre', genreIds: [53, 9648] },
   { key: 'spectacle', label: 'Spectacle', blurb: 'Action, stunts, scale', kind: 'genre', genreIds: [28, 10759] },
   { key: 'worldbuilding', label: 'Worldbuilding', blurb: 'The world it pulls you into', kind: 'genre', genreIds: [878, 14, 10765] },
@@ -55,9 +62,10 @@ export const BASE_CATEGORIES = RUBRIC_CATALOG.filter((c) => c.kind === 'base')
 
 /**
  * The app-wide DEFAULT rubric weights: story/acting/cinematography count for
- * more than pacing/score. New groups seed from this (and can reset to it), and
- * every solo/community rating uses exactly this rubric. Keep in sync with the
- * handle_new_group() seed in the dynamic-rubric + default-rubric migrations.
+ * more than pacing/score, and Emotional Impact carries its own deliberate
+ * weight ("did it land" moves people more than craft line-items). New groups
+ * seed from this (and can reset to it), and every solo/community rating uses
+ * exactly this rubric. Keep in sync with the seed_member_rubric() migrations.
  */
 export const DEFAULT_WEIGHTS: Record<string, number> = {
   story: 30,
@@ -66,6 +74,7 @@ export const DEFAULT_WEIGHTS: Record<string, number> = {
   cinematography: 25,
   pacing: 15,
   scoreSound: 15,
+  emotionalImpact: 25,
 }
 
 /** The default rubric as ordered snapshot entries (base six + default weights). */
@@ -209,7 +218,12 @@ export function resolveSessionRubricTagged(
   for (const cat of RUBRIC_CATALOG) {
     if (cat.kind !== 'genre' || configured.has(cat.key)) continue
     if (cat.genreIds?.some((id) => genreIds.includes(id))) {
-      entries.push({ key: cat.key, label: cat.label, weight: 20, source: 'genre' })
+      entries.push({
+        key: cat.key,
+        label: cat.label,
+        weight: cat.addOnWeight ?? 20,
+        source: 'genre',
+      })
     }
   }
   return entries

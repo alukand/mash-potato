@@ -482,6 +482,12 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
   const myPart = showRsvps ? (part.status.get(userId) ?? 'invited') : 'in'
   const waiting = members.filter((m) => inIds.has(m.userId) && !lockedIds.has(m.userId))
   const canReveal = group.role === 'owner' || session.createdBy === userId
+  // One lock must never drop the reveal on everyone: multi-member groups need
+  // a second locked card first (also enforced server-side in reveal_session).
+  // Only members still ELIGIBLE count: in + scored + unanswered-window-open.
+  // A round everyone else passed on reveals with one card, not never.
+  const eligibleCount = showRsvps ? part.inIds.length + part.invitedIds.length : members.length
+  const revealQuorum = lockedIds.size >= Math.min(2, Math.max(eligibleCount, 1))
 
   return (
     <>
@@ -695,7 +701,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
           </CtaButton>
         )}
 
-        {locked && canReveal && (
+        {locked && canReveal && revealQuorum && (
           <>
             <CtaButton
               tone="teal"
@@ -711,6 +717,11 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
               </p>
             )}
           </>
+        )}
+        {locked && canReveal && !revealQuorum && (
+          <p className="mt-3 text-center text-[12px] leading-snug text-muted">
+            The Reveal unlocks once someone else locks in too.
+          </p>
         )}
       </section>
     </>

@@ -55,6 +55,19 @@ values ('66666666-6666-6666-6666-666666666666',
         'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
         '{"story":8,"acting":8,"cinematography":9,"pacing":6,"scoreSound":9}', true);
 
+-- PASS 4c: quorum — one lock in a two-member group cannot drop the reveal
+do $$
+begin
+  begin
+    perform public.reveal_session('66666666-6666-6666-6666-666666666666');
+    raise exception 'FAIL 4c: a single lock revealed the session for everyone';
+  exception when raise_exception then
+    if sqlerrm = 'the reveal needs a second locked scorecard' then
+      raise notice 'PASS 4c: the reveal is blocked until a second member locks in';
+    else raise; end if;
+  end;
+end $$;
+
 -- ---- act as Ben (member) ----
 set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
 
@@ -241,6 +254,18 @@ values ('99999999-9999-9999-9999-999999999999',
 
 set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
 
+-- PASS 11b: SEALED — no locked card of your own, no reveal for you
+do $$
+declare c int;
+begin
+  select count(*) into c from public.member_scores
+    where session_id = '66666666-6666-6666-6666-666666666666';
+  if c <> 0 then
+    raise exception 'FAIL 11b: an unvoted member sees % revealed scorecards', c;
+  end if;
+  raise notice 'PASS 11b: revealed scores stay sealed until your own card is locked';
+end $$;
+
 -- PASS 12: direct inserts are blind-only once a session is revealed
 do $$
 begin
@@ -384,6 +409,69 @@ begin
   raise notice 'PASS 21: the snapshot grew append-only at the effective weight';
 end $$;
 
-do $$ begin raise notice '=== ALL 23 ASSERTIONS PASSED — the blind rule holds, reveals stay open safely ==='; end $$;
+-- ============== QUORUM vs RSVP: passes must not deadlock the reveal ==============
+-- Group is Ana + Ben + Cara. Two fresh blind sessions.
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+insert into public.reveal_sessions (id, group_id, title_id, created_by, rubric)
+values ('44444444-4444-4444-4444-444444444444',
+        '99999999-9999-9999-9999-999999999999',
+        '77777777-7777-7777-7777-777777777777',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        '[{"key":"story","label":"Story","weight":20}]'),
+       ('33333333-3333-3333-3333-333333333333',
+        '99999999-9999-9999-9999-999999999999',
+        '77777777-7777-7777-7777-777777777777',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        '[{"key":"story","label":"Story","weight":20}]');
+insert into public.member_scores (session_id, member_id, scores, locked)
+values ('44444444-4444-4444-4444-444444444444',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '{"story":8}', true),
+       ('33333333-3333-3333-3333-333333333333',
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '{"story":8}', true);
+
+-- Session 4444: Ben AND Cara pass; session 3333: only Ben passes.
+set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+insert into public.session_rsvps (session_id, member_id, status)
+values ('44444444-4444-4444-4444-444444444444', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'pass'),
+       ('33333333-3333-3333-3333-333333333333', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'pass');
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+insert into public.session_rsvps (session_id, member_id, status)
+values ('44444444-4444-4444-4444-444444444444', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'pass');
+
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+
+-- PASS 22: a round everyone else passed on reveals with one locked card
+do $$
+begin
+  perform public.reveal_session('44444444-4444-4444-4444-444444444444');
+  raise notice 'PASS 22: a round everyone else passed on reveals with one locked card';
+end $$;
+
+-- PASS 23: an unanswered invite inside the 24h window still holds the reveal
+do $$
+begin
+  begin
+    perform public.reveal_session('33333333-3333-3333-3333-333333333333');
+    raise exception 'FAIL 23: one lock revealed while an invite was still open';
+  exception when raise_exception then
+    if sqlerrm = 'the reveal needs a second locked scorecard' then
+      raise notice 'PASS 23: an unanswered invite inside the window still holds the reveal';
+    else raise; end if;
+  end;
+end $$;
+
+-- PASS 24: after the window an unanswered member counts as a pass
+reset role;
+update public.reveal_sessions set created_at = now() - interval '25 hours'
+  where id = '33333333-3333-3333-3333-333333333333';
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+do $$
+begin
+  perform public.reveal_session('33333333-3333-3333-3333-333333333333');
+  raise notice 'PASS 24: after the invite window an unanswered member no longer holds the reveal';
+end $$;
+
+do $$ begin raise notice '=== ALL 28 ASSERTIONS PASSED — the blind rule holds, reveals open per member, RSVP passes never deadlock ==='; end $$;
 
 rollback;

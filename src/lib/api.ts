@@ -16,6 +16,8 @@ export interface GroupInfo {
   id: string
   name: string
   role: 'owner' | 'member'
+  /** Whether YOUR membership in this group shows on your public profile. */
+  isPublic: boolean
 }
 
 export interface MemberInfo {
@@ -76,13 +78,18 @@ export async function removeDeviceToken(token: string): Promise<void> {
 export async function fetchMyGroups(userId: string): Promise<GroupInfo[]> {
   const { data, error } = await supabase
     .from('group_members')
-    .select('role, groups(id, name)')
+    .select('role, is_public, groups(id, name)')
     .eq('user_id', userId)
     .order('joined_at', { ascending: true })
   if (error) throw new Error(error.message)
   return (data ?? [])
     .filter((row) => row.groups)
-    .map((row) => ({ id: row.groups!.id, name: row.groups!.name, role: row.role }))
+    .map((row) => ({
+      id: row.groups!.id,
+      name: row.groups!.name,
+      role: row.role,
+      isPublic: row.is_public,
+    }))
 }
 
 /** Create a group; triggers add the owner membership + seed the rubric. */
@@ -93,7 +100,7 @@ export async function createGroup(userId: string, name: string): Promise<GroupIn
     .select('id, name')
     .single()
   if (error) throw new Error(error.message)
-  return { id: data.id, name: data.name, role: 'owner' }
+  return { id: data.id, name: data.name, role: 'owner', isPublic: false }
 }
 
 export async function fetchMembers(groupId: string): Promise<MemberInfo[]> {
@@ -453,6 +460,27 @@ export async function fetchBrowse(
   if (error) throw new Error(error.message)
   const results = (data as { results: TmdbResult[] }).results ?? []
   browseCache.set(key, { at: Date.now(), results })
+  return results
+}
+
+// Recommendations barely change for a title; cache for the app session.
+const recsCache = new Map<string, TmdbResult[]>()
+
+/** TMDB's "more like this" for one title (drives the group's rec shelf). */
+export async function fetchRecommendations(
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+): Promise<TmdbResult[]> {
+  const key = `${mediaType}:${tmdbId}`
+  const hit = recsCache.get(key)
+  if (hit) return hit
+
+  const { data, error } = await supabase.functions.invoke('tmdb-search', {
+    body: { op: 'recommendations', tmdbId, mediaType },
+  })
+  if (error) throw new Error(error.message)
+  const results = (data as { results: TmdbResult[] }).results ?? []
+  recsCache.set(key, results)
   return results
 }
 
@@ -1150,6 +1178,242 @@ export async function fetchMyGlobalRatings(userId: string): Promise<RatedTitle[]
       posterPath: row.titles!.poster_path,
       ratedAt: row.updated_at,
     }))
+}
+
+// ---- playlists ------------------------------------------------------------
+
+export interface PlaylistSummary {
+  id: string
+  name: string
+  description: string | null
+  isPublic: boolean
+  itemCount: number
+  /** Up to three poster paths for the cover collage, newest first. */
+  posters: string[]
+}
+
+export interface PlaylistItemEntry {
+  titleId: string
+  tmdbId: number | null
+  mediaType: 'movie' | 'tv'
+  name: string
+  year: number | null
+  posterPath: string | null
+  addedAt: string
+}
+
+export interface PlaylistDetail {
+  id: string
+  ownerId: string
+  ownerName: string
+  name: string
+  description: string | null
+  isPublic: boolean
+  items: PlaylistItemEntry[]
+}
+
+/** The user's playlists, freshest first, with counts + cover posters. */
+export async function fetchMyPlaylists(userId: string): Promise<PlaylistSummary[]> {
+  // One query: counts via the aggregate embed, covers via a second aliased
+  // embed limited server-side to the 3 newest items per playlist (a 500-item
+  // watchlist must not ship 500 rows for 3 posters).
+  const { data, error } = await supabase
+    .from('playlists')
+    .select(
+      'id, name, description, is_public, playlist_items(count), covers:playlist_items(added_at, titles(poster_path))',
+    )
+    .eq('owner_id', userId)
+    .order('updated_at', { ascending: false })
+    .order('added_at', { referencedTable: 'covers', ascending: false })
+    .limit(3, { referencedTable: 'covers' })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    isPublic: row.is_public,
+    itemCount: row.playlist_items?.[0]?.count ?? 0,
+    posters: (row.covers ?? [])
+      .map((c) => c.titles?.poster_path)
+      .filter((p): p is string => Boolean(p)),
+  }))
+}
+
+export async function createPlaylist(userId: string, name: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('playlists')
+    .insert({ owner_id: userId, name })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+  return data.id
+}
+
+export async function updatePlaylist(
+  playlistId: string,
+  patch: { name?: string; description?: string | null; isPublic?: boolean },
+): Promise<void> {
+  const row: { name?: string; description?: string | null; is_public?: boolean } = {}
+  if (patch.name !== undefined) row.name = patch.name
+  if (patch.description !== undefined) row.description = patch.description
+  if (patch.isPublic !== undefined) row.is_public = patch.isPublic
+  const { error } = await supabase.from('playlists').update(row).eq('id', playlistId)
+  if (error) throw new Error(error.message)
+}
+
+export async function deletePlaylist(playlistId: string): Promise<void> {
+  const { error } = await supabase.from('playlists').delete().eq('id', playlistId)
+  if (error) throw new Error(error.message)
+}
+
+/** One playlist with its titles — yours, or anyone's public one (by RLS). */
+export async function fetchPlaylist(playlistId: string): Promise<PlaylistDetail | null> {
+  const { data, error } = await supabase
+    .from('playlists')
+    .select(
+      'id, owner_id, name, description, is_public, profiles(display_name), playlist_items(added_at, titles(id, tmdb_id, media_type, name, year, poster_path))',
+    )
+    .eq('id', playlistId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) return null
+  return {
+    id: data.id,
+    ownerId: data.owner_id,
+    ownerName: data.profiles?.display_name ?? 'Someone',
+    name: data.name,
+    description: data.description,
+    isPublic: data.is_public,
+    items: (data.playlist_items ?? [])
+      .filter((i) => i.titles)
+      .map((i) => ({
+        titleId: i.titles!.id,
+        tmdbId: i.titles!.tmdb_id,
+        mediaType: i.titles!.media_type,
+        name: i.titles!.name,
+        year: i.titles!.year,
+        posterPath: i.titles!.poster_path,
+        addedAt: i.added_at,
+      }))
+      .sort((a, b) => b.addedAt.localeCompare(a.addedAt)),
+  }
+}
+
+/** Returns the title's row id so callers can patch their local state. */
+export async function addTitleToPlaylist(playlistId: string, title: NewTitle): Promise<string> {
+  const titleId = await ensureTitle(title)
+  const { error } = await supabase
+    .from('playlist_items')
+    .insert({ playlist_id: playlistId, title_id: titleId })
+  if (error && error.code !== '23505') throw new Error(error.message)
+  // "freshest first" holds via the playlist_items_touch_playlist trigger.
+  return titleId
+}
+
+export async function removeTitleFromPlaylist(
+  playlistId: string,
+  titleId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('playlist_items')
+    .delete()
+    .eq('playlist_id', playlistId)
+    .eq('title_id', titleId)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Which of MY playlists already hold this title (for the add-to sheet).
+ * Maps playlist id -> the title's row id, so removal needs no extra lookup.
+ */
+export async function fetchMyPlaylistsContaining(
+  userId: string,
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+): Promise<Map<string, string>> {
+  const { data, error } = await supabase
+    .from('playlist_items')
+    .select('playlist_id, title_id, playlists!inner(owner_id), titles!inner(tmdb_id, media_type)')
+    .eq('playlists.owner_id', userId)
+    .eq('titles.tmdb_id', tmdbId)
+    .eq('titles.media_type', mediaType)
+  if (error) throw new Error(error.message)
+  return new Map((data ?? []).map((r) => [r.playlist_id, r.title_id]))
+}
+
+// ---- friends + public profiles ---------------------------------------------
+
+export interface FriendInfo {
+  userId: string
+  displayName: string
+  /** Names of the groups you share, for context under the name. */
+  sharedGroups: string[]
+}
+
+/** Everyone you share a group with, deduped across groups. */
+export async function fetchMyFriends(userId: string): Promise<FriendInfo[]> {
+  const { data: mine, error: mineError } = await supabase
+    .from('group_members')
+    .select('group_id, groups(name)')
+    .eq('user_id', userId)
+  if (mineError) throw new Error(mineError.message)
+  const groupIds = (mine ?? []).map((r) => r.group_id)
+  if (groupIds.length === 0) return []
+  const groupName = new Map((mine ?? []).map((r) => [r.group_id, r.groups?.name ?? 'a group']))
+
+  const { data, error } = await supabase
+    .from('group_members')
+    .select('group_id, user_id, profiles(display_name)')
+    .in('group_id', groupIds)
+  if (error) throw new Error(error.message)
+
+  const byUser = new Map<string, FriendInfo>()
+  for (const row of data ?? []) {
+    if (row.user_id === userId) continue
+    const existing = byUser.get(row.user_id)
+    const shared = groupName.get(row.group_id) ?? 'a group'
+    if (existing) existing.sharedGroups.push(shared)
+    else
+      byUser.set(row.user_id, {
+        userId: row.user_id,
+        displayName: row.profiles?.display_name ?? 'Member',
+        sharedGroups: [shared],
+      })
+  }
+  return [...byUser.values()].sort((a, b) => a.displayName.localeCompare(b.displayName))
+}
+
+export interface PublicProfile {
+  displayName: string
+  groups: { id: string; name: string }[]
+  playlists: { id: string; name: string; description: string | null; itemCount: number; posters: string[] }[]
+}
+
+/** Someone's public profile: name + the groups and playlists they chose to show. */
+export async function fetchPublicProfile(userId: string): Promise<PublicProfile | null> {
+  const { data, error } = await supabase.rpc('public_profile', { p_user_id: userId })
+  if (error) throw new Error(error.message)
+  if (!data || typeof data !== 'object') return null
+  const raw = data as {
+    displayName?: string | null
+    groups?: { id: string; name: string }[]
+    playlists?: PublicProfile['playlists']
+  }
+  if (!raw.displayName) return null
+  return {
+    displayName: raw.displayName,
+    groups: raw.groups ?? [],
+    playlists: raw.playlists ?? [],
+  }
+}
+
+/** Show or hide one of YOUR group memberships on your public profile. */
+export async function setGroupVisibility(groupId: string, isPublic: boolean): Promise<void> {
+  const { error } = await supabase.rpc('set_group_visibility', {
+    p_group_id: groupId,
+    p_public: isPublic,
+  })
+  if (error) throw new Error(error.message)
 }
 
 /**

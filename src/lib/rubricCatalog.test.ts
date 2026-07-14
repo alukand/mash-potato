@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   BASE_CATEGORIES,
   configuredCategoryKeys,
+  DEFAULT_WEIGHTS,
   mashRubrics,
   resolveSessionRubric,
   resolveSessionRubricTagged,
@@ -17,11 +18,16 @@ const row = (key: string, over: Partial<GroupRubricRow> = {}): GroupRubricRow =>
 const baseRows = BASE_CATEGORIES.map((c, i) => row(c.key, { sort: i }))
 
 describe('the catalog', () => {
-  it('has exactly six base categories, including writing (directing is optional)', () => {
-    expect(BASE_CATEGORIES).toHaveLength(6)
+  it('has exactly seven base categories, including writing and emotional impact', () => {
+    expect(BASE_CATEGORIES).toHaveLength(7)
     expect(BASE_CATEGORIES.map((c) => c.key)).toContain('writing')
+    expect(BASE_CATEGORIES.map((c) => c.key)).toContain('emotionalImpact')
     expect(BASE_CATEGORIES.map((c) => c.key)).not.toContain('directing')
     expect(RUBRIC_CATALOG.find((c) => c.key === 'directing')?.kind).toBe('optional')
+  })
+
+  it('weights emotional impact deliberately in the default rubric', () => {
+    expect(DEFAULT_WEIGHTS.emotionalImpact).toBe(25)
   })
 
   it('has unique keys throughout', () => {
@@ -94,9 +100,19 @@ describe('resolveSessionRubric', () => {
     expect(horror.map((e) => e.key)).not.toContain('humor')
   })
 
-  it('adds genre categories at the default weight 20', () => {
-    const entries = resolveSessionRubric(baseRows, [27])
-    expect(entries.find((e) => e.key === 'fearFactor')?.weight).toBe(20)
+  it('adds Humor and Fear Factor HEAVY (they define their nights)', () => {
+    const comedy = resolveSessionRubric(baseRows, [35])
+    expect(comedy.find((e) => e.key === 'humor')?.weight).toBe(35)
+    const horror = resolveSessionRubric(baseRows, [27])
+    expect(horror.find((e) => e.key === 'fearFactor')?.weight).toBe(35)
+    // Heavier than any base weight: the add-on carries the night.
+    const maxBase = Math.max(...Object.values(DEFAULT_WEIGHTS))
+    expect(35).toBeGreaterThan(maxBase)
+  })
+
+  it('adds other genre categories at the default weight 20', () => {
+    const entries = resolveSessionRubric(baseRows, [53]) // thriller -> tension
+    expect(entries.find((e) => e.key === 'tension')?.weight).toBe(20)
   })
 
   it('respects a group row over the genre auto-add (including disabled)', () => {
@@ -158,7 +174,8 @@ describe('configuredCategoryKeys + the disabled-by-everyone pipeline', () => {
   it('an unconfigured genre category is still auto-added', () => {
     const mashed = mashRubrics(members)
     const entries = resolveSessionRubric(mashed, [27], configuredCategoryKeys(members))
-    expect(entries.find((e) => e.key === 'fearFactor')?.weight).toBe(20)
+    // Fear Factor is a HEAVY add-on (35): it carries horror night.
+    expect(entries.find((e) => e.key === 'fearFactor')?.weight).toBe(35)
   })
 })
 

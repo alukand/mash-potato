@@ -1,15 +1,28 @@
 import { useEffect, useState } from 'react'
 import {
+  createPlaylist,
   fetchMyExport,
+  fetchMyFriends,
   fetchMyGlobalRatings,
+  fetchMyPlaylists,
   fetchMyReviewedTitles,
   fetchMySavedTitles,
-  posterUrl,
+  setGroupVisibility,
   updateMyDisplayName,
 } from '../lib/api'
 import { signOutWithPushCleanup } from '../lib/push'
-import type { GroupInfo, RatedTitle, ReviewedTitle, SavedTitle } from '../lib/api'
-import { GroupMark, fieldClassSm } from '../components/ui'
+import type {
+  FriendInfo,
+  GroupInfo,
+  PlaylistSummary,
+  RatedTitle,
+  ReviewedTitle,
+  SavedTitle,
+} from '../lib/api'
+import { GroupMark, VisibilityChip, fieldClassSm } from '../components/ui'
+import { PlaylistCard } from '../components/PlaylistCard'
+import { PosterGrid } from '../components/PosterGrid'
+import { colorForUser } from '../lib/palette'
 
 interface ProfileScreenProps {
   userId: string
@@ -19,75 +32,20 @@ interface ProfileScreenProps {
   onSwitchGroup: (id: string) => void
   onCreateGroup: () => void
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  onOpenUser: (userId: string) => void
+  onOpenPlaylist: (playlistId: string) => void
   /** The display name changed; refresh whatever caches it. */
   onNameChanged: () => void
+  /** Group visibility flipped; refetch the group list. */
+  onGroupsChanged: () => Promise<void>
   onBack: () => void
 }
 
-interface GridItem {
-  titleId: string
-  tmdbId: number | null
-  mediaType: 'movie' | 'tv'
-  name: string
-  year: number | null
-  posterPath: string | null
-}
-
-// A 3-column poster grid shared by the Reviewed, Rated, and Saved sections.
-function PosterGrid({
-  items,
-  onOpenTitle,
-  badge,
-}: {
-  items: GridItem[]
-  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
-  /** Optional corner label on each tile (e.g. "Solo"). */
-  badge?: string
-}) {
-  return (
-    <div className="grid grid-cols-3 gap-3">
-      {items.map((it) => (
-        <button
-          key={it.titleId}
-          type="button"
-          disabled={it.tmdbId === null}
-          onClick={() => it.tmdbId !== null && onOpenTitle(it.tmdbId, it.mediaType)}
-          className="group text-left disabled:opacity-70"
-        >
-          <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-line/60 bg-surface-2">
-            {badge && (
-              <span className="absolute left-1.5 top-1.5 z-10 rounded-full bg-bg/70 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wide text-teal backdrop-blur-sm">
-                {badge}
-              </span>
-            )}
-            {it.posterPath ? (
-              <img
-                src={posterUrl(it.posterPath, 'w342')}
-                alt=""
-                loading="lazy"
-                className="h-full w-full object-cover transition-transform group-active:scale-95"
-              />
-            ) : (
-              <span
-                aria-hidden
-                className="grid h-full w-full place-items-center font-display text-2xl font-semibold text-bg"
-                style={{ backgroundImage: 'linear-gradient(160deg, #51C5BE, #3E7CB8)' }}
-              >
-                {it.name.charAt(0)}
-              </span>
-            )}
-          </div>
-          <p className="mt-1.5 truncate text-[12px] font-medium leading-tight">{it.name}</p>
-          <p className="font-mono text-[10px] text-muted">{it.year ?? '—'}</p>
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// Personal profile: who you are (editable), every group you're in (tap to make
-// active), the titles you've reviewed, your saved list, and your data. Lives on
-// the App view-stack. Account actions (sign out) live here and only here.
+// Personal profile: who you are (editable), every group you're in (tap to
+// make active, toggle what shows publicly), your playlists, your friends
+// (everyone you share a group with), the titles you've reviewed, your saved
+// list, and your data. Lives on the App view-stack. Account actions (sign
+// out) live here and only here.
 export function ProfileScreen({
   userId,
   displayName,
@@ -96,13 +54,24 @@ export function ProfileScreen({
   onSwitchGroup,
   onCreateGroup,
   onOpenTitle,
+  onOpenUser,
+  onOpenPlaylist,
   onNameChanged,
+  onGroupsChanged,
   onBack,
 }: ProfileScreenProps) {
   const [reviewed, setReviewed] = useState<ReviewedTitle[]>([])
   const [rated, setRated] = useState<RatedTitle[]>([])
   const [saved, setSaved] = useState<SavedTitle[]>([])
+  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([])
+  const [friends, setFriends] = useState<FriendInfo[]>([])
   const [loading, setLoading] = useState(true)
+
+  // ---- new playlist + per-group visibility ----
+  const [newListOpen, setNewListOpen] = useState(false)
+  const [newListName, setNewListName] = useState('')
+  const [listBusy, setListBusy] = useState(false)
+  const [visBusyId, setVisBusyId] = useState<string | null>(null)
 
   // ---- name editing ----
   const [editingName, setEditingName] = useState(false)
@@ -126,12 +95,16 @@ export function ProfileScreen({
       fetchMyReviewedTitles(userId),
       fetchMyGlobalRatings(userId),
       fetchMySavedTitles(userId),
+      fetchMyPlaylists(userId).catch(() => []),
+      fetchMyFriends(userId).catch(() => []),
     ])
-      .then(([r, g, s]) => {
+      .then(([r, g, s, p, f]) => {
         if (cancelled) return
         setReviewed(r)
         setRated(g)
         setSaved(s)
+        setPlaylists(p)
+        setFriends(f)
       })
       .catch(() => {
         if (cancelled) return
@@ -146,6 +119,7 @@ export function ProfileScreen({
   }, [userId])
 
   async function handleSaveName() {
+    if (nameBusy) return
     const name = nameDraft.trim()
     if (name.length === 0 || name === shownName) {
       setEditingName(false)
@@ -162,6 +136,37 @@ export function ProfileScreen({
       setNameError(err instanceof Error ? err.message : 'Could not save your name')
     } finally {
       setNameBusy(false)
+    }
+  }
+
+  async function handleCreatePlaylist() {
+    // Enter in the name field lands here too; the busy check is the guard
+    // the disabled button can't provide.
+    if (listBusy) return
+    const name = newListName.trim()
+    if (name.length === 0) return
+    setListBusy(true)
+    try {
+      await createPlaylist(userId, name)
+      setPlaylists(await fetchMyPlaylists(userId))
+      setNewListName('')
+      setNewListOpen(false)
+    } catch {
+      // non-fatal; the button re-enables
+    } finally {
+      setListBusy(false)
+    }
+  }
+
+  async function handleToggleGroupVisibility(g: GroupInfo) {
+    setVisBusyId(g.id)
+    try {
+      await setGroupVisibility(g.id, !g.isPublic)
+      await onGroupsChanged()
+    } catch {
+      // non-fatal
+    } finally {
+      setVisBusyId(null)
     }
   }
 
@@ -279,32 +284,34 @@ export function ProfileScreen({
           {groups.map((g) => {
             const isActive = g.id === activeGroupId
             return (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => onSwitchGroup(g.id)}
-                className="group flex w-full items-center gap-3 px-5 py-3.5 text-left"
-              >
-                <GroupMark groupId={g.id} name={g.name} size={34} className="transition-transform group-active:scale-95" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-semibold transition-colors group-hover:text-teal">
-                    {g.name}
-                  </p>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-                    {g.role}
-                  </p>
-                </div>
-                {isActive ? (
-                  <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wide text-teal">
-                    <span className="h-1.5 w-1.5 rounded-full bg-teal" />
-                    Active
-                  </span>
-                ) : (
-                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors group-hover:text-text">
-                    Switch
-                  </span>
-                )}
-              </button>
+              <div key={g.id} className="flex items-center gap-3 px-5 py-3.5">
+                <button
+                  type="button"
+                  onClick={() => onSwitchGroup(g.id)}
+                  className="group flex min-w-0 flex-1 items-center gap-3 text-left"
+                >
+                  <GroupMark groupId={g.id} name={g.name} size={34} className="transition-transform group-active:scale-95" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-semibold transition-colors group-hover:text-teal">
+                      {g.name}
+                    </p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                      {g.role}
+                      {isActive ? <span className="text-teal"> active</span> : ''}
+                    </p>
+                  </div>
+                </button>
+                <VisibilityChip
+                  isPublic={g.isPublic}
+                  disabled={visBusyId === g.id}
+                  onToggle={() => void handleToggleGroupVisibility(g)}
+                  ariaLabel={
+                    g.isPublic
+                      ? `Hide ${g.name} from your public profile`
+                      : `Show ${g.name} on your public profile`
+                  }
+                />
+              </div>
             )
           })}
           <button
@@ -318,6 +325,121 @@ export function ProfileScreen({
             <span className="text-[14px]">Create another group</span>
           </button>
         </div>
+        <p className="mt-2 px-2 text-[11px] leading-snug text-muted">
+          Public groups show on your profile when friends look you up. Everything starts
+          private.
+        </p>
+      </section>
+
+      {/* ---- playlists ---- */}
+      <section className="mp-rise mt-7" style={{ animationDelay: '120ms' }}>
+        <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+          Playlists
+        </p>
+        {playlists.length > 0 && (
+          <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
+            {playlists.map((p) => (
+              <PlaylistCard
+                key={p.id}
+                name={p.name}
+                itemCount={p.itemCount}
+                posters={p.posters}
+                description={p.description}
+                visibility={p.isPublic ? 'public' : 'private'}
+                onOpen={() => onOpenPlaylist(p.id)}
+              />
+            ))}
+          </div>
+        )}
+        {playlists.length === 0 && !newListOpen && (
+          <p className="px-1 text-[13px] leading-snug text-muted">
+            Build watchlists and themed shelves: rainy day comfort films, horror for
+            October, films to argue about. Private until you say otherwise.
+          </p>
+        )}
+        {newListOpen ? (
+          <div className="mt-3 flex items-center gap-1.5">
+            <input
+              type="text"
+              autoFocus
+              maxLength={80}
+              placeholder="Playlist name…"
+              value={newListName}
+              onChange={(e) => setNewListName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void handleCreatePlaylist()}
+              className={`flex-1 ${fieldClassSm}`}
+            />
+            <button
+              type="button"
+              disabled={listBusy || newListName.trim().length === 0}
+              onClick={() => void handleCreatePlaylist()}
+              className="shrink-0 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-[12px] font-semibold text-teal disabled:opacity-50"
+            >
+              {listBusy ? 'Creating…' : 'Create'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setNewListOpen(false)
+                setNewListName('')
+              }}
+              aria-label="Cancel"
+              className="shrink-0 rounded-full px-2 py-2 font-mono text-[10px] uppercase text-muted hover:text-text"
+            >
+              ✕
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setNewListOpen(true)}
+            className="mt-3 w-full rounded-xl border border-dashed border-line px-3 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+          >
+            + New playlist
+          </button>
+        )}
+      </section>
+
+      {/* ---- friends: everyone you share a group with ---- */}
+      <section className="mp-rise mt-7" style={{ animationDelay: '140ms' }}>
+        <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+          Friends
+        </p>
+        {friends.length === 0 ? (
+          <p className="px-1 text-[13px] leading-snug text-muted">
+            Friends are the people in your groups. Add someone to a group and they show
+            up here.
+          </p>
+        ) : (
+          <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
+            {friends.map((f) => (
+              <button
+                key={f.userId}
+                type="button"
+                onClick={() => onOpenUser(f.userId)}
+                className="group flex w-full items-center gap-3 px-5 py-3 text-left"
+              >
+                <span
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[13px] font-bold text-bg transition-transform group-active:scale-95"
+                  style={{ backgroundColor: colorForUser(f.userId) }}
+                >
+                  {f.displayName.charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-medium transition-colors group-hover:text-teal">
+                    {f.displayName}
+                  </p>
+                  <p className="truncate font-mono text-[10px] text-muted">
+                    {f.sharedGroups.join(', ')}
+                  </p>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted transition-colors group-hover:text-teal" aria-hidden>
+                  <path d="m9 5 7 7-7 7" />
+                </svg>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* ---- reviewed ---- */}

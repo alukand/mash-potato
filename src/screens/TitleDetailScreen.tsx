@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
+  addTitleToPlaylist,
   backdropUrl,
+  createPlaylist,
   createSession,
   deleteGlobalRating,
   fetchCommunityHistogram,
@@ -9,10 +11,13 @@ import {
   fetchGroupRubrics,
   fetchLatestSession,
   fetchMyGlobalRating,
+  fetchMyPlaylists,
+  fetchMyPlaylistsContaining,
   fetchSavedTitleId,
   fetchTitleDetail,
   fetchTitleHistory,
   posterUrl,
+  removeTitleFromPlaylist,
   saveGlobalRating,
   saveTitle,
   unsaveTitle,
@@ -20,6 +25,7 @@ import {
 import type {
   CommunityScore,
   GroupInfo,
+  PlaylistSummary,
   SessionInfo,
   TitleDetail,
   TitleHistoryEntry,
@@ -40,7 +46,7 @@ import type { MemberRubric } from '../lib/rubricCatalog'
 import { scoreColor, scoreWord } from '../lib/scoreColor'
 import { CommunityHistogram } from '../components/CommunityHistogram'
 import { RubricReceipt } from '../components/RubricReceipt'
-import { CtaButton } from '../components/ui'
+import { CtaButton, fieldClassSm } from '../components/ui'
 
 // The default rubric everyone's solo/community rating uses.
 const SOLO_RUBRIC = defaultRubricEntries()
@@ -102,12 +108,103 @@ export function TitleDetailScreen({
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // ---- add to playlist (lazy: loads when the disclosure opens) ----
+  const [listsOpen, setListsOpen] = useState(false)
+  const [myLists, setMyLists] = useState<PlaylistSummary[] | null>(null)
+  const [containing, setContaining] = useState<Map<string, string>>(new Map())
+  const [listBusyId, setListBusyId] = useState<string | null>(null)
+  const [newListName, setNewListName] = useState('')
+
+  async function refreshLists() {
+    const [lists, holds] = await Promise.all([
+      fetchMyPlaylists(userId),
+      fetchMyPlaylistsContaining(userId, tmdbId, mediaType),
+    ])
+    setMyLists(lists)
+    setContaining(holds)
+  }
+
+  function toggleListsOpen() {
+    const next = !listsOpen
+    setListsOpen(next)
+    if (next && myLists === null) void refreshLists().catch(() => setMyLists([]))
+  }
+
+  async function handleToggleList(playlistId: string) {
+    if (!detail) return
+    setListBusyId(playlistId)
+    setError(null)
+    try {
+      // Patch local state instead of refetching everything: this sheet only
+      // renders names, counts, and membership, all derivable from the toggle.
+      const titleId = containing.get(playlistId)
+      if (titleId) {
+        await removeTitleFromPlaylist(playlistId, titleId)
+        setContaining((prev) => {
+          const next = new Map(prev)
+          next.delete(playlistId)
+          return next
+        })
+        setMyLists((prev) =>
+          prev?.map((l) =>
+            l.id === playlistId ? { ...l, itemCount: Math.max(0, l.itemCount - 1) } : l,
+          ) ?? prev,
+        )
+      } else {
+        const addedId = await addTitleToPlaylist(playlistId, {
+          name: detail.name,
+          year: detail.year,
+          mediaType: detail.mediaType,
+          tmdbId: detail.tmdbId,
+          posterPath: detail.posterPath,
+        })
+        setContaining((prev) => new Map(prev).set(playlistId, addedId))
+        setMyLists((prev) =>
+          prev?.map((l) => (l.id === playlistId ? { ...l, itemCount: l.itemCount + 1 } : l)) ??
+          prev,
+        )
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update that playlist')
+    } finally {
+      setListBusyId(null)
+    }
+  }
+
+  async function handleCreateListWithTitle() {
+    // Enter in the name field lands here too; the busy check is the guard
+    // the disabled button can't provide.
+    if (!detail || listBusyId !== null) return
+    const name = newListName.trim()
+    if (name.length === 0) return
+    setListBusyId('new')
+    setError(null)
+    try {
+      const id = await createPlaylist(userId, name)
+      await addTitleToPlaylist(id, {
+        name: detail.name,
+        year: detail.year,
+        mediaType: detail.mediaType,
+        tmdbId: detail.tmdbId,
+        posterPath: detail.posterPath,
+      })
+      setNewListName('')
+      await refreshLists()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create the playlist')
+    } finally {
+      setListBusyId(null)
+    }
+  }
+
   useEffect(() => {
     let cancelled = false
     setDetail(undefined)
     setNotFound(false)
     setRating(false)
     setExcludedAddOns(new Set())
+    setListsOpen(false)
+    setMyLists(null)
     Promise.all([
       fetchTitleDetail(tmdbId, mediaType),
       fetchSavedTitleId(userId, tmdbId, mediaType),
@@ -117,8 +214,11 @@ export function TitleDetailScreen({
       fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
       fetchMyGlobalRating(userId, tmdbId, mediaType),
       fetchCommunityHistogram(tmdbId, mediaType, DEFAULT_WEIGHTS),
+      fetchMyPlaylistsContaining(userId, tmdbId, mediaType).catch(
+        () => new Map<string, string>(),
+      ),
     ])
-      .then(([d, savedId, hist, latestSession, rubricRows, comm, mine, histogram]) => {
+      .then(([d, savedId, hist, latestSession, rubricRows, comm, mine, histogram, holds]) => {
         if (cancelled) return
         setDetail(d)
         setNotFound(d === null)
@@ -129,6 +229,7 @@ export function TitleDetailScreen({
         setCommunity(comm)
         setMyScores(mine)
         setCommunityBins(histogram)
+        setContaining(holds)
       })
       .catch((err) => {
         if (!cancelled) {
@@ -469,6 +570,89 @@ export function TitleDetailScreen({
               {savedTitleId ? 'Saved' : 'Save'}
             </button>
           </div>
+
+          {/* ---- add to a playlist ---- */}
+          <button
+            type="button"
+            onClick={toggleListsOpen}
+            aria-expanded={listsOpen}
+            className={`flex w-full items-center justify-center gap-1.5 rounded-full border py-2.5 text-[13px] font-semibold transition-colors ${
+              containing.size > 0
+                ? 'border-teal/40 bg-teal/10 text-teal'
+                : 'border-line text-muted hover:border-teal/50 hover:text-text'
+            }`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="M3 9h18M8 5v14" />
+            </svg>
+            {containing.size > 0
+              ? `In ${containing.size} playlist${containing.size === 1 ? '' : 's'}`
+              : 'Add to a playlist'}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 transition-transform ${listsOpen ? 'rotate-180' : ''}`} aria-hidden>
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          {listsOpen && (
+            <div className="mp-card rounded-2xl p-3">
+              {myLists === null ? (
+                <p className="px-1 py-1 text-[12px] text-muted">Loading…</p>
+              ) : (
+                <>
+                  {myLists.map((p) => {
+                    const held = containing.has(p.id)
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        disabled={listBusyId !== null}
+                        onClick={() => void handleToggleList(p.id)}
+                        className="group flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left disabled:opacity-60"
+                      >
+                        <span
+                          className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${
+                            held ? 'border-teal bg-teal text-bg' : 'border-line text-transparent'
+                          }`}
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="m4.5 12.5 5 5 10-11" />
+                          </svg>
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium transition-colors group-hover:text-teal">
+                          {p.name}
+                          <span className="tabular ml-2 font-mono text-[10px] font-normal text-muted">
+                            {p.itemCount}
+                          </span>
+                        </span>
+                        {listBusyId === p.id && (
+                          <span className="font-mono text-[9px] uppercase text-muted">…</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                  <div className="mt-1.5 flex items-center gap-1.5 border-t border-line/50 pt-2.5">
+                    <input
+                      type="text"
+                      maxLength={80}
+                      placeholder="New playlist…"
+                      value={newListName}
+                      onChange={(e) => setNewListName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && void handleCreateListWithTitle()}
+                      className={`${fieldClassSm} flex-1`}
+                    />
+                    <button
+                      type="button"
+                      disabled={listBusyId !== null || newListName.trim().length === 0}
+                      onClick={() => void handleCreateListWithTitle()}
+                      className="shrink-0 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-[12px] font-semibold text-teal disabled:opacity-50"
+                    >
+                      {listBusyId === 'new' ? 'Adding…' : 'Create'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ---- community rating (solo, default rubric) ---- */}
@@ -676,12 +860,27 @@ export function TitleDetailScreen({
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <span className="tabular font-display text-[26px] font-semibold leading-none text-teal">
-                        {formatScore(mashed)}
-                      </span>
-                      <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-teal">
-                        Mashed
-                      </p>
+                      {mashed === null ? (
+                        // Sealed for you: lock, never a bare dash (DESIGN.md).
+                        <>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="ml-auto text-muted" aria-hidden>
+                            <rect x="4" y="10" width="16" height="11" rx="2.5" />
+                            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                          </svg>
+                          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
+                            Sealed
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <span className="tabular font-display text-[26px] font-semibold leading-none text-teal">
+                            {formatScore(mashed)}
+                          </span>
+                          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-teal">
+                            Mashed
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
                 )

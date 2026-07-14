@@ -73,16 +73,20 @@ values ('99999999-9999-9999-9999-999999999999', 'Test Crew',
         'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
 
 do $$
-declare c int; humor_w int;
+declare c int; humor_w int; ei_w int;
 begin
+  -- The preset's 2 rows land at their own weights, and the 6 base categories
+  -- the preset lacks join at defaults (base coverage: 2 + 6 = 8 rows).
   select count(*) into c from public.member_rubrics
     where user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
   select weight into humor_w from public.member_rubrics
     where user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and category_key = 'humor';
-  if c <> 2 or humor_w <> 30 then
-    raise exception 'FAIL 5: favorite not seeded on join (rows=%, humor=%)', c, humor_w;
+  select weight into ei_w from public.member_rubrics
+    where user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and category_key = 'emotionalImpact';
+  if c <> 8 or humor_w <> 30 or ei_w <> 25 then
+    raise exception 'FAIL 5: favorite not seeded with base coverage (rows=%, humor=%, emotionalImpact=%)', c, humor_w, ei_w;
   end if;
-  raise notice 'PASS 5: joining a group submits the favorite rubric (2 rows, humor 30)';
+  raise notice 'PASS 5: joining a group submits the favorite rubric plus base coverage (8 rows)';
 end $$;
 
 do $$ begin raise notice '=== ALL 5 USER-RUBRICS ASSERTIONS PASSED ==='; end $$;
