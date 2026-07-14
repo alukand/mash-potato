@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
   addMember,
@@ -28,6 +28,7 @@ import { DEFAULT_WEIGHTS, RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from 
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
 import { CtaButton, GroupMark, fieldClass, fieldClassSm } from '../components/ui'
+import { CategoryLegend } from '../components/CategoryLegend'
 import { GroupLog } from '../components/GroupLog'
 import { PosterShelf } from '../components/PosterShelf'
 import { SessionPanel } from '../components/SessionPanel'
@@ -104,6 +105,7 @@ export function GroupScreen({
 
   // ---- manage group (rename / remove / leave / delete) ----
   const [manageOpen, setManageOpen] = useState(false)
+  const manageRef = useRef<HTMLElement | null>(null)
   const [newName, setNewName] = useState(group.name)
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
   const [confirmEnd, setConfirmEnd] = useState(false) // leave (member) / delete (owner)
@@ -303,6 +305,19 @@ export function GroupScreen({
     }
   }
 
+  // The gear next to the switcher: open the settings panel and bring it into
+  // view (it lives in the admin corner at the bottom of the tab).
+  function openSettings() {
+    setManageOpen(true)
+    setConfirmRemoveId(null)
+    setConfirmEnd(false)
+    setManageError(null)
+    setNewName(group.name)
+    requestAnimationFrame(() =>
+      manageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    )
+  }
+
   const dirty = rows !== null && saved !== null && JSON.stringify(rows) !== JSON.stringify(saved)
   const enabledRows = (rows ?? []).filter((r) => r.enabled)
   const total = enabledRows.reduce((sum, r) => sum + r.weight, 0)
@@ -356,35 +371,49 @@ export function GroupScreen({
   return (
     <>
       {/* ---- your groups: pick which one you're looking at ---- */}
-      <div className="mp-rise -mx-5 mb-5 flex gap-1.5 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {groups.map((g) => {
-          const active = g.id === group.id
-          return (
-            <button
-              key={g.id}
-              type="button"
-              onClick={() => !active && onSwitchGroup(g.id)}
-              className={`flex shrink-0 items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3.5 text-[12px] font-semibold transition-colors ${
-                active
-                  ? 'border-teal/50 bg-teal/10 text-teal'
-                  : 'border-line bg-surface-2 text-muted hover:text-text'
-              }`}
-            >
-              <GroupMark groupId={g.id} name={g.name} size={22} />
-              {g.name}
-            </button>
-          )
-        })}
+      <div className="mp-rise -mx-5 mb-5 flex items-center gap-2 px-5">
+        <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {groups.map((g) => {
+            const active = g.id === group.id
+            return (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => !active && onSwitchGroup(g.id)}
+                className={`flex shrink-0 items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3.5 text-[12px] font-semibold transition-colors ${
+                  active
+                    ? 'border-teal/50 bg-teal/10 text-teal'
+                    : 'border-line bg-surface-2 text-muted hover:text-text'
+                }`}
+              >
+                <GroupMark groupId={g.id} name={g.name} size={22} />
+                {g.name}
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            onClick={onCreateGroup}
+            aria-label="Create a group"
+            className="flex shrink-0 items-center gap-1 rounded-full border border-dashed border-line px-3 py-2 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New
+          </button>
+        </div>
+        {/* pinned: this group's settings (rename, members, leave/delete) */}
         <button
           type="button"
-          onClick={onCreateGroup}
-          aria-label="Create a group"
-          className="flex shrink-0 items-center gap-1 rounded-full border border-dashed border-line px-3 py-2 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+          onClick={openSettings}
+          aria-label={`${group.name} settings`}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:border-teal/50 hover:text-text"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
-            <path d="M12 5v14M5 12h14" />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="3.2" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z" />
           </svg>
-          New
         </button>
       </div>
 
@@ -444,10 +473,11 @@ export function GroupScreen({
             ))
           )}
         </div>
-        <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
+        <p className="mt-3 px-2 text-[13px] leading-snug text-muted">
           The average of {others.length + 1} rubric{others.length === 0 ? '' : 's'}: a category
           someone doesn't carry counts as 0 for them, so lone picks weigh less.
         </p>
+        <CategoryLegend entries={effective} className="mt-3 px-2" />
         <button
           type="button"
           onClick={() => setEditOpen((o) => !o)}
@@ -564,7 +594,7 @@ export function GroupScreen({
         )}
 
         {error && (
-          <p role="alert" className="mt-3 px-2 text-[12px] leading-snug text-coral">
+          <p role="alert" className="mt-3 px-2 text-[13px] leading-snug text-coral">
             {error}
           </p>
         )}
@@ -670,7 +700,7 @@ export function GroupScreen({
               + Save current as a preset
             </button>
           )}
-          <p className="mt-2 px-1 text-[11px] leading-snug text-muted">
+          <p className="mt-2 px-1 text-[12px] leading-snug text-muted">
             Your ★ favorite is the rubric you bring when you join or create a group.
           </p>
         </div>
@@ -689,15 +719,15 @@ export function GroupScreen({
             {busy ? 'Saving…' : 'Save your rubric'}
           </CtaButton>
         )}
-        <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
+        <p className="mt-3 px-2 text-[13px] leading-snug text-muted">
           Every member sets their own rubric; the group scores with the mash of everyone's,
           above. New sessions use it, and past reveals keep the rubric they were scored under.
         </p>
       </section>
       )}
 
-      {/* ---- Members + manage: the admin corner, deliberately last ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '180ms' }}>
+      {/* ---- Members + settings: the admin corner, deliberately last ---- */}
+      <section ref={manageRef} className="mp-rise mt-7 scroll-mt-4" style={{ animationDelay: '180ms' }}>
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
             Members <span className="tabular ml-1 font-mono text-[10px]">{members.length || ''}</span>
@@ -712,11 +742,17 @@ export function GroupScreen({
               setNewName(group.name)
             }}
             aria-expanded={manageOpen}
-            className={`font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
-              manageOpen ? 'text-teal' : 'text-muted hover:text-text'
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
+              manageOpen
+                ? 'border-teal/40 bg-teal/10 text-teal'
+                : 'border-line text-muted hover:text-text'
             }`}
           >
-            {manageOpen ? 'Done' : 'Manage'}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="12" r="3.2" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z" />
+            </svg>
+            {manageOpen ? 'Done' : 'Settings'}
           </button>
         </div>
         <div className="mp-card rounded-[26px] px-4">
@@ -770,7 +806,7 @@ export function GroupScreen({
                   </div>
                   {removable && confirmRemoveId === m.userId && (
                     <div className="mt-2.5 flex items-center justify-between gap-3 rounded-2xl border border-coral/30 bg-coral/5 px-3.5 py-2.5">
-                      <p className="text-[12px] leading-snug text-muted">
+                      <p className="text-[13px] leading-snug text-muted">
                         Remove {m.displayName}? Their scores on past reveals stay in the log.
                       </p>
                       <div className="flex shrink-0 items-center gap-1.5">
@@ -856,7 +892,7 @@ export function GroupScreen({
                   </ul>
                 )}
                 {query.trim().length >= 2 && !searching && results.length === 0 && (
-                  <p className="mt-2 px-1 text-[12px] leading-snug text-muted">
+                  <p className="mt-2 px-1 text-[13px] leading-snug text-muted">
                     Nobody by that name yet. They need a Mash Potato account first: have them
                     sign up, then search again.
                   </p>
@@ -916,7 +952,7 @@ export function GroupScreen({
                 <p className="text-[13px] font-semibold leading-snug">
                   {isOwner ? `Delete ${group.name} for everyone?` : `Leave ${group.name}?`}
                 </p>
-                <p className="mt-1 text-[12px] leading-snug text-muted">
+                <p className="mt-1 text-[13px] leading-snug text-muted">
                   {isOwner
                     ? 'Every round, reveal, and rubric goes with it. There is no undo.'
                     : 'Your scores on past reveals stay. The owner can add you back later.'}
@@ -948,12 +984,12 @@ export function GroupScreen({
             )}
 
             {isOwner && (
-              <p className="mt-2 px-2 text-[11px] leading-snug text-muted">
+              <p className="mt-2 px-2 text-[12px] leading-snug text-muted">
                 Owners can't leave their own group; deleting it is the way out.
               </p>
             )}
             {manageError && (
-              <p role="alert" className="mt-2 px-2 text-[12px] leading-snug text-coral">
+              <p role="alert" className="mt-2 px-2 text-[13px] leading-snug text-coral">
                 {manageError}
               </p>
             )}
@@ -961,7 +997,7 @@ export function GroupScreen({
         )}
 
         {!isOwner && !manageOpen && (
-          <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
+          <p className="mt-3 px-2 text-[13px] leading-snug text-muted">
             Only the group owner can add members.
           </p>
         )}

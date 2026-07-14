@@ -90,7 +90,7 @@ export function RubricReceipt({
         })}
       </div>
       {genreCount > 0 && (
-        <p className="mt-2 px-1 text-[11px] leading-snug text-muted">
+        <p className="mt-2 px-1 text-[12px] leading-snug text-muted">
           {onToggleGenre
             ? 'Added for this title’s genres. Tap one to leave it out tonight.'
             : 'Teal categories were added for this title’s genres.'}

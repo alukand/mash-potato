@@ -65,7 +65,7 @@ export function CreateGroupScreen({ userId, onCreated, onBack }: CreateGroupScre
           />
 
           {error && (
-            <p role="alert" className="mt-3 text-[12px] leading-snug text-coral">
+            <p role="alert" className="mt-3 text-[13px] leading-snug text-coral">
               {error}
             </p>
           )}
@@ -81,7 +81,7 @@ export function CreateGroupScreen({ userId, onCreated, onBack }: CreateGroupScre
 
         {!onBack && (
           <p
-            className="mp-rise mt-5 text-center text-[12px] leading-snug text-muted"
+            className="mp-rise mt-5 text-center text-[13px] leading-snug text-muted"
             style={{ animationDelay: '120ms' }}
           >
             Joining a friend's group instead? Ask them to add you; they can find you by your

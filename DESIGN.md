@@ -172,6 +172,26 @@ chips share one vocabulary: globe + teal = public, lock + muted = private.
 
 ## Changelog
 
+- 2026-07-14 (invite picker + settings): "Invite" never assumes the active
+  group anymore. GroupInviteSheet (bottom-sheet dialog) opens from TitleDetail
+  and Rate: recently engaged groups float to the top (mp.recentGroupIds MRU,
+  touched on switch and round start), the list is searchable past 4 groups,
+  and picking a group shows THAT group's rubric receipt (genre opt-outs,
+  live-blind-round guard) before the round starts; starting switches the app
+  to that group. Group settings got discoverable: a pinned gear next to the
+  switcher opens the admin corner (rename, add/remove members, leave, delete)
+  and the tiny "Manage" text became a gear-labelled Settings pill.
+- 2026-07-13 (clarity pass): score readouts are "N/10" everywhere via the
+  shared ScoreSliderRow (ui.tsx, one recipe for all five scoring surfaces).
+  CategoryLegend disclosure ("What the categories mean", catalog blurbs) on
+  Rate, the Group rubric, and the solo panel. TitleDetail's group verdicts
+  gain an "All your groups / Combined" row (mean of visible Mashed, 2+
+  verdicts). Notification taps deep-link to the group's round (ID-only
+  routing keys in the APNs payload; send-push v6). Reading-copy floor
+  raised one step (11→12, 12→13; mono micro-labels untouched). First run:
+  five swipeable onboarding slides (state-driven transform carousel)
+  replace the forced create-group gate; the app opens group-less with
+  NoGroupYet cards on Rate and Group.
 - 2026-07-13 (review pass): 8-angle code review over the uncommitted work,
   10 confirmed findings fixed. Reveal quorum is now RSVP-aware (a round
   everyone else passed on reveals with one card; unanswered invites hold it

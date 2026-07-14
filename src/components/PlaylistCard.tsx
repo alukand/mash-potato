@@ -60,7 +60,7 @@ export function PlaylistCard({
           </span>
         </p>
         {description && (
-          <p className="mt-0.5 truncate text-[12px] leading-snug text-muted">{description}</p>
+          <p className="mt-0.5 truncate text-[13px] leading-snug text-muted">{description}</p>
         )}
       </div>
       {/* Static span variant: this whole card is already a button. */}

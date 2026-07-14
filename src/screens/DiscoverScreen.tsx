@@ -157,7 +157,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
   return (
     <div className="flex flex-col gap-6">
       <section className="mp-rise">
-        <p className="mb-3 px-1 text-[12px] leading-snug text-muted">
+        <p className="mb-3 px-1 text-[13px] leading-snug text-muted">
           Look up any film or show: rate it solo on the standard rubric and see how it stacks up
           against everyone else on Mash Potato.
         </p>
@@ -211,7 +211,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
         </div>
         {searching && <p className="mt-1 px-1 font-mono text-[10px] text-muted">searching…</p>}
         {textActive && hasFilters && (
-          <p className="mt-1 px-1 text-[11px] leading-snug text-muted">
+          <p className="mt-1 px-1 text-[12px] leading-snug text-muted">
             Showing text matches. Clear the search box to browse by filters.
           </p>
         )}
@@ -373,7 +373,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
         </div>
       )}
 
-      <p className="px-2 text-center text-[12px] leading-snug text-muted">
+      <p className="px-2 text-center text-[13px] leading-snug text-muted">
         Browse &amp; search powered by{' '}
         <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" className="text-teal">
           TMDB

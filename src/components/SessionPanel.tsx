@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { CSSProperties } from 'react'
 import { analyze, categoryStat, formatScore } from '../lib/scoring'
 import type { CategoryScores, MemberScorecard } from '../lib/scoring'
-import { scoreColor, scoreWord } from '../lib/scoreColor'
+import { scoreColor } from '../lib/scoreColor'
 import { weightsFromRubric } from '../lib/mapping'
 import {
   backfillCategoryScore,
@@ -20,7 +19,7 @@ import { participation } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
 import { catalogCategory, mashRubrics } from '../lib/rubricCatalog'
 import type { MemberRubric } from '../lib/rubricCatalog'
-import { CtaButton } from './ui'
+import { CtaButton, ScoreSliderRow } from './ui'
 import { RubricReceipt } from './RubricReceipt'
 import { ScoreRing } from './ScoreRing'
 import { MashMath } from './MashMath'
@@ -289,42 +288,16 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
         {lateOpen ? (
           <>
             <div className="mt-2">
-              {sealedRubric.map((entry) => {
-                const value = lateScores[entry.key] ?? 5
-                const color = scoreColor(value)
-                return (
-                  <div key={entry.key} className="border-t border-line/40 py-3">
-                    <div className="flex items-baseline justify-between">
-                      <p className="text-[13px] font-medium leading-tight">{entry.label}</p>
-                      <span className="flex items-baseline gap-1.5">
-                        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
-                          {scoreWord(value)}
-                        </span>
-                        <span className="tabular font-mono text-lg font-bold" style={{ color }}>
-                          {value}
-                        </span>
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={1}
-                      max={10}
-                      step={1}
-                      value={value}
-                      disabled={lateBusy}
-                      aria-label={`${entry.label} score`}
-                      onChange={(e) =>
-                        setLateScores((prev) => ({
-                          ...prev,
-                          [entry.key]: Number(e.target.value),
-                        }))
-                      }
-                      className="mp-slider mt-1"
-                      style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
-                    />
-                  </div>
-                )
-              })}
+              {sealedRubric.map((entry) => (
+                <ScoreSliderRow
+                  key={entry.key}
+                  className="border-t border-line/40 py-3"
+                  label={entry.label}
+                  value={lateScores[entry.key] ?? 5}
+                  disabled={lateBusy}
+                  onChange={(v) => setLateScores((prev) => ({ ...prev, [entry.key]: v }))}
+                />
+              ))}
             </div>
             <CtaButton
               tone="teal"
@@ -354,7 +327,7 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
           </CtaButton>
         )}
         {actionError && (
-          <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
+          <p role="alert" className="mt-2 text-[13px] leading-snug text-coral">
             {actionError}
           </p>
         )}
@@ -486,7 +459,7 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
           </ul>
         </div>
 
-        <p className="mt-3 text-center text-[11px] leading-snug text-muted">
+        <p className="mt-3 text-center text-[12px] leading-snug text-muted">
           <span className="font-semibold text-teal">Mashed</span> is your group's weighted
           average: everyone's locked scores, combined.
         </p>
@@ -515,49 +488,23 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
           <p className="text-[14px] font-semibold leading-snug">
             You haven't scored this one
           </p>
-          <p className="mt-1 text-[12px] leading-snug text-muted">
+          <p className="mt-1 text-[13px] leading-snug text-muted">
             The Mashed is the score so far. Add yours anytime and it recomputes with you
             in it.
           </p>
           {lateOpen ? (
             <>
               <div className="mt-2">
-                {rubric.map((entry) => {
-                  const value = lateScores[entry.key] ?? 5
-                  const color = scoreColor(value)
-                  return (
-                    <div key={entry.key} className="border-t border-line/40 py-3">
-                      <div className="flex items-baseline justify-between">
-                        <p className="text-[13px] font-medium leading-tight">{entry.label}</p>
-                        <span className="flex items-baseline gap-1.5">
-                          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
-                            {scoreWord(value)}
-                          </span>
-                          <span className="tabular font-mono text-lg font-bold" style={{ color }}>
-                            {value}
-                          </span>
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={1}
-                        max={10}
-                        step={1}
-                        value={value}
-                        disabled={lateBusy}
-                        aria-label={`${entry.label} score`}
-                        onChange={(e) =>
-                          setLateScores((prev) => ({
-                            ...prev,
-                            [entry.key]: Number(e.target.value),
-                          }))
-                        }
-                        className="mp-slider mt-1"
-                        style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
-                      />
-                    </div>
-                  )
-                })}
+                {rubric.map((entry) => (
+                  <ScoreSliderRow
+                    key={entry.key}
+                    className="border-t border-line/40 py-3"
+                    label={entry.label}
+                    value={lateScores[entry.key] ?? 5}
+                    disabled={lateBusy}
+                    onChange={(v) => setLateScores((prev) => ({ ...prev, [entry.key]: v }))}
+                  />
+                ))}
               </div>
               <CtaButton
                 tone="teal"
@@ -587,7 +534,7 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
             </CtaButton>
           )}
           {actionError && (
-            <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
+            <p role="alert" className="mt-2 text-[13px] leading-snug text-coral">
               {actionError}
             </p>
           )}
@@ -600,39 +547,18 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-teal">
             The rubric grew
           </p>
-          <p className="mt-1.5 text-[12px] leading-snug text-muted">
+          <p className="mt-1.5 text-[13px] leading-snug text-muted">
             New categor{missingKeys.length === 1 ? 'y' : 'ies'} since this reveal. Add your
             take and the Mashed updates; scores already locked never change.
           </p>
           {missingKeys.map((key) => {
-            const value = backfillValues[key] ?? 5
-            const color = scoreColor(value)
             return (
               <div key={key} className="mt-3 border-t border-line/40 pt-3">
-                <div className="flex items-baseline justify-between">
-                  <p className="text-[13px] font-medium leading-tight">{labelForAny(key)}</p>
-                  <span className="flex items-baseline gap-1.5">
-                    <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
-                      {scoreWord(value)}
-                    </span>
-                    <span className="tabular font-mono text-lg font-bold" style={{ color }}>
-                      {value}
-                    </span>
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={value}
+                <ScoreSliderRow
+                  label={labelForAny(key)}
+                  value={backfillValues[key] ?? 5}
                   disabled={backfillBusy !== null}
-                  aria-label={`${labelForAny(key)} score`}
-                  onChange={(e) =>
-                    setBackfillValues((prev) => ({ ...prev, [key]: Number(e.target.value) }))
-                  }
-                  className="mp-slider mt-1"
-                  style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
+                  onChange={(v) => setBackfillValues((prev) => ({ ...prev, [key]: v }))}
                 />
                 <button
                   type="button"
@@ -646,7 +572,7 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
             )
           })}
           {actionError && (
-            <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
+            <p role="alert" className="mt-2 text-[13px] leading-snug text-coral">
               {actionError}
             </p>
           )}

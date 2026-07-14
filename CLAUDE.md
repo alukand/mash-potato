@@ -93,15 +93,18 @@ fine client-side.
   rounds w/ inline RSVP + latest reveals + trending; group-agnostic),
   Discover (TMDB browse/filters), TitleDetail (+ add-to-playlist sheet),
   Profile (editable display name, groups w/ visibility toggles, playlists,
-  friends, poster grids, JSON export), Rate (search → invite the group
-  → blind scoring → lock → reveal), Group (group switcher → SessionPanel
+  friends, poster grids, JSON export), Rate (search → invite → blind scoring
+  → lock → reveal), Group (group switcher + pinned settings gear → SessionPanel
   [blind progress / the full Reveal] → log w/ avg+best strip → mashed rubric
   with a collapsed per-member editor → members + Manage: rename / remove
   member / leave / delete, all via existing RLS — no schema changes). Every
   round is an invite (RSVP shows for groups of 2+; the header has no group
-  chip — switching is Group-tab only). Shared UI recipes (fieldClass,
-  CtaButton, GroupMark, VisibilityChip) live in `src/components/ui.tsx`; the
-  design system is documented in `DESIGN.md`.
+  chip — switching is Group-tab only). First run shows OnboardingSlides once
+  (`mp.onboarded`), then the app opens GROUP-LESS (Home/Discover work;
+  Rate/Group show NoGroupYet cards) — no forced create-group gate. Shared UI
+  recipes (fieldClass, CtaButton, GroupMark, VisibilityChip, ScoreSliderRow —
+  the one score-slider row, "N/10" readout) live in `src/components/ui.tsx`;
+  the design system is documented in `DESIGN.md`.
 - Push notifications (APNs-direct; FCM slots in when Android ships):
   `device_tokens` (self-only RLS; `register_device_token` RPC handles device
   hand-me-downs), `notification_config` (service-only singleton; EMPTY row =

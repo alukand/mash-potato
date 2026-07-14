@@ -138,6 +138,7 @@ async function sendApns(
   title: string,
   body: string,
   threadId: string,
+  data: Record<string, string>,
 ): Promise<'sent' | 'pruned' | 'failed'> {
   const res = await fetch(`${APNS_HOST}/3/device/${token}`, {
     method: 'POST',
@@ -148,7 +149,10 @@ async function sendApns(
       'apns-priority': '10',
     },
     body: JSON.stringify({
+      // Custom keys are ID-ONLY routing data (never score values): the app
+      // uses them to land a notification tap on the right group's round.
       aps: { alert: { title, body }, sound: 'default', 'thread-id': threadId },
+      ...data,
     }),
   })
   if (res.ok) return 'sent'
@@ -214,8 +218,10 @@ async function composeAndSend(evt: PushEvent) {
   const tokens = await tokensFor(recipients)
   if (tokens.length === 0) return { sent: 0, note: 'no registered devices' }
 
+  const routing: Record<string, string> = { event: evt.event, group_id: evt.group_id }
+  if (evt.session_id) routing.session_id = evt.session_id
   const results = await Promise.all(
-    tokens.map((t) => sendApns(t.token, title, body, evt.group_id)),
+    tokens.map((t) => sendApns(t.token, title, body, evt.group_id, routing)),
   )
   return {
     sent: results.filter((r) => r === 'sent').length,

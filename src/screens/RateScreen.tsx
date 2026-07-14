@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { CSSProperties, FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { memberWeightedScore, formatScore } from '../lib/scoring'
 import type { CategoryScores } from '../lib/scoring'
-import { scoreColor, scoreWord } from '../lib/scoreColor'
 import {
-  createSession,
-  fetchGroupRubrics,
   fetchLatestSession,
   fetchLockStatus,
   fetchMyScore,
@@ -20,30 +17,27 @@ import {
 import type {
   GroupInfo,
   MemberInfo,
+  NewTitle,
   SessionInfo,
   SessionRubricEntry,
   TmdbResult,
 } from '../lib/api'
 import { weightsFromRubric } from '../lib/mapping'
-import {
-  configuredCategoryKeys,
-  defaultRubricRows,
-  mashRubrics,
-  resolveSessionRubric,
-  resolveSessionRubricTagged,
-} from '../lib/rubricCatalog'
-import type { MemberRubric } from '../lib/rubricCatalog'
 import { participation, formatWindow } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
-import { CtaButton, fieldClass } from '../components/ui'
-import { RubricReceipt } from '../components/RubricReceipt'
+import { CtaButton, ScoreSliderRow, fieldClass } from '../components/ui'
+import { GroupInviteSheet } from '../components/GroupInviteSheet'
+import { CategoryLegend } from '../components/CategoryLegend'
 
 interface RateScreenProps {
   group: GroupInfo
+  groups: GroupInfo[]
   members: MemberInfo[]
   userId: string
   onGoHome: () => void
+  /** A round started in a DIFFERENT group; the caller switches to it. */
+  onStartedInGroup: (groupId: string) => void
 }
 
 // Live blind scoring. Scores are real member_scores rows written through RLS;
@@ -54,9 +48,15 @@ interface RateScreenProps {
 const defaultScores = (rubric: SessionRubricEntry[]): CategoryScores =>
   Object.fromEntries(rubric.map((e) => [e.key, 5]))
 
-export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps) {
+export function RateScreen({
+  group,
+  groups,
+  members,
+  userId,
+  onGoHome,
+  onStartedInGroup,
+}: RateScreenProps) {
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
-  const [memberRubrics, setMemberRubrics] = useState<MemberRubric[] | null>(null)
   const [scores, setScores] = useState<CategoryScores>({})
   const [locked, setLocked] = useState(false)
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
@@ -69,12 +69,15 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
   const [titleYear, setTitleYear] = useState('')
   const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie')
   const [picked, setPicked] = useState<TmdbResult | null>(null)
-  // Genres of the picked title (drives the rubric receipt's auto add-ons);
+  // Genres of the picked title (drives the invite sheet's auto add-ons);
   // null while loading or for manual entries.
   const [pickedGenres, setPickedGenres] = useState<number[] | null>(null)
-  // Genre add-ons the round creator left out of THIS round (on/off only —
-  // base weights are never editable per movie).
-  const [excludedAddOns, setExcludedAddOns] = useState<Set<string>>(new Set())
+  // Set once Invite is pressed: the sheet picks the group (recents + search)
+  // and shows that group's rubric receipt before the round starts.
+  const [invitePayload, setInvitePayload] = useState<{
+    title: NewTitle
+    genreIds: number[]
+  } | null>(null)
 
   // Debounced TMDB search (through the Edge Function); paused once a result is
   // picked. Shared with Discover via the hook.
@@ -106,21 +109,9 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
     }
   }, [group.id, userId])
 
-  // The group's raw member rubrics: mashed for a NEW session's snapshot, and
-  // the union of configured keys keeps deliberate disables out of auto-adds.
-  useEffect(() => {
-    let cancelled = false
-    fetchGroupRubrics(group.id)
-      .then((all) => !cancelled && setMemberRubrics(all))
-      .catch(() => !cancelled && setMemberRubrics(null))
-    return () => {
-      cancelled = true
-    }
-  }, [group.id])
 
-  // Fetch the picked title's genres so the receipt can show its add-ons.
+  // Fetch the picked title's genres so the invite sheet can resolve add-ons.
   useEffect(() => {
-    setExcludedAddOns(new Set())
     if (!picked) {
       setPickedGenres(null)
       return
@@ -149,33 +140,26 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
     return () => clearInterval(id)
   }, [session, locked])
 
+  // "Invite" opens the group picker; the round itself is created there.
   async function handleCreate(e: FormEvent) {
     e.preventDefault()
+    if (busy) return
     setBusy(true)
     setError(null)
     try {
       // Genre add-ons (Humor for a comedy, Fear Factor for a horror, …) come
       // from the title's TMDB genres; manual entries have none. Usually
-      // already loaded for the receipt; fall back to fetching here.
+      // already loaded; fall back to fetching here.
       let genreIds: number[] = pickedGenres ?? []
       if (picked && pickedGenres === null) {
         try {
           genreIds = (await fetchTitleDetail(picked.tmdbId, mediaType))?.genreIds ?? []
         } catch {
-          // non-fatal: the session just starts without genre categories
+          // non-fatal: the round just starts without genre categories
         }
       }
-      const mashed = memberRubrics ? mashRubrics(memberRubrics) : []
-      const rows = mashed.length > 0 ? mashed : defaultRubricRows()
-      const configured = memberRubrics ? configuredCategoryKeys(memberRubrics) : undefined
-      const rubric = resolveSessionRubric(rows, genreIds, configured).filter(
-        (entry) => !excludedAddOns.has(entry.key),
-      )
-
-      await createSession(
-        group.id,
-        userId,
-        picked
+      setInvitePayload({
+        title: picked
           ? {
               name: picked.name,
               year: picked.year,
@@ -190,14 +174,8 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
               tmdbId: null,
               posterPath: null,
             },
-        rubric,
-      )
-      setTitleName('')
-      setTitleYear('')
-      setPicked(null)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start the session')
+        genreIds: picked ? genreIds : [],
+      })
     } finally {
       setBusy(false)
     }
@@ -267,16 +245,6 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
 
   // ---- no active blind session: start one --------------------------------
   if (session === null || session.state === 'revealed') {
-    // The receipt: what this round WILL be scored on. Base weights are the
-    // group's (read-only here, always); genre add-ons can be left out.
-    const mashedRows = memberRubrics ? mashRubrics(memberRubrics) : []
-    const receiptEntries = resolveSessionRubricTagged(
-      mashedRows.length > 0 ? mashedRows : defaultRubricRows(),
-      pickedGenres ?? [],
-      memberRubrics ? configuredCategoryKeys(memberRubrics) : undefined,
-    )
-    const manualEntry =
-      !picked && titleName.trim().length >= 2 && !searching && results.length === 0
     return (
       <>
         {session?.state === 'revealed' && (
@@ -417,24 +385,8 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
               </>
             )}
 
-            {(picked || manualEntry) && (
-              <RubricReceipt
-                entries={receiptEntries}
-                excludedKeys={excludedAddOns}
-                onToggleGenre={(key) =>
-                  setExcludedAddOns((prev) => {
-                    const next = new Set(prev)
-                    if (next.has(key)) next.delete(key)
-                    else next.add(key)
-                    return next
-                  })
-                }
-                className="mt-4 border-t border-line/60 pt-4"
-              />
-            )}
-
             {error && (
-              <p role="alert" className="mt-3 text-[12px] leading-snug text-coral">
+              <p role="alert" className="mt-3 text-[13px] leading-snug text-coral">
                 {error}
               </p>
             )}
@@ -443,10 +395,27 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
               disabled={busy || (!picked && titleName.trim().length === 0)}
               className="mt-4 w-full py-3.5 text-[14px]"
             >
-              {busy ? 'Sending…' : `Invite ${group.name} to score it blind`}
+              {busy ? 'One sec…' : 'Invite a group to score it blind'}
             </CtaButton>
           </form>
-          <p className="mt-3 px-2 text-[12px] leading-snug text-muted">
+          {invitePayload && (
+            <GroupInviteSheet
+              groups={groups}
+              userId={userId}
+              title={invitePayload.title}
+              genreIds={invitePayload.genreIds}
+              onStarted={(groupId) => {
+                setInvitePayload(null)
+                setTitleName('')
+                setTitleYear('')
+                setPicked(null)
+                if (groupId === group.id) void load()
+                else onStartedInGroup(groupId)
+              }}
+              onClose={() => setInvitePayload(null)}
+            />
+          )}
+          <p className="mt-3 px-2 text-[13px] leading-snug text-muted">
             Search powered by{' '}
             <a
               href="https://www.themoviedb.org"
@@ -497,7 +466,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
           <p className="text-[14px] font-semibold leading-snug">
             In for this one?
           </p>
-          <p className="mt-1 text-[12px] leading-snug text-muted">
+          <p className="mt-1 text-[13px] leading-snug text-muted">
             {session.titleName}: answers close in {formatWindow(part.windowRemainingMs)}; no
             answer counts as a pass. You can always jump in later.
           </p>
@@ -523,7 +492,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
       )}
       {showRsvps && myPart === 'passed' && !locked && (
         <section className="mp-rise mb-4 rounded-2xl border border-line bg-surface-2 px-4 py-3">
-          <p className="text-[12px] leading-snug text-muted">
+          <p className="text-[13px] leading-snug text-muted">
             You passed on this one. Score it below anytime to jump back in.
           </p>
         </section>
@@ -608,49 +577,27 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
 
       {/* ---- The category sliders ---- */}
       <section className="mp-rise mt-4" style={{ animationDelay: '80ms' }}>
-        <p className="mb-2 px-2 text-[11px] leading-snug text-muted">
+        <p className="mb-2 px-2 text-[13px] leading-snug text-muted">
           Score each part for what it's trying to be.
         </p>
+        <CategoryLegend entries={rubric} className="mb-3 px-2" />
         <div className="mp-card rounded-[26px] px-5 py-1">
-          {rubric.map((entry, i) => {
-            const value = scores[entry.key] ?? 5
-            const color = scoreColor(value)
-            return (
-              <div key={entry.key} className={`py-4 ${i > 0 ? 'border-t border-line/50' : ''}`}>
-                <div className="flex items-baseline justify-between">
-                  <div>
-                    <p className="text-[14px] font-medium leading-tight">{entry.label}</p>
-                    <p className="mt-0.5 font-mono text-[10px] text-muted">
-                      weight{' '}
-                      {weightTotal > 0 ? Math.round((entry.weight / weightTotal) * 100) : '—'}%
-                    </p>
-                  </div>
-                  <span className="flex items-baseline gap-1.5">
-                    <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
-                      {scoreWord(value)}
-                    </span>
-                    <span className="tabular font-mono text-xl font-bold" style={{ color }}>
-                      {value}
-                    </span>
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={value}
-                  disabled={locked || busy}
-                  aria-label={`${entry.label} score`}
-                  onChange={(e) =>
-                    setScores((prev) => ({ ...prev, [entry.key]: Number(e.target.value) }))
-                  }
-                  className="mp-slider mt-1.5"
-                  style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
-                />
-              </div>
-            )
-          })}
+          {rubric.map((entry, i) => (
+            <ScoreSliderRow
+              key={entry.key}
+              className={`py-4 ${i > 0 ? 'border-t border-line/50' : ''}`}
+              label={entry.label}
+              sub={
+                <p className="mt-0.5 font-mono text-[10px] text-muted">
+                  weight{' '}
+                  {weightTotal > 0 ? Math.round((entry.weight / weightTotal) * 100) : '—'}%
+                </p>
+              }
+              value={scores[entry.key] ?? 5}
+              disabled={locked || busy}
+              onChange={(v) => setScores((prev) => ({ ...prev, [entry.key]: v }))}
+            />
+          ))}
         </div>
       </section>
 
@@ -661,13 +608,13 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
             <rect x="4" y="10" width="16" height="11" rx="2.5" />
             <path d="M8 10V7a4 4 0 0 1 8 0v3" />
           </svg>
-          <p className="text-[12px] leading-snug text-muted">
+          <p className="text-[13px] leading-snug text-muted">
             Your ratings stay hidden from the group until the reveal.
           </p>
         </div>
 
         {error && (
-          <p role="alert" className="mt-3 px-2 text-[12px] leading-snug text-coral">
+          <p role="alert" className="mt-3 px-2 text-[13px] leading-snug text-coral">
             {error}
           </p>
         )}
@@ -719,7 +666,7 @@ export function RateScreen({ group, members, userId, onGoHome }: RateScreenProps
           </>
         )}
         {locked && canReveal && !revealQuorum && (
-          <p className="mt-3 text-center text-[12px] leading-snug text-muted">
+          <p className="mt-3 text-center text-[13px] leading-snug text-muted">
             The Reveal unlocks once someone else locks in too.
           </p>
         )}

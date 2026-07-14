@@ -9,6 +9,27 @@ import { registerDeviceToken, removeDeviceToken, signOut } from './api'
 
 let currentToken: string | null = null
 let listenersBound = false
+let openHandlerBound = false
+
+/**
+ * Bind the notification-TAP handler once, at app start and before sign-in
+ * resolves, so a cold-start tap isn't dropped. The payload's custom keys are
+ * ID-only routing data; App listens for the event and lands on the group.
+ */
+export async function bindPushOpenHandler(): Promise<void> {
+  if (!Capacitor.isNativePlatform() || openHandlerBound) return
+  openHandlerBound = true
+  try {
+    await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      const data = (action.notification.data ?? {}) as Record<string, unknown>
+      const groupId = typeof data.group_id === 'string' ? data.group_id : null
+      if (!groupId) return
+      window.dispatchEvent(new CustomEvent('mp:push-open', { detail: { groupId } }))
+    })
+  } catch {
+    // push must never break app start
+  }
+}
 
 /** Ask for permission (first run) and register this device. Never throws. */
 export async function enablePush(): Promise<void> {

@@ -103,7 +103,7 @@ export function AuthScreen() {
           </div>
 
           {error && (
-            <p role="alert" className="mt-3 text-[12px] leading-snug text-coral">
+            <p role="alert" className="mt-3 text-[13px] leading-snug text-coral">
               {error}
             </p>
           )}

@@ -5,15 +5,20 @@ import { fetchMyGroups, fetchMembers } from './lib/api'
 import type { GroupInfo, MemberInfo } from './lib/api'
 import {
   pickActiveGroup,
+  readOnboarded,
   readStoredGroupId,
   readStoredTab,
   storeGroupId,
+  storeOnboarded,
   storeTab,
+  touchRecentGroup,
 } from './lib/activeGroup'
-import { enablePush } from './lib/push'
+import { bindPushOpenHandler, enablePush } from './lib/push'
 import { colorForMember } from './lib/palette'
 import { Logo } from './components/Logo'
 import { BottomNav } from './components/BottomNav'
+import { OnboardingSlides } from './components/OnboardingSlides'
+import { CtaButton } from './components/ui'
 import type { TabId } from './components/BottomNav'
 import { AuthScreen } from './screens/AuthScreen'
 import { CreateGroupScreen } from './screens/CreateGroupScreen'
@@ -45,6 +50,31 @@ function stackKey(v: StackView): string {
   return v.kind
 }
 
+// The Rate and Group tabs need a group; before one exists they teach the two
+// ways in instead of gating the whole app.
+function NoGroupYet({
+  headline,
+  note,
+  onCreate,
+}: {
+  headline: string
+  note: string
+  onCreate: () => void
+}) {
+  return (
+    <section className="mp-rise mp-card rounded-[26px] p-6 text-center">
+      <h2 className="font-display text-[24px] font-semibold leading-tight">{headline}</h2>
+      <p className="mt-2 text-[13px] leading-snug text-muted">{note}</p>
+      <CtaButton onClick={onCreate} className="mt-5 w-full py-3 text-[14px]">
+        Create a group
+      </CtaButton>
+      <p className="mt-3 text-[13px] leading-snug text-muted">
+        Joining a friend's group instead? Ask them to add you; they can find you by your name.
+      </p>
+    </section>
+  )
+}
+
 function Splash({ note }: { note?: string }) {
   return (
     <div className="grid min-h-dvh place-items-center">
@@ -67,6 +97,11 @@ function App() {
   const [members, setMembers] = useState<MemberInfo[]>([])
   const [stack, setStack] = useState<StackView[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  // A notification tap names a group before groups have loaded; park it here.
+  const [pushTargetGroup, setPushTargetGroup] = useState<string | null>(null)
+  // First run: the slides show once per device, then the app opens group-less.
+  const [onboarded, setOnboarded] = useState(() => readOnboarded())
+  const [showCreateGroup, setShowCreateGroup] = useState(false)
 
   // The active group: the stored/selected one, else the oldest, else null.
   const group =
@@ -114,6 +149,31 @@ function App() {
   useEffect(() => {
     if (session) void enablePush()
   }, [session])
+
+  // Notification taps land on the group's round/reveal: the tap handler binds
+  // at mount (cold-start taps included) and parks the group id until the
+  // group list is ready.
+  useEffect(() => {
+    void bindPushOpenHandler()
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent<{ groupId?: string }>).detail
+      if (detail?.groupId) setPushTargetGroup(detail.groupId)
+    }
+    window.addEventListener('mp:push-open', onOpen)
+    return () => window.removeEventListener('mp:push-open', onOpen)
+  }, [])
+
+  useEffect(() => {
+    if (!pushTargetGroup || !groups) return
+    if (groups.some((g) => g.id === pushTargetGroup)) {
+      setActiveGroupId(pushTargetGroup)
+      storeGroupId(pushTargetGroup)
+      setStack([])
+      setTab('group')
+      storeTab('group')
+    }
+    setPushTargetGroup(null)
+  }, [pushTargetGroup, groups])
 
   const groupId = group?.id ?? null
   useEffect(() => {
@@ -167,6 +227,7 @@ function App() {
   function switchGroup(id: string) {
     setActiveGroupId(id)
     storeGroupId(id)
+    touchRecentGroup(id)
     setStack([])
   }
 
@@ -192,17 +253,34 @@ function App() {
   if (session === null) return <AuthScreen />
   if (groups === undefined) return <Splash note="loading your groups" />
   if (!group) {
-    // First run: no groups yet. Shown as the gate (sign-out escape hatch).
-    return (
-      <CreateGroupScreen
-        userId={session.user.id}
-        onCreated={(g) => {
-          setGroups([g])
-          setActiveGroupId(g.id)
-          storeGroupId(g.id)
-        }}
-      />
-    )
+    // First run: the slides explain the app, then the user chooses their way
+    // in. The app itself opens group-less; Rate and Group teach the next step.
+    if (!onboarded) {
+      return (
+        <OnboardingSlides
+          onDone={(createGroup) => {
+            storeOnboarded()
+            setOnboarded(true)
+            setShowCreateGroup(createGroup)
+          }}
+        />
+      )
+    }
+    if (showCreateGroup) {
+      return (
+        <CreateGroupScreen
+          userId={session.user.id}
+          onBack={() => setShowCreateGroup(false)}
+          onCreated={(g) => {
+            setGroups([g])
+            setActiveGroupId(g.id)
+            storeGroupId(g.id)
+            setShowCreateGroup(false)
+          }}
+        />
+      )
+    }
+    // fall through: the tabbed app with no active group
   }
 
   const userId = session.user.id
@@ -219,12 +297,13 @@ function App() {
               <TitleDetailScreen
                 tmdbId={top.tmdbId}
                 mediaType={top.mediaType}
-                group={group}
+                groups={groups}
                 userId={userId}
                 onBack={popView}
-                onStartedSession={() => {
-                  setStack([])
+                onStartedSession={(groupId) => {
+                  switchGroup(groupId)
                   setTab('rate')
+                  storeTab('rate')
                 }}
               />
             )}
@@ -233,7 +312,7 @@ function App() {
                 userId={userId}
                 displayName={myName}
                 groups={groups}
-                activeGroupId={group.id}
+                activeGroupId={group?.id ?? null}
                 onSwitchGroup={(id) => {
                   // From the profile a group tap needs a destination: land on
                   // the Group tab so the switch is visible (Home is group-agnostic).
@@ -303,7 +382,7 @@ function App() {
           </header>
 
           {/* key remounts the screen on tab OR group change so entrances replay */}
-          <main key={`${tab}:${group.id}`}>
+          <main key={`${tab}:${group?.id ?? 'none'}`}>
             {tab === 'home' && (
               <HomeScreen
                 groups={groups}
@@ -317,29 +396,45 @@ function App() {
               />
             )}
             {tab === 'discover' && <DiscoverScreen onOpenTitle={openTitle} />}
-            {tab === 'rate' && (
-              <RateScreen
-                group={group}
-                members={members}
-                userId={userId}
-                onGoHome={() => setTab('home')}
-              />
-            )}
-            {tab === 'group' && (
-              <GroupScreen
-                group={group}
-                groups={groups}
-                members={members}
-                userId={userId}
-                onMembersChanged={refreshMembers}
-                onGroupsChanged={refreshGroups}
-                onOpenTitle={openTitle}
-                onOpenUser={(id) => pushView({ kind: 'user', userId: id })}
-                onSwitchGroup={switchGroup}
-                onCreateGroup={() => pushView({ kind: 'createGroup' })}
-                onGoRate={() => setTab('rate')}
-              />
-            )}
+            {tab === 'rate' &&
+              (group ? (
+                <RateScreen
+                  group={group}
+                  groups={groups}
+                  members={members}
+                  userId={userId}
+                  onGoHome={() => setTab('home')}
+                  onStartedInGroup={switchGroup}
+                />
+              ) : (
+                <NoGroupYet
+                  headline="Rating happens in a group"
+                  note="Pick a title together, score it blind, then catch the Reveal as a crew."
+                  onCreate={() => pushView({ kind: 'createGroup' })}
+                />
+              ))}
+            {tab === 'group' &&
+              (group ? (
+                <GroupScreen
+                  group={group}
+                  groups={groups}
+                  members={members}
+                  userId={userId}
+                  onMembersChanged={refreshMembers}
+                  onGroupsChanged={refreshGroups}
+                  onOpenTitle={openTitle}
+                  onOpenUser={(id) => pushView({ kind: 'user', userId: id })}
+                  onSwitchGroup={switchGroup}
+                  onCreateGroup={() => pushView({ kind: 'createGroup' })}
+                  onGoRate={() => setTab('rate')}
+                />
+              ) : (
+                <NoGroupYet
+                  headline="No group yet"
+                  note="Your group's rounds, reveals, log, and rubric will live here."
+                  onCreate={() => pushView({ kind: 'createGroup' })}
+                />
+              ))}
           </main>
 
         </div>

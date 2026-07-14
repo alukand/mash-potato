@@ -224,7 +224,7 @@ export function PlaylistScreen({
               )}
             </div>
             {mine && (
-              <p className="mt-1.5 text-[11px] leading-snug text-muted">
+              <p className="mt-1.5 text-[12px] leading-snug text-muted">
                 {detail.isPublic
                   ? 'Anyone who opens your profile can browse this playlist.'
                   : 'Only you can see this playlist. Tap the chip to share it.'}
@@ -233,7 +233,7 @@ export function PlaylistScreen({
           </section>
 
           {error && (
-            <p role="alert" className="mp-rise mt-3 text-[12px] leading-snug text-coral">
+            <p role="alert" className="mp-rise mt-3 text-[13px] leading-snug text-coral">
               {error}
             </p>
           )}
@@ -270,7 +270,7 @@ export function PlaylistScreen({
                   <p className="text-[13px] font-semibold leading-snug">
                     Delete {detail.name}?
                   </p>
-                  <p className="mt-1 text-[12px] leading-snug text-muted">
+                  <p className="mt-1 text-[13px] leading-snug text-muted">
                     The titles stay in the app; only this list goes away.
                   </p>
                   <div className="mt-3 flex items-center gap-2">

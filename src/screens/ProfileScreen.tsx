@@ -268,7 +268,7 @@ export function ProfileScreen({
             {saved.length} saved
           </p>
           {nameError && (
-            <p role="alert" className="mt-1 text-[12px] leading-snug text-coral">
+            <p role="alert" className="mt-1 text-[13px] leading-snug text-coral">
               {nameError}
             </p>
           )}
@@ -325,7 +325,7 @@ export function ProfileScreen({
             <span className="text-[14px]">Create another group</span>
           </button>
         </div>
-        <p className="mt-2 px-2 text-[11px] leading-snug text-muted">
+        <p className="mt-2 px-2 text-[12px] leading-snug text-muted">
           Public groups show on your profile when friends look you up. Everything starts
           private.
         </p>
@@ -520,7 +520,7 @@ export function ProfileScreen({
                 ? 'Could not copy, try again'
                 : 'Export my ratings (JSON)'}
         </button>
-        <p className="mt-2 px-2 text-[11px] leading-snug text-muted">
+        <p className="mt-2 px-2 text-[12px] leading-snug text-muted">
           Copies every solo rating and saved title as JSON. Your history is yours.
         </p>
       </section>

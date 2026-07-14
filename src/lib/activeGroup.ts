@@ -58,3 +58,48 @@ export function storeTab(tab: StoredTab): void {
     // ignore
   }
 }
+
+// Recently engaged groups (switched to, invited to a round). The invite
+// picker floats these to the top, most recent first.
+
+const RECENT_KEY = 'mp.recentGroupIds'
+const RECENT_CAP = 8
+
+export function readRecentGroupIds(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function touchRecentGroup(id: string): void {
+  try {
+    const next = [id, ...readRecentGroupIds().filter((g) => g !== id)].slice(0, RECENT_CAP)
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+  } catch {
+    // ignore
+  }
+}
+
+// First-run onboarding: once the slides have been seen on this device they
+// never show again (worst case with storage disabled: they show every run).
+
+const ONBOARDED_KEY = 'mp.onboarded'
+
+export function readOnboarded(): boolean {
+  try {
+    return localStorage.getItem(ONBOARDED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function storeOnboarded(): void {
+  try {
+    localStorage.setItem(ONBOARDED_KEY, '1')
+  } catch {
+    // ignore
+  }
+}

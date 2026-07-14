@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { colorForGroup } from '../lib/palette'
+import { scoreColor, scoreWord } from '../lib/scoreColor'
 
 // Shared UI recipes. One exported source for the controls every screen uses,
 // so a fix in one place fixes all of them (field, CTA, group mark).
@@ -58,6 +59,76 @@ export function CtaButton({
     >
       {children}
     </button>
+  )
+}
+
+interface ScoreSliderRowProps {
+  label: string
+  /** Current 1..10 score. */
+  value: number
+  onChange: (value: number) => void
+  disabled?: boolean
+  /** Optional quiet line under the label (e.g. the weight percentage). */
+  sub?: ReactNode
+  /** Row spacing/borders live at the call site. */
+  className?: string
+}
+
+/**
+ * The app's one score-slider recipe: label + anchor word + "N/10" readout in
+ * ramp color over an mp-slider. Every scoring surface uses this row.
+ */
+export function ScoreSliderRow({
+  label,
+  value,
+  onChange,
+  disabled,
+  sub,
+  className = '',
+}: ScoreSliderRowProps) {
+  const color = scoreColor(value)
+  return (
+    <div className={className}>
+      <div className="flex items-baseline justify-between">
+        <div>
+          <p className="text-[14px] font-medium leading-tight">{label}</p>
+          {sub}
+        </div>
+        <span className="flex items-baseline gap-1.5">
+          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+            {scoreWord(value)}
+          </span>
+          <span className="tabular font-mono text-xl font-bold" style={{ color }}>
+            {value}
+            <span className="text-[12px] font-semibold text-muted">/10</span>
+          </span>
+        </span>
+      </div>
+      <input
+        type="range"
+        min={1}
+        max={10}
+        step={1}
+        value={value}
+        disabled={disabled}
+        aria-label={`${label} score`}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mp-slider mt-1.5"
+        style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
+      />
+      {/* Faint scale rail so the 1..10 range reads at a glance. The "5" sits
+          where the midpoint thumb actually lands: (5-1)/9 of the track. */}
+      <div
+        aria-hidden
+        className="relative mt-0.5 h-3 select-none font-mono text-[9px] leading-none text-muted/40"
+      >
+        <span className="absolute left-0.5">1</span>
+        <span className="absolute -translate-x-1/2" style={{ left: `${((5 - 1) / 9) * 100}%` }}>
+          5
+        </span>
+        <span className="absolute right-0">10</span>
+      </div>
+    </div>
   )
 }
 

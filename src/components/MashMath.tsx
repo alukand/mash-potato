@@ -132,7 +132,7 @@ export function MashMath({ rubric, scorecards, userId, memberName, mashed }: Mas
             </span>
           </p>
 
-          <p className="mp-rise mt-3 text-[12px] leading-snug text-muted" style={delay((step += 1))}>
+          <p className="mp-rise mt-3 text-[13px] leading-snug text-muted" style={delay((step += 1))}>
             That's the whole trick: categories your group weights higher move the score more, and
             the Mashed score is simply everyone's weighted score averaged.
           </p>

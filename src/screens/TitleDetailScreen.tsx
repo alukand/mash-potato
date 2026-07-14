@@ -1,15 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
 import {
   addTitleToPlaylist,
   backdropUrl,
   createPlaylist,
-  createSession,
   deleteGlobalRating,
   fetchCommunityHistogram,
   fetchCommunityScore,
-  fetchGroupRubrics,
-  fetchLatestSession,
   fetchMyGlobalRating,
   fetchMyPlaylists,
   fetchMyPlaylistsContaining,
@@ -26,27 +22,17 @@ import type {
   CommunityScore,
   GroupInfo,
   PlaylistSummary,
-  SessionInfo,
   TitleDetail,
   TitleHistoryEntry,
 } from '../lib/api'
 import type { CategoryScores } from '../lib/scoring'
 import { mashedScore, memberWeightedScore, formatScore } from '../lib/scoring'
 import { weightsFromRubric } from '../lib/mapping'
-import {
-  DEFAULT_WEIGHTS,
-  configuredCategoryKeys,
-  defaultRubricEntries,
-  defaultRubricRows,
-  mashRubrics,
-  resolveSessionRubric,
-  resolveSessionRubricTagged,
-} from '../lib/rubricCatalog'
-import type { MemberRubric } from '../lib/rubricCatalog'
-import { scoreColor, scoreWord } from '../lib/scoreColor'
+import { DEFAULT_WEIGHTS, defaultRubricEntries } from '../lib/rubricCatalog'
+import { CategoryLegend } from '../components/CategoryLegend'
 import { CommunityHistogram } from '../components/CommunityHistogram'
-import { RubricReceipt } from '../components/RubricReceipt'
-import { CtaButton, fieldClassSm } from '../components/ui'
+import { GroupInviteSheet } from '../components/GroupInviteSheet'
+import { CtaButton, ScoreSliderRow, fieldClassSm } from '../components/ui'
 
 // The default rubric everyone's solo/community rating uses.
 const SOLO_RUBRIC = defaultRubricEntries()
@@ -55,10 +41,11 @@ const SOLO_WEIGHT_TOTAL = SOLO_RUBRIC.reduce((sum, e) => sum + e.weight, 0)
 interface TitleDetailScreenProps {
   tmdbId: number
   mediaType: 'movie' | 'tv'
-  group: GroupInfo | null
+  groups: GroupInfo[]
   userId: string
   onBack: () => void
-  onStartedSession: () => void
+  /** A round started for this group; the caller navigates to it. */
+  onStartedSession: (groupId: string) => void
 }
 
 function formatRuntime(minutes: number | null): string | null {
@@ -83,7 +70,7 @@ function formatRevealed(iso: string | null): string {
 export function TitleDetailScreen({
   tmdbId,
   mediaType,
-  group,
+  groups,
   userId,
   onBack,
   onStartedSession,
@@ -91,10 +78,8 @@ export function TitleDetailScreen({
   const [detail, setDetail] = useState<TitleDetail | null | undefined>(undefined)
   const [notFound, setNotFound] = useState(false)
   const [savedTitleId, setSavedTitleId] = useState<string | null>(null)
-  const [latest, setLatest] = useState<SessionInfo | null>(null)
-  const [memberRubrics, setMemberRubrics] = useState<MemberRubric[]>([])
-  // Genre add-ons left out of the round being started (on/off only).
-  const [excludedAddOns, setExcludedAddOns] = useState<Set<string>>(new Set())
+  // The invite flow always picks its group (recents + search) in this sheet.
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [history, setHistory] = useState<TitleHistoryEntry[]>([])
   const [community, setCommunity] = useState<CommunityScore | null>(null)
   const [communityBins, setCommunityBins] = useState<number[]>([])
@@ -105,7 +90,6 @@ export function TitleDetailScreen({
   const [confirmRemove, setConfirmRemove] = useState(false)
   const communityRef = useRef<HTMLElement | null>(null)
   const [saving, setSaving] = useState(false)
-  const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // ---- add to playlist (lazy: loads when the disclosure opens) ----
@@ -202,15 +186,13 @@ export function TitleDetailScreen({
     setDetail(undefined)
     setNotFound(false)
     setRating(false)
-    setExcludedAddOns(new Set())
+    setInviteOpen(false)
     setListsOpen(false)
     setMyLists(null)
     Promise.all([
       fetchTitleDetail(tmdbId, mediaType),
       fetchSavedTitleId(userId, tmdbId, mediaType),
       fetchTitleHistory(tmdbId, mediaType),
-      group ? fetchLatestSession(group.id) : Promise.resolve(null),
-      group ? fetchGroupRubrics(group.id).catch(() => []) : Promise.resolve([]),
       fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
       fetchMyGlobalRating(userId, tmdbId, mediaType),
       fetchCommunityHistogram(tmdbId, mediaType, DEFAULT_WEIGHTS),
@@ -218,14 +200,12 @@ export function TitleDetailScreen({
         () => new Map<string, string>(),
       ),
     ])
-      .then(([d, savedId, hist, latestSession, rubricRows, comm, mine, histogram, holds]) => {
+      .then(([d, savedId, hist, comm, mine, histogram, holds]) => {
         if (cancelled) return
         setDetail(d)
         setNotFound(d === null)
         setSavedTitleId(savedId)
         setHistory(hist)
-        setLatest(latestSession)
-        setMemberRubrics(rubricRows)
         setCommunity(comm)
         setMyScores(mine)
         setCommunityBins(histogram)
@@ -240,7 +220,7 @@ export function TitleDetailScreen({
     return () => {
       cancelled = true
     }
-  }, [tmdbId, mediaType, userId, group])
+  }, [tmdbId, mediaType, userId])
 
   async function toggleSave() {
     if (!detail) return
@@ -334,37 +314,6 @@ export function TitleDetailScreen({
     }
   }
 
-  async function handleStartSession() {
-    if (!detail || !group) return
-    setStarting(true)
-    setError(null)
-    try {
-      const mashed = mashRubrics(memberRubrics)
-      const rows = mashed.length > 0 ? mashed : defaultRubricRows()
-      const rubric = resolveSessionRubric(
-        rows,
-        detail.genreIds,
-        configuredCategoryKeys(memberRubrics),
-      ).filter((entry) => !excludedAddOns.has(entry.key))
-      await createSession(
-        group.id,
-        userId,
-        {
-          name: detail.name,
-          year: detail.year,
-          mediaType: detail.mediaType,
-          tmdbId: detail.tmdbId,
-          posterPath: detail.posterPath,
-        },
-        rubric,
-      )
-      onStartedSession()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start the session')
-      setStarting(false)
-    }
-  }
-
   const BackButton = (
     <button
       type="button"
@@ -406,20 +355,6 @@ export function TitleDetailScreen({
     runtime,
     seasons,
   ].filter(Boolean)
-
-  const blindElsewhere = latest?.state === 'blind'
-  const canStart = !!group && !blindElsewhere
-
-  // The receipt for the round this screen can start: the group's base rubric
-  // plus this title's genre add-ons (leave-out-able, on/off only).
-  const mashedRows = mashRubrics(memberRubrics)
-  const receiptEntries = canStart
-    ? resolveSessionRubricTagged(
-        mashedRows.length > 0 ? mashedRows : defaultRubricRows(),
-        detail.genreIds,
-        configuredCategoryKeys(memberRubrics),
-      )
-    : []
 
   return (
     <div className="pb-4">
@@ -501,39 +436,40 @@ export function TitleDetailScreen({
           <p className="mt-4 text-[13px] leading-relaxed text-text/90">{detail.overview}</p>
         )}
 
-        {error && <p role="alert" className="mt-4 text-[12px] leading-snug text-coral">{error}</p>}
+        {error && <p role="alert" className="mt-4 text-[13px] leading-snug text-coral">{error}</p>}
 
         {/* ---- actions ---- */}
         <div className="mt-5 flex flex-col gap-3">
-          {receiptEntries.length > 0 && (
-            <RubricReceipt
-              entries={receiptEntries}
-              excludedKeys={excludedAddOns}
-              onToggleGenre={(key) =>
-                setExcludedAddOns((prev) => {
-                  const next = new Set(prev)
-                  if (next.has(key)) next.delete(key)
-                  else next.add(key)
-                  return next
-                })
-              }
-            />
-          )}
           <CtaButton
-            onClick={() => void handleStartSession()}
-            disabled={!canStart || starting}
+            onClick={() => setInviteOpen(true)}
+            disabled={groups.length === 0}
             className="w-full py-3.5 text-[14px] disabled:opacity-50"
           >
-            {starting
-              ? 'Starting…'
-              : group
-                ? `Invite ${group.name} to rate it`
-                : 'Score with your group'}
+            Invite a group to rate it
           </CtaButton>
-          {blindElsewhere && (
+          {groups.length === 0 && (
             <p className="text-center font-mono text-[10px] text-muted">
-              Finish {group?.name}’s current blind session first.
+              Group rounds need a group first: create one on the Group tab.
             </p>
+          )}
+          {inviteOpen && (
+            <GroupInviteSheet
+              groups={groups}
+              userId={userId}
+              title={{
+                name: detail.name,
+                year: detail.year,
+                mediaType: detail.mediaType,
+                tmdbId: detail.tmdbId,
+                posterPath: detail.posterPath,
+              }}
+              genreIds={detail.genreIds}
+              onStarted={(groupId) => {
+                setInviteOpen(false)
+                onStartedSession(groupId)
+              }}
+              onClose={() => setInviteOpen(false)}
+            />
           )}
 
           {/* consolidated secondary actions: solo rate + save, one cluster */}
@@ -719,7 +655,7 @@ export function TitleDetailScreen({
 
             {confirmRemove && myScores && !rating && (
               <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-coral/30 bg-coral/5 px-4 py-3">
-                <p className="text-[12px] leading-snug text-muted">
+                <p className="text-[13px] leading-snug text-muted">
                   Remove your rating? It drops out of the community score.
                 </p>
                 <div className="flex shrink-0 items-center gap-2">
@@ -744,46 +680,24 @@ export function TitleDetailScreen({
 
             {rating && (
               <div className="mt-4 border-t border-line/60 pt-2">
-                <p className="pt-1.5 text-[11px] leading-snug text-muted">
+                <p className="pt-1.5 text-[13px] leading-snug text-muted">
                   Score each part for what it's trying to be.
                 </p>
-                {SOLO_RUBRIC.map((entry, i) => {
-                  const value = soloScores[entry.key] ?? 5
-                  const color = scoreColor(value)
-                  return (
-                    <div key={entry.key} className={`py-3 ${i > 0 ? 'border-t border-line/40' : ''}`}>
-                      <div className="flex items-baseline justify-between">
-                        <div>
-                          <p className="text-[13px] font-medium leading-tight">{entry.label}</p>
-                          <p className="mt-0.5 font-mono text-[10px] text-muted">
-                            weight {Math.round((entry.weight / SOLO_WEIGHT_TOTAL) * 100)}%
-                          </p>
-                        </div>
-                        <span className="flex items-baseline gap-1.5">
-                          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
-                            {scoreWord(value)}
-                          </span>
-                          <span className="tabular font-mono text-lg font-bold" style={{ color }}>
-                            {value}
-                          </span>
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={1}
-                        max={10}
-                        step={1}
-                        value={value}
-                        aria-label={`${entry.label} score`}
-                        onChange={(e) =>
-                          setSoloScores((prev) => ({ ...prev, [entry.key]: Number(e.target.value) }))
-                        }
-                        className="mp-slider mt-1.5"
-                        style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
-                      />
-                    </div>
-                  )
-                })}
+                <CategoryLegend entries={SOLO_RUBRIC} className="mt-2" />
+                {SOLO_RUBRIC.map((entry, i) => (
+                  <ScoreSliderRow
+                    key={entry.key}
+                    className={`py-3 ${i > 0 ? 'border-t border-line/40' : ''}`}
+                    label={entry.label}
+                    sub={
+                      <p className="mt-0.5 font-mono text-[10px] text-muted">
+                        weight {Math.round((entry.weight / SOLO_WEIGHT_TOTAL) * 100)}%
+                      </p>
+                    }
+                    value={soloScores[entry.key] ?? 5}
+                    onChange={(v) => setSoloScores((prev) => ({ ...prev, [entry.key]: v }))}
+                  />
+                ))}
                 <div className="mt-2 flex items-center justify-between border-t border-line/60 pt-3">
                   <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
                     Your score{' '}
@@ -849,6 +763,34 @@ export function TitleDetailScreen({
           </p>
           {history.length > 0 ? (
             <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
+              {(() => {
+                // Combined verdict: the mean of every group Mashed you can see
+                // (sealed rounds stay out until you score them). Only worth a
+                // row once two or more groups have weighed in.
+                const visible = history
+                  .map((entry) => mashedScore(entry.scorecards, weightsFromRubric(entry.rubric)))
+                  .filter((m): m is number => m !== null)
+                if (visible.length < 2) return null
+                const combined = visible.reduce((sum, m) => sum + m, 0) / visible.length
+                return (
+                  <div className="flex items-center justify-between bg-teal/5 px-5 py-3.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-[14px] font-semibold">All your groups</p>
+                      <p className="font-mono text-[10px] text-muted">
+                        {visible.length} verdicts combined
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="tabular font-display text-[26px] font-semibold leading-none text-teal">
+                        {formatScore(combined)}
+                      </span>
+                      <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-teal">
+                        Combined
+                      </p>
+                    </div>
+                  </div>
+                )
+              })()}
               {history.map((entry) => {
                 const mashed = mashedScore(entry.scorecards, weightsFromRubric(entry.rubric))
                 return (
