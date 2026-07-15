@@ -103,7 +103,11 @@ diving's published difficulty table, game-jam N/A opt-outs):
    boundaries (new member, rubric retro), never at round time.
 2. **Per genre (automatic)**: genre add-on categories resolve from TMDB
    genres via the catalog table; the group consented to the table once.
-   Deliberate disables stick (configuredCategoryKeys).
+   Deliberate disables stick (configuredCategoryKeys). Animated titles
+   (TMDB genre 16) also add an Animation category and score Voice Acting in
+   Acting's place, weighted a touch lighter (0.85×) — the key stays `acting`
+   so scores and history stay coherent, only the label and weight shift for
+   that round.
 3. **Per round (binary only)**: the creator may leave a genre add-on out
    (on/off chip in the RubricReceipt, locked by the session snapshot).
    NEVER weight sliders per movie: it's a studied manipulation vector that
@@ -153,6 +157,29 @@ disclosures, in-flight flags.
 - 2026-07-12: hover background washes on list rows removed app-wide
   (row-highlight ban); feedback moved onto row elements.
 
+## Reward loop law (discussion, researched 2026-07-14)
+
+Cred is PEER-GIVEN (reactions received on your group-thread comments, never
+points for posting), GROUP-SCOPED, and COSMETIC: flair milestones only
+(Seasoned 10, House Critic 50, Cult Classic 200 — `lib/cred.ts`), plus one
+ephemeral per-thread "Top take" chip (most-reacted, 2+ reactions, recomputed
+live, accumulates nowhere). Reactions are positive-only: 👍 Like, 😂 Funny,
+🔥 Hot take. Disagreement's channel is the scores, not a dislike button.
+
+DO NOT BUILD (documented failure modes: Snapstreaks, Duolingo guilt, Reddit
+karma farming, Stack Overflow rep, YouTube dislike mobs): streaks of any
+kind, global karma numbers or leaderboards, public dislike counts, credit
+penalties, points-for-volume, guilt notifications, paid restores.
+
+Discussion shapes: group threads are the DEBRIEF (they open with the
+reveal; sealed per member while their card is open — the blind rule extends
+to words); the public surface is GATED TAKES (post once you've rated,
+Letterboxd shape, never a free-for-all forum — IMDb/RT precedent). The
+"Talk it out" CTA on the reveal seeds the composer with the clash headline.
+Compliance kit everywhere: report (3 hide), block (both ways), wordlist at
+post time, ban switch, first-post house-rules sheet, support contact on the
+Profile.
+
 ## Notification copy
 
 Push notifications follow the copy rules (no em dashes, no middots, every
@@ -172,6 +199,13 @@ chips share one vocabulary: globe + teal = public, lock + muted = private.
 
 ## Changelog
 
+- 2026-07-14 (discussion): per-title discussion shipped. Group threads
+  (the debrief; sealed per member with the blind rule, "Talk it out" on the
+  reveal) + public gated takes (rate first), 👍😂🔥 reactions, Mash Cred
+  flair (peer-given, group-scoped, milestones only), Top take chip, and the
+  full compliance kit (report/block/filter/ban/terms/support contact).
+  Research-backed (Hooked, Contagious/STEPPS, IMDb/RT graveyard, Apple 1.2);
+  both RLS suites extended (pgTAP 130, twin +14).
 - 2026-07-14 (invite picker + settings): "Invite" never assumes the active
   group anymore. GroupInviteSheet (bottom-sheet dialog) opens from TitleDetail
   and Rate: recently engaged groups float to the top (mp.recentGroupIds MRU,

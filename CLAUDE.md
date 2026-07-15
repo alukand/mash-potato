@@ -62,10 +62,12 @@ fine client-side.
   DEFAULT_WEIGHTS, `mashRubrics` (per-member rubrics → effective group rubric;
   absent/disabled counts as 0), and `resolveSessionRubric[Tagged]` (effective
   rubric ∪ TMDB-genre add-ons; pass `configuredCategoryKeys(raw rubrics)` so
-  a category the whole group disabled stays out). PRODUCT LAW (researched
-  2026-07-12, see DESIGN.md "Rubric cadence"): weights never change per
-  movie — per-round flexibility is only the binary genre add-on opt-out in
-  `RubricReceipt` at session creation.
+  a category the whole group disabled stays out). Animated titles (genre 16)
+  add an Animation category and relabel `acting` → Voice Acting at 0.85× (key
+  unchanged for history coherence). PRODUCT LAW (researched 2026-07-12, see
+  DESIGN.md "Rubric cadence"): weights never change per movie — per-round
+  flexibility is only the binary genre add-on opt-out in `RubricReceipt` at
+  session creation.
 - `src/lib/mapping.ts` — jsonb `scores` / `rubric` snapshot validators.
 - `src/lib/api.ts` — every Supabase call; screens never import the client.
   Member ratings live in `member_scores.scores` (jsonb map); rubrics are PER
@@ -81,6 +83,16 @@ fine client-side.
   least(2, eligible) locks where eligible = in + scored + unanswered-window-
   open, so a round everyone else passed on still reveals. The `interval
   '24 hours'` in the RPC must stay in sync with RSVP_WINDOW_MS.
+- Discussion (`title_comments` + reactions/reports/blocks/banned_terms,
+  migration 20260714120000): group threads are SEALED per member while
+  their card is open (THE ONE RULE extends to words — `comments_open_for_me`
+  reuses `has_locked_scorecard`); public "takes" post-gated on having rated
+  (`has_rated_title`). Writes ONLY via `post_comment`/`delete_comment`
+  definer RPCs (terms gate, wordlist, ban switch, depth cap). Cred =
+  `group_cred` RPC (reactions received, group-scoped, flair via
+  `src/lib/cred.ts` — see DESIGN.md "Reward loop law" + its DO-NOT-BUILD
+  list). `profiles.banned` is dashboard-only (column-level grant).
+  Client: `DiscussionSection` on TitleDetail; "Talk it out" on the reveal.
 - Public profiles + playlists (private by default in EVERY direction):
   `group_members.is_public` (per-member per-group, flipped via
   `set_group_visibility` RPC), `playlists` + `playlist_items` (visibility

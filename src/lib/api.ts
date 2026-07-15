@@ -257,8 +257,11 @@ export interface SessionInfo {
   state: 'blind' | 'revealed'
   createdBy: string | null
   createdAt: string
+  titleId: string
   titleName: string
   titleYear: number | null
+  /** Null for manual entries (no TMDB identity). */
+  titleTmdbId: number | null
   mediaType: 'movie' | 'tv'
   posterPath: string | null
   /** The category set this session is scored under (snapshot at creation). */
@@ -278,7 +281,9 @@ export interface NewTitle {
 export async function fetchLatestSession(groupId: string): Promise<SessionInfo | null> {
   const { data, error } = await supabase
     .from('reveal_sessions')
-    .select('id, state, created_by, created_at, rubric, titles(name, year, media_type, poster_path)')
+    .select(
+      'id, state, created_by, created_at, rubric, titles(id, tmdb_id, name, year, media_type, poster_path)',
+    )
     .eq('group_id', groupId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -290,8 +295,10 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
     state: row.state,
     createdBy: row.created_by,
     createdAt: row.created_at,
+    titleId: row.titles.id,
     titleName: row.titles.name,
     titleYear: row.titles.year,
+    titleTmdbId: row.titles.tmdb_id,
     mediaType: row.titles.media_type,
     posterPath: row.titles.poster_path,
     rubric: rubricFromJson(row.rubric),
@@ -378,8 +385,10 @@ export async function createSession(
     state: data.state,
     createdBy: data.created_by,
     createdAt: data.created_at,
+    titleId,
     titleName: title.name,
     titleYear: title.year,
+    titleTmdbId: title.tmdbId,
     mediaType: title.mediaType,
     posterPath: title.posterPath,
     rubric,
@@ -1469,6 +1478,218 @@ export function onSessionChange(groupId: string, onChange: () => void): () => vo
         schema: 'public',
         table: 'reveal_sessions',
         filter: `group_id=eq.${groupId}`,
+      },
+      onChange,
+    )
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
+
+// ---- discussion (threads, reactions, the compliance kit) --------------------
+//
+// Words follow the blind rule: group threads are SEALED per member while any
+// session for that (group, title) is not open for them; public "takes" are
+// posted only by people who have rated the title. Both enforced server-side
+// (RLS + the post_comment RPC), never by UI hiding.
+
+export type ReactionKind = 'like' | 'funny' | 'fire'
+
+export interface DiscussionComment {
+  id: string
+  authorId: string
+  authorName: string
+  parentId: string | null
+  body: string
+  createdAt: string
+  deleted: boolean
+  reactions: Record<ReactionKind, number>
+  myReaction: ReactionKind | null
+}
+
+export interface DiscussionGate {
+  /** Group scope: is the thread open for me right now (sealed otherwise)? */
+  openForMe: boolean
+  /** Have I rated this title (gates public posting)? */
+  rated: boolean
+  /** Community terms accepted (first-post gate)? */
+  termsAccepted: boolean
+}
+
+/** The titles-row id for a TMDB title, or null if nobody has touched it yet. */
+export async function fetchTitleRowId(
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('titles')
+    .select('id')
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data?.id ?? null
+}
+
+/** Find-or-create the title row (posting can precede any rating or round). */
+export async function ensureTitleRow(title: NewTitle): Promise<string> {
+  return ensureTitle(title)
+}
+
+export async function fetchDiscussion(
+  titleId: string,
+  groupId: string | null,
+  userId: string,
+): Promise<DiscussionComment[]> {
+  let query = supabase
+    .from('title_comments')
+    .select(
+      // author embed is FK-hinted: the self-referencing parent_id makes the
+      // profiles relationship ambiguous to PostgREST otherwise
+      'id, author_id, parent_id, body, created_at, deleted, profiles!title_comments_author_id_fkey(display_name), comment_reactions(user_id, kind)',
+    )
+    .eq('title_id', titleId)
+    .order('created_at', { ascending: true })
+  query = groupId === null ? query.is('group_id', null) : query.eq('group_id', groupId)
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((row) => {
+    const reactions: Record<ReactionKind, number> = { like: 0, funny: 0, fire: 0 }
+    let myReaction: ReactionKind | null = null
+    for (const r of row.comment_reactions ?? []) {
+      const kind = r.kind as ReactionKind
+      if (kind in reactions) reactions[kind] += 1
+      if (r.user_id === userId) myReaction = kind
+    }
+    return {
+      id: row.id,
+      authorId: row.author_id,
+      authorName: row.profiles?.display_name ?? 'Member',
+      parentId: row.parent_id,
+      body: row.body,
+      createdAt: row.created_at,
+      deleted: row.deleted,
+      reactions,
+      myReaction,
+    }
+  })
+}
+
+/** How this scope stands for the viewer (sealed / rated / terms). */
+export async function fetchDiscussionGate(
+  titleId: string,
+  groupId: string | null,
+): Promise<DiscussionGate> {
+  const { data, error } = await supabase.rpc('discussion_gate', {
+    p_title_id: titleId,
+    // generated types don't model nullable RPC params; null is valid here
+    p_group_id: groupId as string,
+  })
+  if (error) throw new Error(error.message)
+  const row = Array.isArray(data) ? data[0] : data
+  return {
+    openForMe: Boolean(row?.open_for_me),
+    rated: Boolean(row?.rated),
+    termsAccepted: Boolean(row?.terms_accepted),
+  }
+}
+
+export async function acceptDiscussionTerms(): Promise<void> {
+  const { error } = await supabase.rpc('accept_discussion_terms')
+  if (error) throw new Error(error.message)
+}
+
+export async function postComment(
+  titleId: string,
+  groupId: string | null,
+  parentId: string | null,
+  body: string,
+): Promise<string> {
+  const { data, error } = await supabase.rpc('post_comment', {
+    p_title_id: titleId,
+    // generated types don't model nullable RPC params; null is valid here
+    p_group_id: groupId as string,
+    p_parent_id: parentId as string,
+    p_body: body,
+  })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+
+export async function deleteComment(commentId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_comment', { p_comment_id: commentId })
+  if (error) throw new Error(error.message)
+}
+
+/** Set (or switch) my reaction on a comment. */
+export async function setReaction(
+  commentId: string,
+  userId: string,
+  kind: ReactionKind,
+): Promise<void> {
+  const { error } = await supabase
+    .from('comment_reactions')
+    .upsert(
+      { comment_id: commentId, user_id: userId, kind },
+      { onConflict: 'comment_id,user_id' },
+    )
+  if (error) throw new Error(error.message)
+}
+
+export async function clearReaction(commentId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('comment_reactions')
+    .delete()
+    .eq('comment_id', commentId)
+    .eq('user_id', userId)
+  if (error) throw new Error(error.message)
+}
+
+/** Flag a comment for review; three distinct reports hide it pending review. */
+export async function reportComment(
+  commentId: string,
+  userId: string,
+  reason: string | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from('comment_reports')
+    .insert({ comment_id: commentId, reporter_id: userId, reason })
+  // reporting twice is a no-op, not an error
+  if (error && error.code !== '23505') throw new Error(error.message)
+}
+
+/** Hide someone's comments for good, both directions. */
+export async function blockUser(blockerId: string, blockedId: string): Promise<void> {
+  const { error } = await supabase
+    .from('user_blocks')
+    .insert({ blocker_id: blockerId, blocked_id: blockedId })
+  if (error && error.code !== '23505') throw new Error(error.message)
+}
+
+/**
+ * Cred by member for one group: reactions RECEIVED on that group's threads.
+ * Peer-given and group-scoped by design; there is no global number.
+ */
+export async function fetchGroupCred(groupId: string): Promise<Map<string, number>> {
+  const { data, error } = await supabase.rpc('group_cred', { p_group_id: groupId })
+  if (error) throw new Error(error.message)
+  const map = new Map<string, number>()
+  for (const row of data ?? []) map.set(row.user_id, Number(row.cred))
+  return map
+}
+
+/** Live refresh for an open discussion (RLS trims events per subscriber). */
+export function onDiscussionChange(titleId: string, onChange: () => void): () => void {
+  const channel = supabase
+    .channel(`discussion-${titleId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'title_comments',
+        filter: `title_id=eq.${titleId}`,
       },
       onChange,
     )

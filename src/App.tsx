@@ -37,7 +37,15 @@ import { TitleDetailScreen } from './screens/TitleDetailScreen'
 
 // A view pushed over the tabs. Tapping a bottom tab clears the whole stack.
 type StackView =
-  | { kind: 'title'; tmdbId: number; mediaType: 'movie' | 'tv' }
+  | {
+      kind: 'title'
+      tmdbId: number
+      mediaType: 'movie' | 'tv'
+      /** Open the discussion on this group's thread (reveal deep link). */
+      discussGroupId?: string
+      /** Composer placeholder seed (the reveal's clash headline). */
+      discussSeed?: string
+    }
   | { kind: 'profile' }
   | { kind: 'createGroup' }
   | { kind: 'user'; userId: string }
@@ -97,8 +105,12 @@ function App() {
   const [members, setMembers] = useState<MemberInfo[]>([])
   const [stack, setStack] = useState<StackView[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
-  // A notification tap names a group before groups have loaded; park it here.
-  const [pushTargetGroup, setPushTargetGroup] = useState<string | null>(null)
+  // A notification tap names its target before groups have loaded; park it here.
+  const [pushTarget, setPushTarget] = useState<{
+    groupId: string | null
+    tmdbId: number | null
+    mediaType: 'movie' | 'tv' | null
+  } | null>(null)
   // First run: the slides show once per device, then the app opens group-less.
   const [onboarded, setOnboarded] = useState(() => readOnboarded())
   const [showCreateGroup, setShowCreateGroup] = useState(false)
@@ -156,24 +168,40 @@ function App() {
   useEffect(() => {
     void bindPushOpenHandler()
     const onOpen = (e: Event) => {
-      const detail = (e as CustomEvent<{ groupId?: string }>).detail
-      if (detail?.groupId) setPushTargetGroup(detail.groupId)
+      const detail = (
+        e as CustomEvent<{
+          groupId?: string | null
+          tmdbId?: number | null
+          mediaType?: 'movie' | 'tv' | null
+        }>
+      ).detail
+      if (!detail) return
+      setPushTarget({
+        groupId: detail.groupId ?? null,
+        tmdbId: detail.tmdbId ?? null,
+        mediaType: detail.mediaType ?? null,
+      })
     }
     window.addEventListener('mp:push-open', onOpen)
     return () => window.removeEventListener('mp:push-open', onOpen)
   }, [])
 
   useEffect(() => {
-    if (!pushTargetGroup || !groups) return
-    if (groups.some((g) => g.id === pushTargetGroup)) {
-      setActiveGroupId(pushTargetGroup)
-      storeGroupId(pushTargetGroup)
+    if (!pushTarget || !groups) return
+    if (pushTarget.groupId && groups.some((g) => g.id === pushTarget.groupId)) {
+      setActiveGroupId(pushTarget.groupId)
+      storeGroupId(pushTarget.groupId)
+    }
+    if (pushTarget.tmdbId !== null && pushTarget.mediaType !== null) {
+      // a comment reply lands on the title's discussion
+      setStack([{ kind: 'title', tmdbId: pushTarget.tmdbId, mediaType: pushTarget.mediaType }])
+    } else if (pushTarget.groupId && groups.some((g) => g.id === pushTarget.groupId)) {
       setStack([])
       setTab('group')
       storeTab('group')
     }
-    setPushTargetGroup(null)
-  }, [pushTargetGroup, groups])
+    setPushTarget(null)
+  }, [pushTarget, groups])
 
   const groupId = group?.id ?? null
   useEffect(() => {
@@ -206,8 +234,21 @@ function App() {
     setActiveGroupId((prev) => pickActiveGroup(gs, prev)?.id ?? null)
   }, [session])
 
-  function openTitle(tmdbId: number, mediaType: 'movie' | 'tv') {
-    setStack((s) => [...s, { kind: 'title', tmdbId, mediaType }])
+  function openTitle(
+    tmdbId: number,
+    mediaType: 'movie' | 'tv',
+    discuss?: { groupId: string; seed?: string },
+  ) {
+    setStack((s) => [
+      ...s,
+      {
+        kind: 'title',
+        tmdbId,
+        mediaType,
+        discussGroupId: discuss?.groupId,
+        discussSeed: discuss?.seed,
+      },
+    ])
     window.scrollTo(0, 0)
   }
   function pushView(view: StackView) {
@@ -299,6 +340,8 @@ function App() {
                 mediaType={top.mediaType}
                 groups={groups}
                 userId={userId}
+                discussGroupId={top.discussGroupId ?? null}
+                discussSeed={top.discussSeed ?? null}
                 onBack={popView}
                 onStartedSession={(groupId) => {
                   switchGroup(groupId)

@@ -42,7 +42,9 @@ export function CategoryLegend({ entries, className = '' }: CategoryLegendProps)
           {entries.map((e) => (
             <div key={e.key} className="flex items-baseline gap-2">
               <dt className="shrink-0 text-[13px] font-semibold leading-snug">
-                {catalogCategory(e.key)?.label ?? e.label}
+                {/* the entry's own label wins: it carries per-round renames
+                    (e.g. Voice Acting on animated nights) and group renames */}
+                {e.label}
               </dt>
               <dd className="min-w-0 text-[13px] leading-snug text-muted">
                 {catalogCategory(e.key)?.blurb ?? 'A category this group added.'}

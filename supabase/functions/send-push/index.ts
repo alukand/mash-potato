@@ -8,10 +8,11 @@
 // public.notification_config and in this function's PUSH_SHARED_SECRET env.
 // The service-role key is used ONLY here, server-side, to resolve recipients.
 //
-// Events (see 20260712230000_push_notifications.sql):
+// Events (see 20260712230000_push_notifications.sql + 20260714120000):
 //   { event: 'group_added',   group_id, recipient_id, actor_id }
 //   { event: 'round_started', session_id, group_id, actor_id }
 //   { event: 'member_locked', session_id, group_id, actor_id }
+//   { event: 'comment_reply', comment_id, title_id, group_id?, recipient_id, actor_id }
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -72,6 +73,16 @@ async function sessionInfo(
   )
   if (rows.length === 0) return null
   return { state: rows[0].state, titleName: rows[0].titles?.name ?? 'your movie' }
+}
+
+async function titleInfo(
+  titleId: string,
+): Promise<{ name: string; tmdbId: number | null; mediaType: string } | null> {
+  const rows = await rest<{ name: string; tmdb_id: number | null; media_type: string }>(
+    `titles?id=eq.${titleId}&select=name,tmdb_id,media_type`,
+  )
+  if (rows.length === 0) return null
+  return { name: rows[0].name, tmdbId: rows[0].tmdb_id, mediaType: rows[0].media_type }
 }
 
 async function tokensFor(userIds: string[]): Promise<{ token: string; user_id: string }[]> {
@@ -174,8 +185,11 @@ async function sendApns(
 
 interface PushEvent {
   event: string
-  group_id: string
+  // absent for public-thread comment replies
+  group_id?: string | null
   session_id?: string
+  comment_id?: string
+  title_id?: string
   recipient_id?: string
   actor_id?: string | null
 }
@@ -183,24 +197,36 @@ interface PushEvent {
 async function composeAndSend(evt: PushEvent) {
   const [actor, group] = await Promise.all([
     displayName(evt.actor_id ?? null),
-    groupName(evt.group_id),
+    evt.group_id ? groupName(evt.group_id) : Promise.resolve('your group'),
   ])
 
   let recipients: string[] = []
   let title = ''
   let body = ''
+  // extra ID-only routing keys, per event
+  const extraRouting: Record<string, string> = {}
 
-  if (evt.event === 'group_added' && evt.recipient_id) {
+  if (evt.event === 'comment_reply' && evt.recipient_id && evt.title_id) {
+    const t = await titleInfo(evt.title_id)
+    if (!t) return { skipped: 'title gone' }
+    recipients = [evt.recipient_id]
+    title = `${actor} replied to your take`
+    body = `${t.name}: see what they said.`
+    if (t.tmdbId !== null) {
+      extraRouting.tmdb_id = String(t.tmdbId)
+      extraRouting.media_type = t.mediaType
+    }
+  } else if (evt.event === 'group_added' && evt.recipient_id) {
     recipients = [evt.recipient_id]
     title = `${actor} added you to ${group}`
     body = 'Set your rubric and jump into the next round.'
-  } else if (evt.event === 'round_started' && evt.session_id) {
+  } else if (evt.event === 'round_started' && evt.session_id && evt.group_id) {
     const session = await sessionInfo(evt.session_id)
     if (!session) return { skipped: 'session gone' }
     recipients = (await memberIds(evt.group_id)).filter((id) => id !== evt.actor_id)
     title = `${actor} invited ${group}`
     body = `${session.titleName}: score it blind, then catch the reveal.`
-  } else if (evt.event === 'member_locked' && evt.session_id) {
+  } else if (evt.event === 'member_locked' && evt.session_id && evt.group_id) {
     const session = await sessionInfo(evt.session_id)
     if (!session) return { skipped: 'session gone' }
     recipients = (await memberIds(evt.group_id)).filter((id) => id !== evt.actor_id)
@@ -218,10 +244,12 @@ async function composeAndSend(evt: PushEvent) {
   const tokens = await tokensFor(recipients)
   if (tokens.length === 0) return { sent: 0, note: 'no registered devices' }
 
-  const routing: Record<string, string> = { event: evt.event, group_id: evt.group_id }
+  const routing: Record<string, string> = { event: evt.event, ...extraRouting }
+  if (evt.group_id) routing.group_id = evt.group_id
   if (evt.session_id) routing.session_id = evt.session_id
+  const threadId = evt.group_id ?? evt.title_id ?? 'mash'
   const results = await Promise.all(
-    tokens.map((t) => sendApns(t.token, title, body, evt.group_id, routing)),
+    tokens.map((t) => sendApns(t.token, title, body, threadId, routing)),
   )
   return {
     sent: results.filter((r) => r === 'sent').length,
@@ -246,7 +274,9 @@ Deno.serve(async (req) => {
   } catch {
     return json({ error: 'bad payload' }, 400)
   }
-  if (!evt?.event || !evt?.group_id) return json({ error: 'bad payload' }, 400)
+  // comment_reply may be public (no group); everything else needs a group.
+  if (!evt?.event) return json({ error: 'bad payload' }, 400)
+  if (!evt.group_id && evt.event !== 'comment_reply') return json({ error: 'bad payload' }, 400)
 
   try {
     return json(await composeAndSend(evt))

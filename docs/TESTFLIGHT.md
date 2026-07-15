@@ -57,3 +57,23 @@ discover) plus the TMDB key as a **secret** (never in code):
   so the packaged app renders right offline. Needs a dependency, so I'll ask first.
 - **Brand the icon** — rasterize `resources/icon.svg` → `icon.png` and run
   `npx @capacitor/assets generate` (see `resources/README.md`).
+
+## User-generated content (discussion) — App Review checklist
+
+The discussion feature triggers App Store guideline 1.2. The app already
+ships the required kit; declare it when submitting:
+
+- In App Store Connect, set the age rating questionnaire honestly:
+  user-generated content + messaging/chat. Expect 13+ to 16+ (Letterboxd
+  declares 16+ with the same profile — the safe choice for film talk).
+- Review Notes: state that comments are filtered at post time (server
+  wordlist), every comment has Report (three distinct reports auto-hide
+  pending review) and Block (hides both directions), users agree to a
+  zero-tolerance house-rules sheet before their first post, and reported
+  content is actioned within 24 hours (remove + eject via the
+  `profiles.banned` switch in the Supabase dashboard).
+- Support contact is published in-app (Profile) and must also be on the
+  App Store listing: alexanderlukasland@gmail.com.
+- Review reports in the Supabase dashboard: `comment_reports` joined to
+  `title_comments`; set `removed = true` to take content down, flip
+  `profiles.banned` to eject an account, extend `banned_terms` as needed.

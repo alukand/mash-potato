@@ -30,6 +30,8 @@ interface SessionPanelProps {
   userId: string
   /** Jump to the Rate tab to score / start a round. */
   onGoRate: () => void
+  /** Open the title's discussion on this group's thread (the debrief). */
+  onDiscuss?: (tmdbId: number, mediaType: 'movie' | 'tv', seed: string) => void
 }
 
 // The group's latest session, live: blind rounds show invite + lock progress,
@@ -39,7 +41,7 @@ interface SessionPanelProps {
 /** Position of a 1..10 score along the plot track, as a percentage. */
 const pct = (score: number) => ((score - 1) / 9) * 100
 
-export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelProps) {
+export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: SessionPanelProps) {
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
   // undefined = cards not fetched yet. Distinct from []: an empty visible set
   // means "sealed for you" (RLS), and treating "still loading" as sealed
@@ -603,6 +605,25 @@ export function SessionPanel({ group, members, userId, onGoRate }: SessionPanelP
           <p className="mt-2 font-mono text-[11px] text-muted">
             agreement range {aligned.range}, clash range {clash.range}
           </p>
+          {/* the debrief: the reveal is the trigger, the thread is the room */}
+          {onDiscuss && session.titleTmdbId !== null && (
+            <button
+              type="button"
+              onClick={() =>
+                onDiscuss(
+                  session.titleTmdbId!,
+                  session.mediaType,
+                  `Split over ${labelFor(clash.category)}. Defend your take…`,
+                )
+              }
+              className="mt-3.5 flex items-center gap-2 rounded-full border border-teal/40 bg-teal/10 px-4 py-2 text-[13px] font-semibold text-teal transition-colors hover:bg-teal/20"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 8.9 8.9 0 0 1-3.2-.6L3 21l1.9-5.6a8 8 0 0 1-1.4-4A8.4 8.4 0 0 1 12 3.2a8.4 8.4 0 0 1 9 8.3Z" />
+              </svg>
+              Talk it out
+            </button>
+          )}
           {outlier && (
             <div className="mt-4 flex items-center gap-2.5">
               <span

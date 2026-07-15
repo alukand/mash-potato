@@ -34,6 +34,90 @@ export type Database = {
   }
   public: {
     Tables: {
+      banned_terms: {
+        Row: {
+          term: string
+        }
+        Insert: {
+          term: string
+        }
+        Update: {
+          term?: string
+        }
+        Relationships: []
+      }
+      comment_reactions: {
+        Row: {
+          comment_id: string
+          created_at: string
+          kind: string
+          user_id: string
+        }
+        Insert: {
+          comment_id: string
+          created_at?: string
+          kind: string
+          user_id: string
+        }
+        Update: {
+          comment_id?: string
+          created_at?: string
+          kind?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_reactions_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "title_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_reactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      comment_reports: {
+        Row: {
+          comment_id: string
+          created_at: string
+          reason: string | null
+          reporter_id: string
+        }
+        Insert: {
+          comment_id: string
+          created_at?: string
+          reason?: string | null
+          reporter_id: string
+        }
+        Update: {
+          comment_id?: string
+          created_at?: string
+          reason?: string | null
+          reporter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_reports_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "title_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       device_tokens: {
         Row: {
           platform: string
@@ -347,16 +431,22 @@ export type Database = {
       }
       profiles: {
         Row: {
+          accepted_terms_at: string | null
+          banned: boolean
           created_at: string
           display_name: string
           id: string
         }
         Insert: {
+          accepted_terms_at?: string | null
+          banned?: boolean
           created_at?: string
           display_name: string
           id: string
         }
         Update: {
+          accepted_terms_at?: string | null
+          banned?: boolean
           created_at?: string
           display_name?: string
           id?: string
@@ -490,6 +580,74 @@ export type Database = {
           },
         ]
       }
+      title_comments: {
+        Row: {
+          author_id: string
+          auto_hidden: boolean
+          body: string
+          created_at: string
+          deleted: boolean
+          group_id: string | null
+          id: string
+          parent_id: string | null
+          removed: boolean
+          title_id: string
+        }
+        Insert: {
+          author_id: string
+          auto_hidden?: boolean
+          body: string
+          created_at?: string
+          deleted?: boolean
+          group_id?: string | null
+          id?: string
+          parent_id?: string | null
+          removed?: boolean
+          title_id: string
+        }
+        Update: {
+          author_id?: string
+          auto_hidden?: boolean
+          body?: string
+          created_at?: string
+          deleted?: boolean
+          group_id?: string | null
+          id?: string
+          parent_id?: string | null
+          removed?: boolean
+          title_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "title_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "title_comments_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "title_comments_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "title_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "title_comments_title_id_fkey"
+            columns: ["title_id"]
+            isOneToOne: false
+            referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       titles: {
         Row: {
           created_at: string
@@ -519,6 +677,39 @@ export type Database = {
           year?: number | null
         }
         Relationships: []
+      }
+      user_blocks: {
+        Row: {
+          blocked_id: string
+          blocker_id: string
+          created_at: string
+        }
+        Insert: {
+          blocked_id: string
+          blocker_id: string
+          created_at?: string
+        }
+        Update: {
+          blocked_id?: string
+          blocker_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_blocks_blocked_id_fkey"
+            columns: ["blocked_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_blocks_blocker_id_fkey"
+            columns: ["blocker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_rubrics: {
         Row: {
@@ -563,16 +754,48 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_discussion_terms: { Args: never; Returns: undefined }
       backfill_category_score: {
         Args: { p_category_key: string; p_score: number; p_session_id: string }
         Returns: undefined
       }
+      comments_open_for_me: {
+        Args: { p_group_id: string; p_title_id: string }
+        Returns: boolean
+      }
+      delete_comment: { Args: { p_comment_id: string }; Returns: undefined }
+      discussion_gate: {
+        Args: { p_group_id: string; p_title_id: string }
+        Returns: {
+          open_for_me: boolean
+          rated: boolean
+          terms_accepted: boolean
+        }[]
+      }
+      group_cred: {
+        Args: { p_group_id: string }
+        Returns: {
+          cred: number
+          user_id: string
+        }[]
+      }
       has_locked_scorecard: { Args: { p_session_id: string }; Returns: boolean }
+      has_rated_title: { Args: { p_title_id: string }; Returns: boolean }
+      is_blocked_pair: { Args: { p_a: string; p_b: string }; Returns: boolean }
       is_group_member: { Args: { p_group_id: string }; Returns: boolean }
       is_group_owner: { Args: { p_group_id: string }; Returns: boolean }
       late_score_session: {
         Args: { p_scores: Json; p_session_id: string }
         Returns: undefined
+      }
+      post_comment: {
+        Args: {
+          p_body: string
+          p_group_id: string
+          p_parent_id: string
+          p_title_id: string
+        }
+        Returns: string
       }
       public_profile: { Args: { p_user_id: string }; Returns: Json }
       push_notify: { Args: { p_payload: Json }; Returns: undefined }

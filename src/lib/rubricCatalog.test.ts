@@ -199,3 +199,35 @@ describe('resolveSessionRubricTagged', () => {
     expect(Object.keys(plain[0])).not.toContain('source')
   })
 })
+
+describe('animated titles (genre 16)', () => {
+  it('adds an Animation category', () => {
+    const entries = resolveSessionRubric(baseRows, [16])
+    expect(entries.find((e) => e.key === 'animation')?.label).toBe('Animation')
+    expect(entries.find((e) => e.key === 'animation')?.weight).toBe(20)
+  })
+
+  it('scores Voice Acting in place of Acting, slightly lighter', () => {
+    // baseRows carry acting at weight 20 -> voice acting at 20 * 0.85 = 17.
+    const acting = baseRows.find((r) => r.key === 'acting')!.weight
+    const entries = resolveSessionRubric(baseRows, [16])
+    const voice = entries.find((e) => e.key === 'acting')
+    expect(voice?.label).toBe('Voice Acting')
+    expect(voice?.weight).toBe(17)
+    expect(voice!.weight).toBeLessThan(acting)
+  })
+
+  it('keeps the acting KEY so scores and history stay coherent', () => {
+    const entries = resolveSessionRubric(baseRows, [16])
+    expect(entries.map((e) => e.key)).toContain('acting')
+    expect(entries.map((e) => e.key)).not.toContain('voiceActing')
+  })
+
+  it('leaves Acting untouched for live-action titles', () => {
+    const entries = resolveSessionRubric(baseRows, [28]) // action
+    const acting = entries.find((e) => e.key === 'acting')
+    expect(acting?.label).toBe('Acting')
+    expect(acting?.weight).toBe(20)
+    expect(entries.map((e) => e.key)).not.toContain('animation')
+  })
+})

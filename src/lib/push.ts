@@ -23,8 +23,18 @@ export async function bindPushOpenHandler(): Promise<void> {
     await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
       const data = (action.notification.data ?? {}) as Record<string, unknown>
       const groupId = typeof data.group_id === 'string' ? data.group_id : null
-      if (!groupId) return
-      window.dispatchEvent(new CustomEvent('mp:push-open', { detail: { groupId } }))
+      // comment replies route to the title's discussion when the title has a
+      // TMDB identity; otherwise the group tab is the fallback.
+      const tmdbId =
+        typeof data.tmdb_id === 'string' && data.tmdb_id !== '' ? Number(data.tmdb_id) : null
+      const mediaType =
+        data.media_type === 'movie' || data.media_type === 'tv' ? data.media_type : null
+      if (!groupId && (tmdbId === null || mediaType === null)) return
+      window.dispatchEvent(
+        new CustomEvent('mp:push-open', {
+          detail: { groupId, tmdbId, mediaType },
+        }),
+      )
     })
   } catch {
     // push must never break app start

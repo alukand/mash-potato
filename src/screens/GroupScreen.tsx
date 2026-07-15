@@ -4,6 +4,7 @@ import {
   addMember,
   deleteGroup,
   deleteRubricPreset,
+  fetchGroupCred,
   fetchGroupLog,
   fetchGroupRubrics,
   fetchMyRubricPresets,
@@ -25,6 +26,7 @@ import type {
   UserSearchResult,
 } from '../lib/api'
 import { DEFAULT_WEIGHTS, RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from '../lib/rubricCatalog'
+import { credFlair } from '../lib/cred'
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
 import { CtaButton, GroupMark, fieldClass, fieldClassSm } from '../components/ui'
@@ -42,7 +44,11 @@ interface GroupScreenProps {
   onMembersChanged: () => void
   /** Refetch the group list itself (rename / leave / delete). */
   onGroupsChanged: () => Promise<void>
-  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  onOpenTitle: (
+    tmdbId: number,
+    mediaType: 'movie' | 'tv',
+    discuss?: { groupId: string; seed?: string },
+  ) => void
   /** Open a member's public profile. */
   onOpenUser: (userId: string) => void
   onSwitchGroup: (groupId: string) => void
@@ -80,6 +86,7 @@ export function GroupScreen({
   const [saved, setSaved] = useState<GroupRubricRow[] | null>(null)
   const [rows, setRows] = useState<GroupRubricRow[] | null>(null)
   const [log, setLog] = useState<GroupLogEntry[]>([])
+  const [cred, setCred] = useState<Map<string, number>>(new Map())
   const [recs, setRecs] = useState<{
     seed: string
     mediaType: 'movie' | 'tv'
@@ -128,6 +135,11 @@ export function GroupScreen({
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : 'Load failed'))
     fetchMyRubricPresets(userId)
       .then((p) => !cancelled && setPresets(p))
+      .catch(() => {})
+    // Mash Cred: reactions received on this group's threads (flair only).
+    setCred(new Map())
+    fetchGroupCred(group.id)
+      .then((m) => !cancelled && setCred(m))
       .catch(() => {})
     setRecs(null)
     fetchGroupLog(group.id)
@@ -419,7 +431,15 @@ export function GroupScreen({
 
       {/* ---- the group's latest round: invite / blind progress / the Reveal ---- */}
       <div className="mb-7">
-        <SessionPanel group={group} members={members} userId={userId} onGoRate={onGoRate} />
+        <SessionPanel
+          group={group}
+          members={members}
+          userId={userId}
+          onGoRate={onGoRate}
+          onDiscuss={(tmdbId, mediaType, seed) =>
+            onOpenTitle(tmdbId, mediaType, { groupId: group.id, seed })
+          }
+        />
       </div>
 
       {/* ---- Group log: everything rated together (the group's memory) ---- */}
@@ -783,6 +803,11 @@ export function GroupScreen({
                         {isYou && <span className="ml-1.5 text-muted">(you)</span>}
                       </span>
                     </button>
+                    {credFlair(cred.get(m.userId) ?? 0) && (
+                      <span className="shrink-0 rounded-full border border-gold/30 bg-gold/10 px-2.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-gold">
+                        {credFlair(cred.get(m.userId) ?? 0)}
+                      </span>
+                    )}
                     {m.role === 'owner' && (
                       <span className="shrink-0 rounded-full border border-line bg-surface-2 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted">
                         Owner

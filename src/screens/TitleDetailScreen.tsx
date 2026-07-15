@@ -31,6 +31,7 @@ import { weightsFromRubric } from '../lib/mapping'
 import { DEFAULT_WEIGHTS, defaultRubricEntries } from '../lib/rubricCatalog'
 import { CategoryLegend } from '../components/CategoryLegend'
 import { CommunityHistogram } from '../components/CommunityHistogram'
+import { DiscussionSection } from '../components/DiscussionSection'
 import { GroupInviteSheet } from '../components/GroupInviteSheet'
 import { CtaButton, ScoreSliderRow, fieldClassSm } from '../components/ui'
 
@@ -43,6 +44,10 @@ interface TitleDetailScreenProps {
   mediaType: 'movie' | 'tv'
   groups: GroupInfo[]
   userId: string
+  /** Deep link: open the discussion on this group's thread. */
+  discussGroupId?: string | null
+  /** Deep link: composer placeholder (the reveal's clash headline). */
+  discussSeed?: string | null
   onBack: () => void
   /** A round started for this group; the caller navigates to it. */
   onStartedSession: (groupId: string) => void
@@ -72,6 +77,8 @@ export function TitleDetailScreen({
   mediaType,
   groups,
   userId,
+  discussGroupId = null,
+  discussSeed = null,
   onBack,
   onStartedSession,
 }: TitleDetailScreenProps) {
@@ -80,6 +87,8 @@ export function TitleDetailScreen({
   const [savedTitleId, setSavedTitleId] = useState<string | null>(null)
   // The invite flow always picks its group (recents + search) in this sheet.
   const [inviteOpen, setInviteOpen] = useState(false)
+  // bumped when a rating changes (it gates the public discussion)
+  const [discussionRefresh, setDiscussionRefresh] = useState(0)
   const [history, setHistory] = useState<TitleHistoryEntry[]>([])
   const [community, setCommunity] = useState<CommunityScore | null>(null)
   const [communityBins, setCommunityBins] = useState<number[]>([])
@@ -286,6 +295,8 @@ export function TitleDetailScreen({
       setCommunity(comm)
       setCommunityBins(histogram)
       setRating(false)
+      // the rating gates public discussion; let the section re-check
+      setDiscussionRefresh((n) => n + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your rating')
     } finally {
@@ -307,6 +318,7 @@ export function TitleDetailScreen({
       ])
       setCommunity(comm)
       setCommunityBins(histogram)
+      setDiscussionRefresh((n) => n + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not remove your rating')
     } finally {
@@ -834,6 +846,22 @@ export function TitleDetailScreen({
             </p>
           )}
         </section>
+
+        {/* ---- discussion: group debriefs + everyone's takes ---- */}
+        <DiscussionSection
+          title={{
+            name: detail.name,
+            year: detail.year,
+            mediaType: detail.mediaType,
+            tmdbId: detail.tmdbId,
+            posterPath: detail.posterPath,
+          }}
+          groups={groups}
+          userId={userId}
+          initialGroupId={discussGroupId}
+          composerSeed={discussSeed}
+          refreshKey={discussionRefresh}
+        />
       </div>
     </div>
   )

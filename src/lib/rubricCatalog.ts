@@ -56,7 +56,17 @@ export const RUBRIC_CATALOG: CatalogCategory[] = [
   { key: 'chemistry', label: 'Chemistry', blurb: 'Do you buy the romance?', kind: 'genre', genreIds: [10749] },
   { key: 'insight', label: 'Insight', blurb: 'Did you learn something real?', kind: 'genre', genreIds: [99] },
   { key: 'musicNumbers', label: 'Music & Numbers', blurb: 'The songs and set pieces', kind: 'genre', genreIds: [10402] },
+  { key: 'animation', label: 'Animation', blurb: 'Fluidity, style, craft of the animation', kind: 'genre', genreIds: [16] },
 ]
+
+/** TMDB "Animation" genre (movies and TV share id 16). */
+export const ANIMATION_GENRE_ID = 16
+/**
+ * On animated nights, Voice Acting rides in Acting's place, weighted a touch
+ * lighter: the vocal performance still counts, but more of the craft lives in
+ * the animation itself (which gets its own category). "Slightly less."
+ */
+const VOICE_ACTING_WEIGHT_FACTOR = 0.85
 
 export const BASE_CATEGORIES = RUBRIC_CATALOG.filter((c) => c.kind === 'base')
 
@@ -225,6 +235,21 @@ export function resolveSessionRubricTagged(
         source: 'genre',
       })
     }
+  }
+
+  // Animated titles score VOICE Acting in place of live Acting, a touch
+  // lighter. The KEY stays 'acting' so scores, backfills, and cross-title
+  // history stay coherent; only the label and weight shift for this round.
+  if (genreIds.includes(ANIMATION_GENRE_ID)) {
+    return entries.map((e) =>
+      e.key === 'acting'
+        ? {
+            ...e,
+            label: 'Voice Acting',
+            weight: Math.round(e.weight * VOICE_ACTING_WEIGHT_FACTOR * 10) / 10,
+          }
+        : e,
+    )
   }
   return entries
 }

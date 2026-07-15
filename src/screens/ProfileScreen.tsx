@@ -523,6 +523,16 @@ export function ProfileScreen({
         <p className="mt-2 px-2 text-[12px] leading-snug text-muted">
           Copies every solo rating and saved title as JSON. Your history is yours.
         </p>
+        {/* published support contact (App Review guideline 1.2) */}
+        <p className="mt-4 px-2 text-center text-[12px] leading-snug text-muted">
+          Questions, reports, or feedback:{' '}
+          <a
+            href="mailto:alexanderlukasland@gmail.com?subject=Mash%20Potato%20support"
+            className="text-teal"
+          >
+            alexanderlukasland@gmail.com
+          </a>
+        </p>
       </section>
     </div>
   )
