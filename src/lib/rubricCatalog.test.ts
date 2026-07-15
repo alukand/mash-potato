@@ -201,10 +201,14 @@ describe('resolveSessionRubricTagged', () => {
 })
 
 describe('animated titles (genre 16)', () => {
-  it('adds an Animation category', () => {
+  it('REPLACES Cinematography with Animation at the same weight', () => {
     const entries = resolveSessionRubric(baseRows, [16])
-    expect(entries.find((e) => e.key === 'animation')?.label).toBe('Animation')
-    expect(entries.find((e) => e.key === 'animation')?.weight).toBe(20)
+    const swapped = entries.find((e) => e.key === 'cinematography')
+    expect(swapped?.label).toBe('Animation')
+    expect(swapped?.weight).toBe(20) // inherits the group's cinematography weight
+    expect(entries.map((e) => e.label)).not.toContain('Cinematography')
+    // exactly one Animation entry: no genre auto-add on top of the swap
+    expect(entries.filter((e) => e.label === 'Animation')).toHaveLength(1)
   })
 
   it('scores Voice Acting in place of Acting, slightly lighter', () => {
@@ -217,17 +221,27 @@ describe('animated titles (genre 16)', () => {
     expect(voice!.weight).toBeLessThan(acting)
   })
 
-  it('keeps the acting KEY so scores and history stay coherent', () => {
-    const entries = resolveSessionRubric(baseRows, [16])
-    expect(entries.map((e) => e.key)).toContain('acting')
-    expect(entries.map((e) => e.key)).not.toContain('voiceActing')
+  it('keeps the KEYS so scores and history stay coherent', () => {
+    const keys = resolveSessionRubric(baseRows, [16]).map((e) => e.key)
+    expect(keys).toContain('acting')
+    expect(keys).toContain('cinematography')
+    expect(keys).not.toContain('voiceActing')
   })
 
-  it('leaves Acting untouched for live-action titles', () => {
+  it('falls back to the Animation add-on when the group carries no Cinematography', () => {
+    const noCinema = baseRows.filter((r) => r.key !== 'cinematography')
+    const entries = resolveSessionRubric(noCinema, [16], noCinema.map((r) => r.key))
+    const anim = entries.find((e) => e.key === 'animation')
+    expect(anim?.label).toBe('Animation')
+    expect(anim?.weight).toBe(20)
+    expect(entries.filter((e) => e.label === 'Animation')).toHaveLength(1)
+  })
+
+  it('leaves Acting and Cinematography untouched for live-action titles', () => {
     const entries = resolveSessionRubric(baseRows, [28]) // action
-    const acting = entries.find((e) => e.key === 'acting')
-    expect(acting?.label).toBe('Acting')
-    expect(acting?.weight).toBe(20)
+    expect(entries.find((e) => e.key === 'acting')?.label).toBe('Acting')
+    expect(entries.find((e) => e.key === 'acting')?.weight).toBe(20)
+    expect(entries.find((e) => e.key === 'cinematography')?.label).toBe('Cinematography')
     expect(entries.map((e) => e.key)).not.toContain('animation')
   })
 })

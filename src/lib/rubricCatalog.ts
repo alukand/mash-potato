@@ -62,9 +62,11 @@ export const RUBRIC_CATALOG: CatalogCategory[] = [
 /** TMDB "Animation" genre (movies and TV share id 16). */
 export const ANIMATION_GENRE_ID = 16
 /**
- * On animated nights, Voice Acting rides in Acting's place, weighted a touch
- * lighter: the vocal performance still counts, but more of the craft lives in
- * the animation itself (which gets its own category). "Slightly less."
+ * On animated nights two base categories change clothes: Cinematography
+ * BECOMES Animation (same weight — it is the visual craft category), and
+ * Acting becomes Voice Acting, weighted a touch lighter because more of the
+ * craft lives in the animation itself. Keys never change, so scores,
+ * backfills, and cross-title history stay coherent.
  */
 const VOICE_ACTING_WEIGHT_FACTOR = 0.85
 
@@ -108,9 +110,19 @@ export function defaultRubricRows(): GroupRubricRow[] {
 }
 
 const BY_KEY = new Map(RUBRIC_CATALOG.map((c) => [c.key, c]))
+const BY_LABEL = new Map(RUBRIC_CATALOG.map((c) => [c.label, c]))
 
 export function catalogCategory(key: string): CatalogCategory | undefined {
   return BY_KEY.get(key)
+}
+
+/**
+ * Catalog lookup by DISPLAY label — for per-round relabels (Cinematography
+ * shows as Animation on animated nights) where the key alone would fetch the
+ * wrong definition.
+ */
+export function catalogCategoryByLabel(label: string): CatalogCategory | undefined {
+  return BY_LABEL.get(label)
 }
 
 /** One member's personal rubric rows within a group. */
@@ -237,19 +249,28 @@ export function resolveSessionRubricTagged(
     }
   }
 
-  // Animated titles score VOICE Acting in place of live Acting, a touch
-  // lighter. The KEY stays 'acting' so scores, backfills, and cross-title
-  // history stay coherent; only the label and weight shift for this round.
+  // Animated titles: Cinematography is REPLACED by Animation (same weight),
+  // and Acting becomes Voice Acting, slightly lighter. Keys stay unchanged
+  // so scores and history remain coherent; only labels and weights shift for
+  // this round. The auto-added animation category only stands in when the
+  // group carries no Cinematography row to relabel.
   if (genreIds.includes(ANIMATION_GENRE_ID)) {
-    return entries.map((e) =>
-      e.key === 'acting'
-        ? {
+    const hasCinematography = entries.some((e) => e.key === 'cinematography')
+    return entries
+      .filter((e) => !(e.key === 'animation' && hasCinematography))
+      .map((e) => {
+        if (e.key === 'acting') {
+          return {
             ...e,
             label: 'Voice Acting',
             weight: Math.round(e.weight * VOICE_ACTING_WEIGHT_FACTOR * 10) / 10,
           }
-        : e,
-    )
+        }
+        if (e.key === 'cinematography') {
+          return { ...e, label: 'Animation' }
+        }
+        return e
+      })
   }
   return entries
 }

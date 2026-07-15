@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { catalogCategory } from '../lib/rubricCatalog'
+import { catalogCategory, catalogCategoryByLabel } from '../lib/rubricCatalog'
 
 interface CategoryLegendProps {
   /** Ordered categories to define (a session's rubric or the group's). */
@@ -47,7 +47,10 @@ export function CategoryLegend({ entries, className = '' }: CategoryLegendProps)
                 {e.label}
               </dt>
               <dd className="min-w-0 text-[13px] leading-snug text-muted">
-                {catalogCategory(e.key)?.blurb ?? 'A category this group added.'}
+                {/* label first (per-round relabels like Animation), then key */}
+                {catalogCategoryByLabel(e.label)?.blurb ??
+                  catalogCategory(e.key)?.blurb ??
+                  'A category this group added.'}
               </dd>
             </div>
           ))}

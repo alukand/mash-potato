@@ -104,10 +104,11 @@ diving's published difficulty table, game-jam N/A opt-outs):
 2. **Per genre (automatic)**: genre add-on categories resolve from TMDB
    genres via the catalog table; the group consented to the table once.
    Deliberate disables stick (configuredCategoryKeys). Animated titles
-   (TMDB genre 16) also add an Animation category and score Voice Acting in
-   Acting's place, weighted a touch lighter (0.85×) — the key stays `acting`
-   so scores and history stay coherent, only the label and weight shift for
-   that round.
+   (TMDB genre 16) swap two base categories for the round: Cinematography
+   BECOMES Animation (same weight) and Acting becomes Voice Acting at
+   0.85× — keys never change, so scores and history stay coherent; only
+   labels and weights shift. The animation add-on only stands in when the
+   group carries no Cinematography row to relabel.
 3. **Per round (binary only)**: the creator may leave a genre add-on out
    (on/off chip in the RubricReceipt, locked by the session snapshot).
    NEVER weight sliders per movie: it's a studied manipulation vector that

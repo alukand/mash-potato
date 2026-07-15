@@ -63,8 +63,9 @@ fine client-side.
   absent/disabled counts as 0), and `resolveSessionRubric[Tagged]` (effective
   rubric ∪ TMDB-genre add-ons; pass `configuredCategoryKeys(raw rubrics)` so
   a category the whole group disabled stays out). Animated titles (genre 16)
-  add an Animation category and relabel `acting` → Voice Acting at 0.85× (key
-  unchanged for history coherence). PRODUCT LAW (researched 2026-07-12, see
+  relabel `cinematography` → Animation (same weight) and `acting` → Voice
+  Acting at 0.85× (keys unchanged for history coherence). PRODUCT LAW
+  (researched 2026-07-12, see
   DESIGN.md "Rubric cadence"): weights never change per movie — per-round
   flexibility is only the binary genre add-on opt-out in `RubricReceipt` at
   session creation.
