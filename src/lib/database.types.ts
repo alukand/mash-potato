@@ -395,6 +395,7 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          group_id: string | null
           id: string
           is_public: boolean
           name: string
@@ -404,6 +405,7 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          group_id?: string | null
           id?: string
           is_public?: boolean
           name: string
@@ -413,6 +415,7 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          group_id?: string | null
           id?: string
           is_public?: boolean
           name?: string
@@ -420,6 +423,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "playlists_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "playlists_owner_id_fkey"
             columns: ["owner_id"]
@@ -432,6 +442,7 @@ export type Database = {
       profiles: {
         Row: {
           accepted_terms_at: string | null
+          avatar_key: string | null
           banned: boolean
           created_at: string
           display_name: string
@@ -439,6 +450,7 @@ export type Database = {
         }
         Insert: {
           accepted_terms_at?: string | null
+          avatar_key?: string | null
           banned?: boolean
           created_at?: string
           display_name: string
@@ -446,6 +458,7 @@ export type Database = {
         }
         Update: {
           accepted_terms_at?: string | null
+          avatar_key?: string | null
           banned?: boolean
           created_at?: string
           display_name?: string

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { fetchPublicProfile } from '../lib/api'
 import type { PublicProfile } from '../lib/api'
+import { colorForUser } from '../lib/palette'
+import { Avatar } from '../components/avatars'
 import { GroupMark } from '../components/ui'
 import { PlaylistCard } from '../components/PlaylistCard'
 
@@ -60,12 +62,12 @@ export function PublicProfileScreen({ userId, onOpenPlaylist, onBack }: PublicPr
         <>
           {/* ---- identity ---- */}
           <section className="mp-rise flex items-center gap-4">
-            <span
-              className="grid h-16 w-16 shrink-0 place-items-center rounded-full font-display text-2xl font-semibold text-bg"
-              style={{ backgroundImage: 'linear-gradient(160deg, #E7B24E, #E07A5F)' }}
-            >
-              {profile.displayName.charAt(0).toUpperCase()}
-            </span>
+            <Avatar
+              avatarKey={profile.avatarKey}
+              displayName={profile.displayName}
+              color={colorForUser(userId)}
+              size={64}
+            />
             <div className="min-w-0">
               <h1 className="truncate font-display text-[26px] font-semibold leading-tight">
                 {profile.displayName}

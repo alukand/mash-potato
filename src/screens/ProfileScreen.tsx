@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   createPlaylist,
+  fetchMyAvatarKey,
   fetchMyExport,
   fetchMyFriends,
   fetchMyGlobalRatings,
@@ -8,6 +9,7 @@ import {
   fetchMyReviewedTitles,
   fetchMySavedTitles,
   setGroupVisibility,
+  updateMyAvatar,
   updateMyDisplayName,
 } from '../lib/api'
 import { signOutWithPushCleanup } from '../lib/push'
@@ -23,6 +25,7 @@ import { GroupMark, VisibilityChip, fieldClassSm } from '../components/ui'
 import { PlaylistCard } from '../components/PlaylistCard'
 import { PosterGrid } from '../components/PosterGrid'
 import { colorForUser } from '../lib/palette'
+import { AVATAR_CATALOG, Avatar } from '../components/avatars'
 
 interface ProfileScreenProps {
   userId: string
@@ -73,6 +76,27 @@ export function ProfileScreen({
   const [listBusy, setListBusy] = useState(false)
   const [visBusyId, setVisBusyId] = useState<string | null>(null)
 
+  // ---- avatar picker ----
+  const [avatarKey, setAvatarKey] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [avatarBusy, setAvatarBusy] = useState(false)
+
+  async function handlePickAvatar(key: string | null) {
+    if (avatarBusy) return
+    setAvatarBusy(true)
+    try {
+      await updateMyAvatar(userId, key)
+      setAvatarKey(key)
+      setPickerOpen(false)
+      // the header and member rows cache it; refresh them
+      onNameChanged()
+    } catch {
+      // non-fatal; the sheet stays open to retry
+    } finally {
+      setAvatarBusy(false)
+    }
+  }
+
   // ---- name editing ----
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(displayName)
@@ -97,14 +121,16 @@ export function ProfileScreen({
       fetchMySavedTitles(userId),
       fetchMyPlaylists(userId).catch(() => []),
       fetchMyFriends(userId).catch(() => []),
+      fetchMyAvatarKey(userId).catch(() => null),
     ])
-      .then(([r, g, s, p, f]) => {
+      .then(([r, g, s, p, f, a]) => {
         if (cancelled) return
         setReviewed(r)
         setRated(g)
         setSaved(s)
         setPlaylists(p)
         setFriends(f)
+        setAvatarKey(a)
       })
       .catch(() => {
         if (cancelled) return
@@ -206,12 +232,24 @@ export function ProfileScreen({
 
       {/* ---- identity (editable) ---- */}
       <section className="mp-rise flex items-center gap-4">
-        <span
-          className="grid h-16 w-16 shrink-0 place-items-center rounded-full font-display text-2xl font-semibold text-bg"
-          style={{ backgroundImage: 'linear-gradient(160deg, #51C5BE, #3E7CB8)' }}
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          aria-label="Change your avatar"
+          className="relative shrink-0 transition-transform active:scale-95"
         >
-          {shownName.charAt(0).toUpperCase()}
-        </span>
+          <Avatar
+            avatarKey={avatarKey}
+            displayName={shownName}
+            color={colorForUser(userId)}
+            size={64}
+          />
+          <span className="absolute -bottom-0.5 -right-0.5 grid h-6 w-6 place-items-center rounded-full border border-line bg-surface-2 text-muted">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3Z" />
+            </svg>
+          </span>
+        </button>
         <div className="min-w-0 flex-1">
           {editingName ? (
             <div className="flex items-center gap-1.5">
@@ -326,8 +364,8 @@ export function ProfileScreen({
           </button>
         </div>
         <p className="mt-2 px-2 text-[12px] leading-snug text-muted">
-          Public groups show on your profile when friends look you up. Everything starts
-          private.
+          Groups show on your profile when friends look you up. Flip any of them
+          private with its chip.
         </p>
       </section>
 
@@ -354,7 +392,7 @@ export function ProfileScreen({
         {playlists.length === 0 && !newListOpen && (
           <p className="px-1 text-[13px] leading-snug text-muted">
             Build watchlists and themed shelves: rainy day comfort films, horror for
-            October, films to argue about. Private until you say otherwise.
+            October, films to argue about. Friends can browse them from your profile.
           </p>
         )}
         {newListOpen ? (
@@ -419,12 +457,13 @@ export function ProfileScreen({
                 onClick={() => onOpenUser(f.userId)}
                 className="group flex w-full items-center gap-3 px-5 py-3 text-left"
               >
-                <span
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[13px] font-bold text-bg transition-transform group-active:scale-95"
-                  style={{ backgroundColor: colorForUser(f.userId) }}
-                >
-                  {f.displayName.charAt(0).toUpperCase()}
-                </span>
+                <Avatar
+                  avatarKey={f.avatarKey}
+                  displayName={f.displayName}
+                  color={colorForUser(f.userId)}
+                  size={36}
+                  className="transition-transform group-active:scale-95"
+                />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] font-medium transition-colors group-hover:text-teal">
                     {f.displayName}
@@ -523,6 +562,66 @@ export function ProfileScreen({
         <p className="mt-2 px-2 text-[12px] leading-snug text-muted">
           Copies every solo rating and saved title as JSON. Your history is yours.
         </p>
+        {/* ---- avatar picker sheet ---- */}
+        {pickerOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-bg/70 backdrop-blur-sm"
+            onClick={() => setPickerOpen(false)}
+          >
+            <div
+              role="dialog"
+              aria-label="Pick your avatar"
+              className="mp-card max-h-[80dvh] w-full max-w-[480px] overflow-y-auto rounded-t-[26px] px-6 pb-safe pt-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="font-display text-[22px] font-semibold leading-tight">
+                Pick your look
+              </h2>
+              <p className="mt-1 text-[13px] leading-snug text-muted">
+                Original portraits from the movies, not from any movie.
+              </p>
+              <div className="mt-4 grid grid-cols-4 gap-3">
+                <button
+                  type="button"
+                  disabled={avatarBusy}
+                  onClick={() => void handlePickAvatar(null)}
+                  aria-label="Your initial"
+                  className={`flex flex-col items-center gap-1.5 rounded-2xl p-2 transition-colors ${
+                    avatarKey === null ? 'bg-teal/10 ring-1 ring-teal/50' : 'hover:bg-surface-2'
+                  }`}
+                >
+                  <Avatar
+                    avatarKey={null}
+                    displayName={shownName}
+                    color={colorForUser(userId)}
+                    size={52}
+                  />
+                  <span className="font-mono text-[8px] uppercase tracking-wide text-muted">
+                    Initial
+                  </span>
+                </button>
+                {AVATAR_CATALOG.map((a) => (
+                  <button
+                    key={a.key}
+                    type="button"
+                    disabled={avatarBusy}
+                    onClick={() => void handlePickAvatar(a.key)}
+                    aria-label={a.label}
+                    className={`flex flex-col items-center gap-1.5 rounded-2xl p-2 transition-colors ${
+                      avatarKey === a.key ? 'bg-teal/10 ring-1 ring-teal/50' : 'hover:bg-surface-2'
+                    }`}
+                  >
+                    <Avatar avatarKey={a.key} displayName={a.label} color="#000" size={52} />
+                    <span className="font-mono text-[8px] uppercase tracking-wide text-muted">
+                      {a.label.replace('The ', '')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* published support contact (App Review guideline 1.2) */}
         <p className="mt-4 px-2 text-center text-[12px] leading-snug text-muted">
           Questions, reports, or feedback:{' '}

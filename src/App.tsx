@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
-import { fetchMyGroups, fetchMembers } from './lib/api'
+import { fetchMyAvatarKey, fetchMyGroups, fetchMembers } from './lib/api'
 import type { GroupInfo, MemberInfo } from './lib/api'
 import {
   pickActiveGroup,
@@ -16,6 +16,7 @@ import {
 import { bindPushOpenHandler, enablePush } from './lib/push'
 import { colorForMember } from './lib/palette'
 import { Logo } from './components/Logo'
+import { Avatar } from './components/avatars'
 import { BottomNav } from './components/BottomNav'
 import { OnboardingSlides } from './components/OnboardingSlides'
 import { CtaButton } from './components/ui'
@@ -103,6 +104,8 @@ function App() {
   const [groups, setGroups] = useState<GroupInfo[] | undefined>(undefined)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [members, setMembers] = useState<MemberInfo[]>([])
+  // Own avatar, independent of any group (the header needs it group-less too).
+  const [myAvatar, setMyAvatar] = useState<string | null>(null)
   const [stack, setStack] = useState<StackView[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   // A notification tap names its target before groups have loaded; park it here.
@@ -162,6 +165,16 @@ function App() {
     if (session) void enablePush()
   }, [session])
 
+  useEffect(() => {
+    if (!session) {
+      setMyAvatar(null)
+      return
+    }
+    fetchMyAvatarKey(session.user.id)
+      .then(setMyAvatar)
+      .catch(() => {})
+  }, [session])
+
   // Notification taps land on the group's round/reveal: the tap handler binds
   // at mount (cold-start taps included) and parks the group id until the
   // group list is ready.
@@ -218,12 +231,18 @@ function App() {
     }
   }, [groupId])
 
+  // Refresh whatever caches identity bits (name or avatar changed on Profile).
   const refreshMembers = useCallback(() => {
+    if (session) {
+      fetchMyAvatarKey(session.user.id)
+        .then(setMyAvatar)
+        .catch(() => {})
+    }
     if (!groupId) return
     fetchMembers(groupId)
       .then(setMembers)
       .catch(() => {})
-  }, [groupId])
+  }, [groupId, session])
 
   // Refetch the group list after a rename / leave / delete. If the active
   // group is gone the picker falls back (or the create-group gate shows).
@@ -417,10 +436,14 @@ function App() {
               type="button"
               onClick={() => pushView({ kind: 'profile' })}
               aria-label="Your profile"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[11px] font-bold text-bg ring-2 ring-teal/70 transition-transform active:scale-95"
-              style={{ backgroundColor: colorForMember(members, userId) }}
+              className="shrink-0 rounded-full ring-2 ring-teal/70 transition-transform active:scale-95"
             >
-              {myName.charAt(0).toUpperCase()}
+              <Avatar
+                avatarKey={me?.avatarKey ?? myAvatar}
+                displayName={myName}
+                color={colorForMember(members, userId)}
+                size={36}
+              />
             </button>
           </header>
 
@@ -469,6 +492,7 @@ function App() {
                   onOpenUser={(id) => pushView({ kind: 'user', userId: id })}
                   onSwitchGroup={switchGroup}
                   onCreateGroup={() => pushView({ kind: 'createGroup' })}
+                  onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
                   onGoRate={() => setTab('rate')}
                 />
               ) : (

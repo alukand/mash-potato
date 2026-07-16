@@ -4,8 +4,10 @@ import {
   addMember,
   deleteGroup,
   deleteRubricPreset,
+  createPlaylist,
   fetchGroupCred,
   fetchGroupLog,
+  fetchGroupPlaylists,
   fetchGroupRubrics,
   fetchMyRubricPresets,
   fetchRecommendations,
@@ -21,17 +23,20 @@ import type {
   GroupLogEntry,
   GroupRubricRow,
   MemberInfo,
+  PlaylistSummary,
   TmdbResult,
   UserRubricPreset,
   UserSearchResult,
 } from '../lib/api'
 import { DEFAULT_WEIGHTS, RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from '../lib/rubricCatalog'
 import { credFlair } from '../lib/cred'
+import { Avatar } from '../components/avatars'
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
 import { CtaButton, GroupMark, fieldClass, fieldClassSm } from '../components/ui'
 import { CategoryLegend } from '../components/CategoryLegend'
 import { GroupLog } from '../components/GroupLog'
+import { PlaylistCard } from '../components/PlaylistCard'
 import { PosterShelf } from '../components/PosterShelf'
 import { SessionPanel } from '../components/SessionPanel'
 
@@ -53,6 +58,8 @@ interface GroupScreenProps {
   onOpenUser: (userId: string) => void
   onSwitchGroup: (groupId: string) => void
   onCreateGroup: () => void
+  /** Open a playlist (the group's shared watchlists live here). */
+  onOpenPlaylist: (playlistId: string) => void
   /** Jump to the Rate tab for the active group. */
   onGoRate: () => void
 }
@@ -78,6 +85,7 @@ export function GroupScreen({
   onOpenUser,
   onSwitchGroup,
   onCreateGroup,
+  onOpenPlaylist,
   onGoRate,
 }: GroupScreenProps) {
   const isOwner = group.role === 'owner'
@@ -87,6 +95,10 @@ export function GroupScreen({
   const [rows, setRows] = useState<GroupRubricRow[] | null>(null)
   const [log, setLog] = useState<GroupLogEntry[]>([])
   const [cred, setCred] = useState<Map<string, number>>(new Map())
+  // ---- shared watchlists ----
+  const [watchlists, setWatchlists] = useState<PlaylistSummary[] | null>(null)
+  const [newListName, setNewListName] = useState('')
+  const [listBusy, setListBusy] = useState(false)
   const [recs, setRecs] = useState<{
     seed: string
     mediaType: 'movie' | 'tv'
@@ -141,6 +153,11 @@ export function GroupScreen({
     fetchGroupCred(group.id)
       .then((m) => !cancelled && setCred(m))
       .catch(() => {})
+    // Shared watchlists: any member curates them.
+    setWatchlists(null)
+    fetchGroupPlaylists(group.id)
+      .then((w) => !cancelled && setWatchlists(w))
+      .catch(() => !cancelled && setWatchlists([]))
     setRecs(null)
     fetchGroupLog(group.id)
       .then((entries) => {
@@ -317,6 +334,24 @@ export function GroupScreen({
     }
   }
 
+  async function handleCreateWatchlist() {
+    // Enter in the name field lands here too; the busy check is the guard
+    // the disabled button can't provide.
+    if (listBusy) return
+    const name = newListName.trim()
+    if (name.length === 0) return
+    setListBusy(true)
+    try {
+      await createPlaylist(userId, name, group.id)
+      setWatchlists(await fetchGroupPlaylists(group.id))
+      setNewListName('')
+    } catch {
+      // non-fatal; the button re-enables
+    } finally {
+      setListBusy(false)
+    }
+  }
+
   // The gear next to the switcher: open the settings panel and bring it into
   // view (it lives in the admin corner at the bottom of the tab).
   function openSettings() {
@@ -459,6 +494,61 @@ export function GroupScreen({
           />
         </div>
       )}
+
+      {/* ---- shared watchlists: what to watch next, curated together ---- */}
+      <section className="mp-rise mb-7" style={{ animationDelay: '100ms' }}>
+        <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+          Watchlists{' '}
+          <span className="tabular ml-1 font-mono text-[10px]">
+            {watchlists?.length || ''}
+          </span>
+        </p>
+        <div className="mp-card overflow-hidden rounded-[22px]">
+          {watchlists === null ? (
+            <p className="px-5 py-4 text-[13px] text-muted">Loading…</p>
+          ) : (
+            <>
+              {watchlists.length === 0 && (
+                <p className="px-5 pb-1 pt-4 text-[13px] leading-snug text-muted">
+                  A shared list everyone in {group.name} can add to. Queue up the next
+                  movie nights.
+                </p>
+              )}
+              <div className="divide-y divide-line/50">
+                {watchlists.map((w) => (
+                  <PlaylistCard
+                    key={w.id}
+                    name={w.name}
+                    itemCount={w.itemCount}
+                    posters={w.posters}
+                    description={w.description}
+                    onOpen={() => onOpenPlaylist(w.id)}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5 border-t border-line/50 px-4 py-3">
+                <input
+                  type="text"
+                  maxLength={80}
+                  placeholder="New watchlist…"
+                  value={newListName}
+                  onChange={(e) => setNewListName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && void handleCreateWatchlist()}
+                  className={`flex-1 ${fieldClassSm}`}
+                />
+                <button
+                  type="button"
+                  disabled={listBusy || newListName.trim().length === 0}
+                  onClick={() => void handleCreateWatchlist()}
+                  className="shrink-0 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-[12px] font-semibold text-teal disabled:opacity-50"
+                >
+                  {listBusy ? 'Creating…' : 'Create'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
 
       {/* ---- The group's mashed rubric (compact) + editor toggle ---- */}
       <section className="mp-rise" style={{ animationDelay: '120ms' }}>
@@ -792,12 +882,13 @@ export function GroupScreen({
                       onClick={() => !isYou && onOpenUser(m.userId)}
                       className="group flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
                     >
-                      <span
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-full font-mono text-[13px] font-bold text-bg transition-transform group-active:scale-95"
-                        style={{ backgroundColor: AVATAR_PALETTE[i % AVATAR_PALETTE.length] }}
-                      >
-                        {m.displayName.charAt(0).toUpperCase()}
-                      </span>
+                      <Avatar
+                        avatarKey={m.avatarKey}
+                        displayName={m.displayName}
+                        color={AVATAR_PALETTE[i % AVATAR_PALETTE.length]}
+                        size={36}
+                        className="transition-transform group-active:scale-95"
+                      />
                       <span className={`min-w-0 flex-1 truncate text-[14px] font-medium ${isYou ? '' : 'transition-colors group-hover:text-teal'}`}>
                         {m.displayName}
                         {isYou && <span className="ml-1.5 text-muted">(you)</span>}

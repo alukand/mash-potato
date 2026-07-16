@@ -7,7 +7,7 @@ import {
 } from '../lib/api'
 import type { PlaylistDetail } from '../lib/api'
 import { PosterGrid } from '../components/PosterGrid'
-import { VisibilityChip, fieldClassSm } from '../components/ui'
+import { GroupMark, VisibilityChip, fieldClassSm } from '../components/ui'
 
 interface PlaylistScreenProps {
   playlistId: string
@@ -61,6 +61,9 @@ export function PlaylistScreen({
   }, [playlistId])
 
   const mine = detail != null && detail.ownerId === userId
+  // Group watchlists: seeing one means being in the group (RLS), and every
+  // member curates the titles. Rename/visibility/delete stay with the creator.
+  const canCurate = mine || (detail != null && detail.groupId !== null)
 
   async function handleRename() {
     if (!detail) return
@@ -133,7 +136,7 @@ export function PlaylistScreen({
             <path d="m15 5-7 7 7 7" />
           </svg>
         </button>
-        {mine && (
+        {canCurate && (
           <button
             type="button"
             onClick={() => {
@@ -206,7 +209,12 @@ export function PlaylistScreen({
               <p className="tabular font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
                 {detail.items.length} title{detail.items.length === 1 ? '' : 's'}
               </p>
-              {mine ? (
+              {detail.groupId ? (
+                <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                  <GroupMark groupId={detail.groupId} name={detail.groupName ?? 'G'} size={16} />
+                  {detail.groupName ?? 'Group'} watchlist
+                </span>
+              ) : mine ? (
                 <VisibilityChip
                   isPublic={detail.isPublic}
                   disabled={busy}
@@ -223,12 +231,18 @@ export function PlaylistScreen({
                 </button>
               )}
             </div>
-            {mine && (
+            {detail.groupId ? (
               <p className="mt-1.5 text-[12px] leading-snug text-muted">
-                {detail.isPublic
-                  ? 'Anyone who opens your profile can browse this playlist.'
-                  : 'Only you can see this playlist. Tap the chip to share it.'}
+                Everyone in the group can add and remove titles. It never leaves the group.
               </p>
+            ) : (
+              mine && (
+                <p className="mt-1.5 text-[12px] leading-snug text-muted">
+                  {detail.isPublic
+                    ? 'Anyone who opens your profile can browse this playlist.'
+                    : 'Only you can see this playlist. Tap the chip to share it.'}
+                </p>
+              )
             )}
           </section>
 
@@ -241,7 +255,7 @@ export function PlaylistScreen({
           <section className="mp-rise mt-6" style={{ animationDelay: '80ms' }}>
             {detail.items.length === 0 ? (
               <p className="px-1 text-[13px] leading-snug text-muted">
-                {mine
+                {canCurate
                   ? 'Nothing in here yet. Open any title and add it to this playlist.'
                   : 'Nothing in here yet.'}
               </p>
@@ -249,7 +263,7 @@ export function PlaylistScreen({
               <PosterGrid
                 items={detail.items}
                 onOpenTitle={onOpenTitle}
-                onRemove={mine && manage ? (titleId) => void handleRemove(titleId) : undefined}
+                onRemove={canCurate && manage ? (titleId) => void handleRemove(titleId) : undefined}
               />
             )}
           </section>

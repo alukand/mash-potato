@@ -94,11 +94,18 @@ fine client-side.
   `src/lib/cred.ts` — see DESIGN.md "Reward loop law" + its DO-NOT-BUILD
   list). `profiles.banned` is dashboard-only (column-level grant).
   Client: `DiscussionSection` on TitleDetail; "Talk it out" on the reveal.
-- Public profiles + playlists (private by default in EVERY direction):
-  `group_members.is_public` (per-member per-group, flipped via
-  `set_group_visibility` RPC), `playlists` + `playlist_items` (visibility
-  rides `playlists.is_public`; items readable iff the playlist is), and the
-  `public_profile` definer RPC (name + shown groups + public playlists —
+- Avatars: `profiles.avatar_key` picks one of twenty ORIGINAL movie-archetype
+  SVGs (`src/components/avatars.tsx`, one `<Avatar>` recipe app-wide, initial
+  circle when null). Column-narrowed update grant (display_name, avatar_key —
+  banned stays dashboard-only). NEVER ship copyrighted character imagery.
+- Public profiles + playlists: `group_members.is_public` (per-member
+  per-group, flipped via `set_group_visibility` RPC, DEFAULT TRUE since
+  2026-07-14), `playlists` + `playlist_items` (visibility rides
+  `playlists.is_public`, DEFAULT TRUE for personal lists since 2026-07-16;
+  items readable iff the playlist is), GROUP
+  WATCHLISTS via `playlists.group_id` (members curate, creator/group owner
+  manage, never public — check constraint), and the `public_profile`
+  definer RPC (name + avatar + shown groups + public PERSONAL playlists —
   the ONLY shape others see; ratings are never auto-public). Friends = your
   groupmates (fetchMyFriends dedupes across groups); PublicProfileScreen +
   PlaylistScreen live on the App view-stack.

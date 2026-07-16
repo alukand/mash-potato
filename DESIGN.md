@@ -58,6 +58,12 @@ top highlight, deep ambient shadow). Poster tiles add `.mp-poster-grain`.
   `lib/palette.ts colorForMember`); groups are TILES (`<GroupMark>`,
   `rounded-md`, `colorForGroup` hash). Status chips are full pills with a
   1.5px dot. Don't cross these.
+- **Avatars** — one recipe: `<Avatar>` in `components/avatars.tsx`. A picked
+  movie-archetype portrait (twenty ORIGINAL flat two-tone SVGs — the
+  vampire, the shark, the astronaut…) or the classic initial circle when
+  none is picked. LAW: never ship copyrighted character imagery (App Review
+  5.2); every portrait is from the movies, not from any movie. Picker lives
+  on the Profile identity block.
 - **Sliders** — `.mp-slider` with per-instance `--thumb` (ramp color) and
   `--fill`. Score sliders show the anchor word next to the value.
 - **Section header** — 11px semibold uppercase `tracking-[0.2em]` muted label,
@@ -189,17 +195,38 @@ word earns its place) and the two-line shape: title = who did what
 the rest of Friday Film Club."). Score values NEVER appear in a notification;
 the reveal happens in the app, not on the lock screen.
 
-## Privacy model (public profiles, 2026-07-13)
+## Privacy model (public profiles, 2026-07-13; revised 2026-07-16)
 
-Private by default in every direction. A public profile shows exactly three
-things: display name, groups the member CHOSE to show (per-group toggle on
-their own profile), and playlists they flipped public. Ratings, reviewed,
-and saved are never auto-public; sharing taste happens through curated
-playlists. Friends are simply your groupmates — no follow graph. Visibility
-chips share one vocabulary: globe + teal = public, lock + muted = private.
+PUBLIC BY DEFAULT, opt-out per item (the owner's call, 2026-07-14/16): a
+public profile shows display name, avatar, group memberships, and personal
+playlists — each group and each playlist can still be hidden with its own
+toggle. Ratings, reviewed, and saved are NEVER auto-public; sharing scores
+happens through the community number, never the profile. GROUP WATCHLISTS
+never leave the group (structurally: they cannot be made public; an insert
+trigger pins them private). Friends are simply your groupmates — no follow
+graph. Visibility chips share one vocabulary: globe + teal = public,
+lock + muted = private.
 
 ## Changelog
 
+- 2026-07-16 (playlists default public): personal playlists now default to
+  public (existing ones backfilled); the per-list toggle stays, group
+  watchlists stay pinned private via an insert trigger. Suites updated
+  (pgTAP friends 25, twin 10). Profile copy updated.
+- 2026-07-14 (group watchlists + public default): shared watchlists on the
+  Group tab (playlists.group_id: every member curates, creator or group
+  owner manages, never public — check-enforced), group lists ride the
+  add-to-playlist sheet with a GroupMark, PlaylistScreen shows the group
+  context. Group memberships now default to PUBLIC on profiles (existing
+  rows backfilled); the per-group hide toggle stays. Suites updated (pgTAP
+  friends 23, twin 9).
+- 2026-07-14 (avatars): profile avatars shipped. Twenty original
+  movie-archetype portraits (flat two-tone SVGs, `components/avatars.tsx`)
+  + the initial-circle default; picker on the Profile identity block;
+  `profiles.avatar_key` (self-editable column grant), avatars ride
+  public_profile, members, friends, discussion bylines, the reveal outlier,
+  and the lock-progress row (locked members' faces arrive). Both suites
+  extended (pgTAP 103, twin +1).
 - 2026-07-14 (discussion): per-title discussion shipped. Group threads
   (the debrief; sealed per member with the blind rule, "Talk it out" on the
   reveal) + public gated takes (rate first), 👍😂🔥 reactions, Mash Cred

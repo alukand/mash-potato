@@ -11,8 +11,8 @@
       "name": "sev-tick",
       "runtimeExecutable": "node",
       "runtimeArgs": [
-        "C:\\Users\\thede\\Sev & Tick Unindexed V1\\sev-tick\\node_modules\\vite\\bin\\vite.js",
-        "C:\\Users\\thede\\Sev & Tick Unindexed V1\\sev-tick"
+        "C:\\Users\\thede\\sev-tick\\sev-tick\\node_modules\\vite\\bin\\vite.js",
+        "C:\\Users\\thede\\sev-tick\\sev-tick"
       ],
       "port": 5178
     },

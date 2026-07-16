@@ -19,6 +19,7 @@ import { participation } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
 import { catalogCategory, mashRubrics } from '../lib/rubricCatalog'
 import type { MemberRubric } from '../lib/rubricCatalog'
+import { Avatar } from './avatars'
 import { CtaButton, ScoreSliderRow } from './ui'
 import { RubricReceipt } from './RubricReceipt'
 import { ScoreRing } from './ScoreRing'
@@ -203,22 +204,27 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
 
         <div className="mt-6 flex items-center justify-between rounded-2xl bg-surface-2 px-4 py-3.5">
           <div className="flex -space-x-1.5">
-            {members.map((m) => (
-              <span
-                key={m.userId}
-                title={m.displayName}
-                className={`grid h-7 w-7 place-items-center rounded-full border-2 border-surface font-mono text-[10px] font-bold ${
-                  lockedIds.has(m.userId) ? 'text-bg' : 'text-muted'
-                }`}
-                style={{
-                  backgroundColor: lockedIds.has(m.userId)
-                    ? colorForMember(members, m.userId)
-                    : 'var(--color-surface)',
-                }}
-              >
-                {m.displayName.charAt(0).toUpperCase()}
-              </span>
-            ))}
+            {members.map((m) =>
+              // locked members' faces arrive; open cards stay hollow
+              lockedIds.has(m.userId) ? (
+                <span key={m.userId} title={m.displayName} className="rounded-full border-2 border-surface">
+                  <Avatar
+                    avatarKey={m.avatarKey}
+                    displayName={m.displayName}
+                    color={colorForMember(members, m.userId)}
+                    size={26}
+                  />
+                </span>
+              ) : (
+                <span
+                  key={m.userId}
+                  title={m.displayName}
+                  className="grid h-7 w-7 place-items-center rounded-full border-2 border-surface bg-surface font-mono text-[10px] font-bold text-muted"
+                >
+                  {m.displayName.charAt(0).toUpperCase()}
+                </span>
+              ),
+            )}
           </div>
           <p className="tabular font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
             {lockedIds.size}/{showRsvps ? part.inIds.length : members.length} locked
@@ -626,12 +632,12 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
           )}
           {outlier && (
             <div className="mt-4 flex items-center gap-2.5">
-              <span
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-full font-mono text-[11px] font-bold text-bg"
-                style={{ backgroundColor: colorForMember(members, outlier.memberId) }}
-              >
-                {memberName(outlier.memberId).charAt(0).toUpperCase()}
-              </span>
+              <Avatar
+                avatarKey={members.find((m) => m.userId === outlier.memberId)?.avatarKey}
+                displayName={memberName(outlier.memberId)}
+                color={colorForMember(members, outlier.memberId)}
+                size={28}
+              />
               <p className="text-[13px] leading-snug text-muted">
                 <span className="font-semibold text-text">{memberName(outlier.memberId)}</span>{' '}
                 broke away, scoring {labelFor(outlier.category)}{' '}

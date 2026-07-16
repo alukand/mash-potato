@@ -26,6 +26,7 @@ import { weightsFromRubric } from '../lib/mapping'
 import { participation, formatWindow } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
+import { Avatar } from '../components/avatars'
 import { CtaButton, ScoreSliderRow, fieldClass } from '../components/ui'
 import { GroupInviteSheet } from '../components/GroupInviteSheet'
 import { CategoryLegend } from '../components/CategoryLegend'
@@ -554,10 +555,14 @@ export function RateScreen({
                   <span
                     key={m.userId}
                     title={m.displayName}
-                    className="grid h-6 w-6 place-items-center rounded-full border-2 border-surface font-mono text-[9px] font-bold text-bg"
-                    style={{ backgroundColor: colorForMember(members, m.userId) }}
+                    className="rounded-full border-2 border-surface"
                   >
-                    {m.displayName.charAt(0).toUpperCase()}
+                    <Avatar
+                      avatarKey={m.avatarKey}
+                      displayName={m.displayName}
+                      color={colorForMember(members, m.userId)}
+                      size={22}
+                    />
                   </span>
                 ))}
             </div>

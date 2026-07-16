@@ -22,6 +22,7 @@ import type {
   ReactionKind,
 } from '../lib/api'
 import { colorForUser } from '../lib/palette'
+import { Avatar } from './avatars'
 import { credFlair } from '../lib/cred'
 import { CtaButton, GroupMark, fieldClassSm } from './ui'
 
@@ -253,13 +254,12 @@ export function DiscussionSection({
     return (
       <div key={c.id} className={isReply ? 'mt-3 pl-10' : 'border-t border-line/40 py-3.5 first:border-t-0'}>
         <div className="flex items-start gap-2.5">
-          <span
-            aria-hidden
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-mono text-[12px] font-bold text-bg"
-            style={{ backgroundColor: colorForUser(c.authorId) }}
-          >
-            {c.authorName.charAt(0).toUpperCase()}
-          </span>
+          <Avatar
+            avatarKey={c.authorAvatarKey}
+            displayName={c.authorName}
+            color={colorForUser(c.authorId)}
+            size={32}
+          />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className="text-[13px] font-semibold">{c.authorName}</span>

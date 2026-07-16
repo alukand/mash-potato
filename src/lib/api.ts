@@ -23,6 +23,8 @@ export interface GroupInfo {
 export interface MemberInfo {
   userId: string
   displayName: string
+  /** Picked movie-archetype avatar; null = the classic initial circle. */
+  avatarKey: string | null
   role: 'owner' | 'member'
 }
 
@@ -106,13 +108,14 @@ export async function createGroup(userId: string, name: string): Promise<GroupIn
 export async function fetchMembers(groupId: string): Promise<MemberInfo[]> {
   const { data, error } = await supabase
     .from('group_members')
-    .select('user_id, role, profiles(display_name)')
+    .select('user_id, role, profiles(display_name, avatar_key)')
     .eq('group_id', groupId)
     .order('joined_at', { ascending: true })
   if (error) throw new Error(error.message)
   return (data ?? []).map((row) => ({
     userId: row.user_id,
     displayName: row.profiles?.display_name ?? 'Member',
+    avatarKey: row.profiles?.avatar_key ?? null,
     role: row.role,
   }))
 }
@@ -1196,6 +1199,8 @@ export interface PlaylistSummary {
   name: string
   description: string | null
   isPublic: boolean
+  /** Set = a group watchlist (shared, never public); null = personal. */
+  groupId: string | null
   itemCount: number
   /** Up to three poster paths for the cover collage, newest first. */
   posters: string[]
@@ -1218,40 +1223,92 @@ export interface PlaylistDetail {
   name: string
   description: string | null
   isPublic: boolean
+  /** Set = a group watchlist; visibility implies membership (RLS). */
+  groupId: string | null
+  groupName: string | null
   items: PlaylistItemEntry[]
 }
 
-/** The user's playlists, freshest first, with counts + cover posters. */
-export async function fetchMyPlaylists(userId: string): Promise<PlaylistSummary[]> {
-  // One query: counts via the aggregate embed, covers via a second aliased
-  // embed limited server-side to the 3 newest items per playlist (a 500-item
-  // watchlist must not ship 500 rows for 3 posters).
-  const { data, error } = await supabase
-    .from('playlists')
-    .select(
-      'id, name, description, is_public, playlist_items(count), covers:playlist_items(added_at, titles(poster_path))',
-    )
-    .eq('owner_id', userId)
-    .order('updated_at', { ascending: false })
-    .order('added_at', { referencedTable: 'covers', ascending: false })
-    .limit(3, { referencedTable: 'covers' })
-  if (error) throw new Error(error.message)
-  return (data ?? []).map((row) => ({
+// One query: counts via the aggregate embed, covers via a second aliased
+// embed limited server-side to the 3 newest items per playlist (a 500-item
+// watchlist must not ship 500 rows for 3 posters).
+const PLAYLIST_SUMMARY_SELECT =
+  'id, name, description, is_public, group_id, playlist_items(count), covers:playlist_items(added_at, titles(poster_path))'
+
+function toPlaylistSummary(row: {
+  id: string
+  name: string
+  description: string | null
+  is_public: boolean
+  group_id: string | null
+  playlist_items: { count: number }[] | null
+  covers: { titles: { poster_path: string | null } | null }[] | null
+}): PlaylistSummary {
+  return {
     id: row.id,
     name: row.name,
     description: row.description,
     isPublic: row.is_public,
+    groupId: row.group_id,
     itemCount: row.playlist_items?.[0]?.count ?? 0,
     posters: (row.covers ?? [])
       .map((c) => c.titles?.poster_path)
       .filter((p): p is string => Boolean(p)),
-  }))
+  }
 }
 
-export async function createPlaylist(userId: string, name: string): Promise<string> {
+/** The user's PERSONAL playlists, freshest first (group watchlists live on
+ * the Group tab). */
+export async function fetchMyPlaylists(userId: string): Promise<PlaylistSummary[]> {
   const { data, error } = await supabase
     .from('playlists')
-    .insert({ owner_id: userId, name })
+    .select(PLAYLIST_SUMMARY_SELECT)
+    .eq('owner_id', userId)
+    .is('group_id', null)
+    .order('updated_at', { ascending: false })
+    .order('added_at', { referencedTable: 'covers', ascending: false })
+    .limit(3, { referencedTable: 'covers' })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map(toPlaylistSummary)
+}
+
+/** One group's shared watchlists, freshest first. */
+export async function fetchGroupPlaylists(groupId: string): Promise<PlaylistSummary[]> {
+  const { data, error } = await supabase
+    .from('playlists')
+    .select(PLAYLIST_SUMMARY_SELECT)
+    .eq('group_id', groupId)
+    .order('updated_at', { ascending: false })
+    .order('added_at', { referencedTable: 'covers', ascending: false })
+    .limit(3, { referencedTable: 'covers' })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map(toPlaylistSummary)
+}
+
+/**
+ * Every list the user can ADD a title to: their personal playlists plus all
+ * their groups' watchlists (RLS trims group lists to memberships).
+ */
+export async function fetchAddablePlaylists(userId: string): Promise<PlaylistSummary[]> {
+  const { data, error } = await supabase
+    .from('playlists')
+    .select(PLAYLIST_SUMMARY_SELECT)
+    .or(`and(owner_id.eq.${userId},group_id.is.null),group_id.not.is.null`)
+    .order('updated_at', { ascending: false })
+    .order('added_at', { referencedTable: 'covers', ascending: false })
+    .limit(3, { referencedTable: 'covers' })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map(toPlaylistSummary)
+}
+
+export async function createPlaylist(
+  userId: string,
+  name: string,
+  groupId: string | null = null,
+): Promise<string> {
+  const { data, error } = await supabase
+    .from('playlists')
+    .insert({ owner_id: userId, name, group_id: groupId })
     .select('id')
     .single()
   if (error) throw new Error(error.message)
@@ -1280,7 +1337,7 @@ export async function fetchPlaylist(playlistId: string): Promise<PlaylistDetail 
   const { data, error } = await supabase
     .from('playlists')
     .select(
-      'id, owner_id, name, description, is_public, profiles(display_name), playlist_items(added_at, titles(id, tmdb_id, media_type, name, year, poster_path))',
+      'id, owner_id, name, description, is_public, group_id, groups(name), profiles(display_name), playlist_items(added_at, titles(id, tmdb_id, media_type, name, year, poster_path))',
     )
     .eq('id', playlistId)
     .maybeSingle()
@@ -1293,6 +1350,8 @@ export async function fetchPlaylist(playlistId: string): Promise<PlaylistDetail 
     name: data.name,
     description: data.description,
     isPublic: data.is_public,
+    groupId: data.group_id,
+    groupName: data.groups?.name ?? null,
     items: (data.playlist_items ?? [])
       .filter((i) => i.titles)
       .map((i) => ({
@@ -1342,8 +1401,14 @@ export async function fetchMyPlaylistsContaining(
 ): Promise<Map<string, string>> {
   const { data, error } = await supabase
     .from('playlist_items')
-    .select('playlist_id, title_id, playlists!inner(owner_id), titles!inner(tmdb_id, media_type)')
-    .eq('playlists.owner_id', userId)
+    .select(
+      'playlist_id, title_id, playlists!inner(owner_id, group_id), titles!inner(tmdb_id, media_type)',
+    )
+    // lists the user can WRITE to: their personal ones + group watchlists
+    // (RLS already trims group lists to their memberships)
+    .or(`and(owner_id.eq.${userId},group_id.is.null),group_id.not.is.null`, {
+      referencedTable: 'playlists',
+    })
     .eq('titles.tmdb_id', tmdbId)
     .eq('titles.media_type', mediaType)
   if (error) throw new Error(error.message)
@@ -1355,6 +1420,7 @@ export async function fetchMyPlaylistsContaining(
 export interface FriendInfo {
   userId: string
   displayName: string
+  avatarKey: string | null
   /** Names of the groups you share, for context under the name. */
   sharedGroups: string[]
 }
@@ -1372,7 +1438,7 @@ export async function fetchMyFriends(userId: string): Promise<FriendInfo[]> {
 
   const { data, error } = await supabase
     .from('group_members')
-    .select('group_id, user_id, profiles(display_name)')
+    .select('group_id, user_id, profiles(display_name, avatar_key)')
     .in('group_id', groupIds)
   if (error) throw new Error(error.message)
 
@@ -1386,6 +1452,7 @@ export async function fetchMyFriends(userId: string): Promise<FriendInfo[]> {
       byUser.set(row.user_id, {
         userId: row.user_id,
         displayName: row.profiles?.display_name ?? 'Member',
+        avatarKey: row.profiles?.avatar_key ?? null,
         sharedGroups: [shared],
       })
   }
@@ -1394,6 +1461,7 @@ export async function fetchMyFriends(userId: string): Promise<FriendInfo[]> {
 
 export interface PublicProfile {
   displayName: string
+  avatarKey: string | null
   groups: { id: string; name: string }[]
   playlists: { id: string; name: string; description: string | null; itemCount: number; posters: string[] }[]
 }
@@ -1405,15 +1473,37 @@ export async function fetchPublicProfile(userId: string): Promise<PublicProfile 
   if (!data || typeof data !== 'object') return null
   const raw = data as {
     displayName?: string | null
+    avatarKey?: string | null
     groups?: { id: string; name: string }[]
     playlists?: PublicProfile['playlists']
   }
   if (!raw.displayName) return null
   return {
     displayName: raw.displayName,
+    avatarKey: raw.avatarKey ?? null,
     groups: raw.groups ?? [],
     playlists: raw.playlists ?? [],
   }
+}
+
+/** The signed-in user's own picked avatar key (null = initial circle). */
+export async function fetchMyAvatarKey(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('avatar_key')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data?.avatar_key ?? null
+}
+
+/** Pick a movie-archetype avatar (or null to go back to the initial). */
+export async function updateMyAvatar(userId: string, avatarKey: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ avatar_key: avatarKey })
+    .eq('id', userId)
+  if (error) throw new Error(error.message)
 }
 
 /** Show or hide one of YOUR group memberships on your public profile. */
@@ -1500,6 +1590,7 @@ export interface DiscussionComment {
   id: string
   authorId: string
   authorName: string
+  authorAvatarKey: string | null
   parentId: string | null
   body: string
   createdAt: string
@@ -1547,7 +1638,7 @@ export async function fetchDiscussion(
     .select(
       // author embed is FK-hinted: the self-referencing parent_id makes the
       // profiles relationship ambiguous to PostgREST otherwise
-      'id, author_id, parent_id, body, created_at, deleted, profiles!title_comments_author_id_fkey(display_name), comment_reactions(user_id, kind)',
+      'id, author_id, parent_id, body, created_at, deleted, profiles!title_comments_author_id_fkey(display_name, avatar_key), comment_reactions(user_id, kind)',
     )
     .eq('title_id', titleId)
     .order('created_at', { ascending: true })
@@ -1566,6 +1657,7 @@ export async function fetchDiscussion(
       id: row.id,
       authorId: row.author_id,
       authorName: row.profiles?.display_name ?? 'Member',
+      authorAvatarKey: row.profiles?.avatar_key ?? null,
       parentId: row.parent_id,
       body: row.body,
       createdAt: row.created_at,

@@ -7,7 +7,7 @@ import {
   fetchCommunityHistogram,
   fetchCommunityScore,
   fetchMyGlobalRating,
-  fetchMyPlaylists,
+  fetchAddablePlaylists,
   fetchMyPlaylistsContaining,
   fetchSavedTitleId,
   fetchTitleDetail,
@@ -33,7 +33,7 @@ import { CategoryLegend } from '../components/CategoryLegend'
 import { CommunityHistogram } from '../components/CommunityHistogram'
 import { DiscussionSection } from '../components/DiscussionSection'
 import { GroupInviteSheet } from '../components/GroupInviteSheet'
-import { CtaButton, ScoreSliderRow, fieldClassSm } from '../components/ui'
+import { CtaButton, GroupMark, ScoreSliderRow, fieldClassSm } from '../components/ui'
 
 // The default rubric everyone's solo/community rating uses.
 const SOLO_RUBRIC = defaultRubricEntries()
@@ -110,7 +110,8 @@ export function TitleDetailScreen({
 
   async function refreshLists() {
     const [lists, holds] = await Promise.all([
-      fetchMyPlaylists(userId),
+      // personal playlists + every group's shared watchlists
+      fetchAddablePlaylists(userId),
       fetchMyPlaylistsContaining(userId, tmdbId, mediaType),
     ])
     setMyLists(lists)
@@ -572,6 +573,13 @@ export function TitleDetailScreen({
                             {p.itemCount}
                           </span>
                         </span>
+                        {p.groupId && (
+                          <GroupMark
+                            groupId={p.groupId}
+                            name={groups.find((g) => g.id === p.groupId)?.name ?? 'G'}
+                            size={18}
+                          />
+                        )}
                         {listBusyId === p.id && (
                           <span className="font-mono text-[9px] uppercase text-muted">…</span>
                         )}

@@ -19,4 +19,4 @@ revoke update, delete on public.comment_reports from authenticated;
 revoke update on public.user_blocks from authenticated;
 revoke all on public.banned_terms from authenticated, anon;
 revoke update on public.profiles from authenticated;
-grant update (display_name) on public.profiles to authenticated;
+grant update (display_name, avatar_key) on public.profiles to authenticated;
