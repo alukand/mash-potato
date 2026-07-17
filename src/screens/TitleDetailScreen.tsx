@@ -12,6 +12,7 @@ import {
   fetchSavedTitleId,
   fetchTitleDetail,
   fetchTitleHistory,
+  fetchWatchProviders,
   posterUrl,
   removeTitleFromPlaylist,
   saveGlobalRating,
@@ -24,6 +25,7 @@ import type {
   PlaylistSummary,
   TitleDetail,
   TitleHistoryEntry,
+  WatchProviders,
 } from '../lib/api'
 import type { CategoryScores } from '../lib/scoring'
 import { mashedScore, memberWeightedScore, formatScore } from '../lib/scoring'
@@ -90,6 +92,7 @@ export function TitleDetailScreen({
   // bumped when a rating changes (it gates the public discussion)
   const [discussionRefresh, setDiscussionRefresh] = useState(0)
   const [history, setHistory] = useState<TitleHistoryEntry[]>([])
+  const [watch, setWatch] = useState<WatchProviders | null>(null)
   const [community, setCommunity] = useState<CommunityScore | null>(null)
   const [communityBins, setCommunityBins] = useState<number[]>([])
   const [myScores, setMyScores] = useState<CategoryScores | null>(null)
@@ -209,8 +212,9 @@ export function TitleDetailScreen({
       fetchMyPlaylistsContaining(userId, tmdbId, mediaType).catch(
         () => new Map<string, string>(),
       ),
+      fetchWatchProviders(tmdbId, mediaType).catch(() => null),
     ])
-      .then(([d, savedId, hist, comm, mine, histogram, holds]) => {
+      .then(([d, savedId, hist, comm, mine, histogram, holds, providers]) => {
         if (cancelled) return
         setDetail(d)
         setNotFound(d === null)
@@ -220,6 +224,7 @@ export function TitleDetailScreen({
         setMyScores(mine)
         setCommunityBins(histogram)
         setContaining(holds)
+        setWatch(providers)
       })
       .catch((err) => {
         if (!cancelled) {
@@ -445,14 +450,10 @@ export function TitleDetailScreen({
           </div>
         )}
 
-        {detail.overview && (
-          <p className="mt-4 text-[13px] leading-relaxed text-text/90">{detail.overview}</p>
-        )}
-
         {error && <p role="alert" className="mt-4 text-[13px] leading-snug text-coral">{error}</p>}
 
-        {/* ---- actions ---- */}
-        <div className="mt-5 flex flex-col gap-3">
+        {/* ---- actions first: inviting the group never hides below the fold ---- */}
+        <div className="mt-4 flex flex-col gap-3">
           <CtaButton
             onClick={() => setInviteOpen(true)}
             disabled={groups.length === 0}
@@ -610,6 +611,76 @@ export function TitleDetailScreen({
             </div>
           )}
         </div>
+
+        {detail.overview && (
+          <p className="mt-5 text-[13px] leading-relaxed text-text/90">{detail.overview}</p>
+        )}
+
+        {/* ---- where to watch (JustWatch data via TMDB) ---- */}
+        {watch && (watch.stream.length > 0 || watch.rent.length > 0 || watch.buy.length > 0) && (
+          <section className="mt-7">
+            <div className="mb-2.5 flex items-baseline justify-between px-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+                Where to watch
+              </p>
+              {watch.link && (
+                <a
+                  href={watch.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal"
+                >
+                  All options
+                </a>
+              )}
+            </div>
+            <div className="mp-card rounded-[22px] px-5 py-1.5">
+              {(
+                [
+                  { label: 'Stream', items: watch.stream },
+                  { label: 'Rent', items: watch.rent },
+                  { label: 'Buy', items: watch.buy },
+                ] as const
+              )
+                .filter((row) => row.items.length > 0)
+                .map((row, i) => (
+                  <div
+                    key={row.label}
+                    className={`flex items-center gap-3 py-3 ${i > 0 ? 'border-t border-line/50' : ''}`}
+                  >
+                    <span className="w-12 shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+                      {row.label}
+                    </span>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      {row.items.map((p) =>
+                        p.logoPath ? (
+                          <img
+                            key={p.name}
+                            src={posterUrl(p.logoPath, 'w92')}
+                            alt={p.name}
+                            title={p.name}
+                            loading="lazy"
+                            className="h-8 w-8 rounded-lg border border-line/50 object-cover"
+                          />
+                        ) : (
+                          <span
+                            key={p.name}
+                            title={p.name}
+                            className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface-2 font-mono text-[11px] font-bold text-muted"
+                          >
+                            {p.name.charAt(0)}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                ))}
+              <p className="border-t border-line/50 py-2 font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+                Streaming data by JustWatch
+              </p>
+            </div>
+          </section>
+        )}
 
         {/* ---- community rating (solo, default rubric) ---- */}
         <section ref={communityRef} className="mt-7 scroll-mt-4">

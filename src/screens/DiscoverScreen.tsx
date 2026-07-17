@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchBrowse, fetchDiscover, fetchGenres, searchPeople } from '../lib/api'
+import { fetchBrowse, fetchDiscover, fetchGenres, fetchGenreShelf, searchPeople } from '../lib/api'
 import type { TmdbGenre, TmdbPerson, TmdbResult } from '../lib/api'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 import { fieldClass } from '../components/ui'
@@ -11,6 +11,28 @@ interface DiscoverScreenProps {
 }
 
 const MEDIA_KEY = 'mp.discoverMedia'
+
+// Genre browse rows under the trending/popular shelves. TMDB genre ids
+// differ between films and TV, so each side gets its own lineup.
+const GENRE_SHELVES: Record<'movie' | 'tv', { heading: string; genreId: number }[]> = {
+  movie: [
+    { heading: 'Comedy nights', genreId: 35 },
+    { heading: 'Horror nights', genreId: 27 },
+    { heading: 'Animated', genreId: 16 },
+    { heading: 'Sci-Fi', genreId: 878 },
+    { heading: 'Thrillers', genreId: 53 },
+    { heading: 'Romance', genreId: 10749 },
+    { heading: 'Documentaries', genreId: 99 },
+  ],
+  tv: [
+    { heading: 'Comedy', genreId: 35 },
+    { heading: 'Animated', genreId: 16 },
+    { heading: 'Sci-Fi & Fantasy', genreId: 10765 },
+    { heading: 'Crime', genreId: 80 },
+    { heading: 'Drama', genreId: 18 },
+    { heading: 'Documentaries', genreId: 99 },
+  ],
+}
 
 // Discover: free-text search, filter by genre / actor / director / year, and
 // trending / popular shelves. Every result opens that title's detail page.
@@ -50,6 +72,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
   const [trendingMovies, setTrendingMovies] = useState<TmdbResult[]>([])
   const [trendingTv, setTrendingTv] = useState<TmdbResult[]>([])
   const [popularMovies, setPopularMovies] = useState<TmdbResult[]>([])
+  const [genreShelves, setGenreShelves] = useState<{ heading: string; items: TmdbResult[] }[]>([])
   const [shelfError, setShelfError] = useState<string | null>(null)
 
   const yearNum = /^\d{4}$/.test(year) ? Number(year) : undefined
@@ -137,6 +160,25 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
       cancelled = true
     }
   }, [])
+
+  // Genre rows follow the Films/TV switch (ids differ per side, cached too).
+  useEffect(() => {
+    let cancelled = false
+    const lineup = GENRE_SHELVES[mediaType]
+    Promise.all(
+      lineup.map((s) =>
+        fetchGenreShelf(s.genreId, mediaType)
+          .then((items) => ({ heading: s.heading, items }))
+          .catch(() => ({ heading: s.heading, items: [] as TmdbResult[] })),
+      ),
+    ).then((shelves) => {
+      if (cancelled) return
+      setGenreShelves(shelves.filter((s) => s.items.length > 0))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [mediaType])
 
   function toggleGenre(id: number) {
     setSelectedGenreIds((prev) =>
@@ -370,6 +412,20 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
               onPick={(it) => onOpenTitle(it.tmdbId, 'movie')}
             />
           </div>
+          {/* genre rows follow the Films/TV switch above */}
+          {genreShelves.map((shelf, i) => (
+            <div
+              key={`${mediaType}:${shelf.heading}`}
+              className="mp-rise"
+              style={{ animationDelay: `${Math.min(240 + i * 80, 640)}ms` }}
+            >
+              <PosterShelf
+                heading={shelf.heading}
+                items={shelf.items}
+                onPick={(it) => onOpenTitle(it.tmdbId, mediaType)}
+              />
+            </div>
+          ))}
         </div>
       )}
 

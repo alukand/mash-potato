@@ -475,6 +475,67 @@ export async function fetchBrowse(
   return results
 }
 
+// Genre shelves (Discover browse rows) reuse the discover op, cached like
+// the browse feeds so tab hops don't refetch.
+const genreShelfCache = new Map<string, { at: number; results: TmdbResult[] }>()
+
+export async function fetchGenreShelf(
+  genreId: number,
+  mediaType: 'movie' | 'tv',
+): Promise<TmdbResult[]> {
+  const key = `${genreId}:${mediaType}`
+  const hit = genreShelfCache.get(key)
+  if (hit && Date.now() - hit.at < BROWSE_TTL_MS) return hit.results
+  const results = await fetchDiscover({ genreIds: [genreId] }, mediaType)
+  genreShelfCache.set(key, { at: Date.now(), results })
+  return results
+}
+
+// ---- where to watch (JustWatch data via TMDB) -------------------------------
+
+export interface WatchProvider {
+  name: string
+  logoPath: string | null
+}
+
+export interface WatchProviders {
+  /** TMDB's watch page for this title (the required attribution target). */
+  link: string | null
+  stream: WatchProvider[]
+  rent: WatchProvider[]
+  buy: WatchProvider[]
+}
+
+/** The viewer's storefront region from the device locale (en-US -> US). */
+function watchRegion(): string {
+  try {
+    const region = new Intl.Locale(navigator.language).region
+    return region && /^[A-Z]{2}$/.test(region) ? region : 'US'
+  } catch {
+    return 'US'
+  }
+}
+
+const providersCache = new Map<string, WatchProviders | null>()
+
+export async function fetchWatchProviders(
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+): Promise<WatchProviders | null> {
+  const key = `${mediaType}:${tmdbId}`
+  const hit = providersCache.get(key)
+  if (hit !== undefined) return hit
+  const { data, error } = await supabase.functions.invoke('tmdb-search', {
+    body: { op: 'providers', tmdbId, mediaType, region: watchRegion() },
+  })
+  if (error) throw new Error(error.message)
+  const providers = ((data as { providers: WatchProviders | null }).providers ?? null) as
+    | WatchProviders
+    | null
+  providersCache.set(key, providers)
+  return providers
+}
+
 // Recommendations barely change for a title; cache for the app session.
 const recsCache = new Map<string, TmdbResult[]>()
 

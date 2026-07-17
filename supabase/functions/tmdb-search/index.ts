@@ -10,6 +10,7 @@
 //   { op: 'person', query }                      -> { people: {id,name,profilePath}[] }
 //   { op: 'discover', filters, mediaType }       -> { results: TmdbResult[] }
 //   { op: 'recommendations', tmdbId, mediaType } -> { results: TmdbResult[] }
+//   { op: 'providers', tmdbId, mediaType, region? } -> { providers: WatchProviders | null }
 // where mediaType is 'movie' | 'tv', feed is 'trending' | 'popular', and
 // filters is { genreIds?: number[]; personId?: number; year?: number }.
 
@@ -241,6 +242,46 @@ async function handleRecommendations(
   return json({ results: (data.results ?? []).slice(0, 16).map(mapListItem) })
 }
 
+// ---- op: providers (where to stream / rent / buy; JustWatch data) ---------
+interface TmdbProvider {
+  provider_name?: string
+  logo_path?: string | null
+  display_priority?: number
+}
+
+function mapProviders(list: TmdbProvider[] | undefined) {
+  return (list ?? [])
+    .sort((a, b) => (a.display_priority ?? 99) - (b.display_priority ?? 99))
+    .slice(0, 8)
+    .map((p) => ({ name: p.provider_name ?? 'Unknown', logoPath: p.logo_path ?? null }))
+}
+
+async function handleProviders(body: Record<string, unknown>, apiKey: string): Promise<Response> {
+  const mediaType = normalizeMediaType(body.mediaType)
+  const tmdbId = Number(body.tmdbId)
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return json({ providers: null })
+  const region = /^[A-Z]{2}$/.test(String(body.region ?? '')) ? String(body.region) : 'US'
+
+  const res = await tmdbFetch(`/${mediaType}/${tmdbId}/watch/providers`, apiKey)
+  if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
+  const data = (await res.json()) as {
+    results?: Record<
+      string,
+      { link?: string; flatrate?: TmdbProvider[]; rent?: TmdbProvider[]; buy?: TmdbProvider[]; free?: TmdbProvider[] }
+    >
+  }
+  const forRegion = data.results?.[region] ?? (region !== 'US' ? data.results?.US : undefined)
+  if (!forRegion) return json({ providers: null })
+  return json({
+    providers: {
+      link: forRegion.link ?? null,
+      stream: mapProviders([...(forRegion.flatrate ?? []), ...(forRegion.free ?? [])]),
+      rent: mapProviders(forRegion.rent),
+      buy: mapProviders(forRegion.buy),
+    },
+  })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -277,6 +318,8 @@ Deno.serve(async (req) => {
       return handleDiscover(body, apiKey)
     case 'recommendations':
       return handleRecommendations(body, apiKey)
+    case 'providers':
+      return handleProviders(body, apiKey)
     default:
       return json({ error: `unknown op: ${String(op)}` }, 400)
   }

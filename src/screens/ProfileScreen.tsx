@@ -580,13 +580,14 @@ export function ProfileScreen({
               <p className="mt-1 text-[13px] leading-snug text-muted">
                 Original portraits from the movies, not from any movie.
               </p>
-              <div className="mt-4 grid grid-cols-4 gap-3">
+              {/* dense grid: every option visible without scrolling the sheet */}
+              <div className="mt-4 grid grid-cols-5 gap-1.5">
                 <button
                   type="button"
                   disabled={avatarBusy}
                   onClick={() => void handlePickAvatar(null)}
                   aria-label="Your initial"
-                  className={`flex flex-col items-center gap-1.5 rounded-2xl p-2 transition-colors ${
+                  className={`flex flex-col items-center gap-1 rounded-xl p-1.5 transition-colors ${
                     avatarKey === null ? 'bg-teal/10 ring-1 ring-teal/50' : 'hover:bg-surface-2'
                   }`}
                 >
@@ -594,7 +595,7 @@ export function ProfileScreen({
                     avatarKey={null}
                     displayName={shownName}
                     color={colorForUser(userId)}
-                    size={52}
+                    size={44}
                   />
                   <span className="font-mono text-[8px] uppercase tracking-wide text-muted">
                     Initial
@@ -607,12 +608,12 @@ export function ProfileScreen({
                     disabled={avatarBusy}
                     onClick={() => void handlePickAvatar(a.key)}
                     aria-label={a.label}
-                    className={`flex flex-col items-center gap-1.5 rounded-2xl p-2 transition-colors ${
+                    className={`flex flex-col items-center gap-1 rounded-xl p-1.5 transition-colors ${
                       avatarKey === a.key ? 'bg-teal/10 ring-1 ring-teal/50' : 'hover:bg-surface-2'
                     }`}
                   >
-                    <Avatar avatarKey={a.key} displayName={a.label} color="#000" size={52} />
-                    <span className="font-mono text-[8px] uppercase tracking-wide text-muted">
+                    <Avatar avatarKey={a.key} displayName={a.label} color="#000" size={44} />
+                    <span className="w-full truncate text-center font-mono text-[8px] uppercase tracking-wide text-muted">
                       {a.label.replace('The ', '')}
                     </span>
                   </button>

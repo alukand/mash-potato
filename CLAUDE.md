@@ -145,7 +145,9 @@ fine client-side.
 - Hosted Supabase project ref: `lvmcwvhlfijvegxbqipc` (MCP config in
   `.mcp.json`) — all migrations applied, `TMDB_API_KEY` set as a dashboard
   secret, `tmdb-search` deployed (ops: search/browse/detail/genres/person/
-  discover). Auth email-confirmation is OFF (no deep-link handling yet).
+  discover/recommendations/providers — providers = where-to-watch, JustWatch
+  data, attribution shown in the UI). Auth email-confirmation is OFF (no
+  deep-link handling yet).
   `send-push` deployed + `notification_config` seeded on hosted; APNs secrets
   (PUSH_SHARED_SECRET / APNS_AUTH_KEY / APNS_KEY_ID / APPLE_TEAM_ID) still
   need setting in the dashboard before pushes deliver, and the App ID needs
