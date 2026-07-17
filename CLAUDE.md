@@ -44,6 +44,13 @@ the `tmdb-search` Edge Function (`supabase/functions/`; local secret in
 `supabase/functions/.env`, hosted via `supabase secrets set`). The anon key is
 fine client-side.
 
+GRANTS LAW (hardening migration 20260717160000): `public` functions get NO
+default execute — every new function migration must grant explicitly
+(client RPCs and RLS helpers → `grant execute ... to authenticated`;
+trigger internals → no grant at all). Anon executes nothing. The twin's
+`20-grants.sql` mirrors the exceptions; `account_test.sql` + the twin's
+98 file assert the posture, so a forgotten grant fails the suites.
+
 ## Commands
 
 - `npm run dev` — Vite on port 5180 (fixed; 5173/5174 belong to another project)
@@ -71,7 +78,10 @@ fine client-side.
   session creation.
 - `src/lib/mapping.ts` — jsonb `scores` / `rubric` snapshot validators.
 - `src/lib/api.ts` — every Supabase call; screens never import the client.
-  Member ratings live in `member_scores.scores` (jsonb map); rubrics are PER
+  Member ratings live in `member_scores.scores` (jsonb map) plus an optional
+  one-sentence take (`member_scores.one_liner`, ≤140 — same row so THE ONE
+  RULE seals it; revealed as the "In one sentence" strip;
+  `late_score_session` carries it as a defaulted 3rd param); rubrics are PER
   MEMBER in `member_rubrics` (mashed client-side); personal presets in
   `user_rubrics` (one ★ favorite — it's what seed_member_rubric submits when
   the user joins/creates a group, else the app default); solo/community
@@ -109,22 +119,52 @@ fine client-side.
   the ONLY shape others see; ratings are never auto-public). Friends = your
   groupmates (fetchMyFriends dedupes across groups); PublicProfileScreen +
   PlaylistScreen live on the App view-stack.
-- `src/screens/` — Auth, CreateGroup, Home (CROSS-GROUP dashboard: live
-  rounds w/ inline RSVP + latest reveals + trending; group-agnostic),
-  Discover (TMDB browse/filters), TitleDetail (+ add-to-playlist sheet),
-  Profile (editable display name, groups w/ visibility toggles, playlists,
-  friends, poster grids, JSON export), Rate (search → invite → blind scoring
-  → lock → reveal), Group (group switcher + pinned settings gear → SessionPanel
-  [blind progress / the full Reveal] → log w/ avg+best strip → mashed rubric
-  with a collapsed per-member editor → members + Manage: rename / remove
-  member / leave / delete, all via existing RLS — no schema changes). Every
-  round is an invite (RSVP shows for groups of 2+; the header has no group
-  chip — switching is Group-tab only). First run shows OnboardingSlides once
-  (`mp.onboarded`), then the app opens GROUP-LESS (Home/Discover work;
-  Rate/Group show NoGroupYet cards) — no forced create-group gate. Shared UI
-  recipes (fieldClass, CtaButton, GroupMark, VisibilityChip, ScoreSliderRow —
-  the one score-slider row, "N/10" readout) live in `src/components/ui.tsx`;
-  the design system is documented in `DESIGN.md`.
+- Accounts: Confirm-email is ON everywhere; every email flow is a 6-digit
+  code entered in-app (verifyOtp; templates in `supabase/templates/` show
+  `{{ .Token }}` — hosted templates must match, see `docs/DOMAIN.md`).
+  AuthScreen: signup→code, Forgot password→code+new password in one step.
+  Profile Account section: change email (code to the NEW address only),
+  change password (current-password check via signInWithPassword — App
+  resets navigation only when the signed-in USER changes, so re-auth and
+  token refreshes never yank the view). Danger zone → `delete_my_account`
+  RPC: owned groups hand off to the longest-standing member (solo groups
+  delete), cascades wipe everything personal, client then signs out
+  LOCALLY (`signOutLocal` — the server no longer knows the token).
+  Export (`fetchMyExport`) = solo ratings + saved + own group scorecards
+  (incl. one-liners) + takes + playlists + rubric presets.
+- TABS (2026-07-17 restructure): Home, Discover, Rate, Profile. The old
+  Group tab MERGED into Rate; stored `mp.activeTab` value 'group' migrates
+  to 'rate' in readStoredTab. The header is brand-only (no avatar button).
+- `src/screens/` — Auth (password, signup codes, forgot-password codes,
+  passwordless "Email me a sign-in code"), CreateGroup, Home (CROSS-GROUP
+  overview: stats strip [groups/rated/saved] + live rounds w/ inline RSVP +
+  latest reveals + "From your list" saved shelf + trending/popular tail),
+  Discover (streaming-style shelf stack: ONE combined film+TV lineup of
+  TMDB lists + genre/era/acclaim recipes + per-side "Because you rated"
+  rows, lazy rect-check LazyShelf, cached via fetchShelf; search covers
+  films AND shows together — no Film/TV toggle anywhere, the Type filter
+  [All/Films/Shows] lives in the filter panel and persists as
+  mp.discoverMedia), TitleDetail (+ add-to-playlist sheet),
+  Profile — the 4th TAB (identity, groups w/ visibility toggles, playlists,
+  friends, poster grids, Account section, export, Danger zone; onBack
+  optional — present only when pushed on the stack),
+  Group[Screen] — the RATE tab body: group switcher chips + gear that
+  toggles the gear-gated settings cluster (mashed rubric + per-member
+  editor, members + Manage: rename/remove/leave/delete) → SessionPanel
+  (the WHOLE round lifecycle: blind → components/RoundScorer.tsx inline
+  sliders/one-liner/lock/reveal-in-place; sealed; revealed w/ late score +
+  backfill; session===null renders the `startRound` prop) →
+  components/StartRound.tsx (dual search w/ All/Films/Shows chips + manual
+  type pair + GroupInviteSheet) opened for next rounds → log → recs →
+  watchlists (content, not settings). Every round is an invite (RSVP shows
+  for groups of 2+). First run shows OnboardingSlides once (`mp.onboarded`),
+  then the app opens GROUP-LESS (Home/Discover/Profile work; Rate shows a
+  NoGroupYet card) — no forced create-group gate. useTmdbSearch takes
+  'movie' | 'tv' | 'both' and returns TaggedResult (per-item mediaType);
+  PosterResultGrid consumes tagged results. Shared UI recipes (fieldClass,
+  CtaButton, GroupMark, VisibilityChip, ScoreSliderRow — the one
+  score-slider row, "N/10" readout) live in `src/components/ui.tsx`; the
+  design system is documented in `DESIGN.md`.
 - Push notifications (APNs-direct; FCM slots in when Android ships):
   `device_tokens` (self-only RLS; `register_device_token` RPC handles device
   hand-me-downs), `notification_config` (service-only singleton; EMPTY row =
@@ -146,7 +186,9 @@ fine client-side.
   `.mcp.json`) — all migrations applied, `TMDB_API_KEY` set as a dashboard
   secret, `tmdb-search` deployed (ops: search/browse/detail/genres/person/
   discover/recommendations/providers — providers = where-to-watch, JustWatch
-  data, attribution shown in the UI). Auth email-confirmation is OFF (no
+  data, attribution shown in the UI; v12 browse feeds also top_rated/
+  now_playing/upcoming, discover filters also yearFrom/To, sortBy,
+  min/maxVotes, minRating). Auth email-confirmation is OFF (no
   deep-link handling yet).
   `send-push` deployed + `notification_config` seeded on hosted; APNs secrets
   (PUSH_SHARED_SECRET / APNS_AUTH_KEY / APNS_KEY_ID / APPLE_TEAM_ID) still

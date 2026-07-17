@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type TabId = 'home' | 'discover' | 'rate' | 'group'
+export type TabId = 'home' | 'discover' | 'rate' | 'profile'
 
 interface TabDef {
   id: TabId
@@ -39,14 +39,12 @@ const TABS: TabDef[] = [
     ),
   },
   {
-    id: 'group',
-    label: 'Group',
+    id: 'profile',
+    label: 'Profile',
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <circle cx="9" cy="8" r="3" />
-        <path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
-        <path d="M16 5.6a3 3 0 0 1 0 5.4" />
-        <path d="M17 14.3a5.5 5.5 0 0 1 3.5 4.7" />
+        <circle cx="12" cy="8" r="3.6" />
+        <path d="M5 20a7 7 0 0 1 14 0" />
       </svg>
     ),
   },

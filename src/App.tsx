@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
-import { fetchMyAvatarKey, fetchMyGroups, fetchMembers } from './lib/api'
+import { fetchMyGroups, fetchMembers } from './lib/api'
 import type { GroupInfo, MemberInfo } from './lib/api'
 import {
   pickActiveGroup,
@@ -14,9 +14,7 @@ import {
   touchRecentGroup,
 } from './lib/activeGroup'
 import { bindPushOpenHandler, enablePush } from './lib/push'
-import { colorForMember } from './lib/palette'
 import { Logo } from './components/Logo'
-import { Avatar } from './components/avatars'
 import { BottomNav } from './components/BottomNav'
 import { OnboardingSlides } from './components/OnboardingSlides'
 import { CtaButton } from './components/ui'
@@ -25,7 +23,6 @@ import { AuthScreen } from './screens/AuthScreen'
 import { CreateGroupScreen } from './screens/CreateGroupScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { DiscoverScreen } from './screens/DiscoverScreen'
-import { RateScreen } from './screens/RateScreen'
 import { GroupScreen } from './screens/GroupScreen'
 import { PlaylistScreen } from './screens/PlaylistScreen'
 import { ProfileScreen } from './screens/ProfileScreen'
@@ -47,7 +44,6 @@ type StackView =
       /** Composer placeholder seed (the reveal's clash headline). */
       discussSeed?: string
     }
-  | { kind: 'profile' }
   | { kind: 'createGroup' }
   | { kind: 'user'; userId: string }
   | { kind: 'playlist'; playlistId: string }
@@ -104,8 +100,6 @@ function App() {
   const [groups, setGroups] = useState<GroupInfo[] | undefined>(undefined)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [members, setMembers] = useState<MemberInfo[]>([])
-  // Own avatar, independent of any group (the header needs it group-less too).
-  const [myAvatar, setMyAvatar] = useState<string | null>(null)
   const [stack, setStack] = useState<StackView[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   // A notification tap names its target before groups have loaded; park it here.
@@ -124,18 +118,34 @@ function App() {
       ? (groups.find((g) => g.id === activeGroupId) ?? groups[0])
       : null
 
+  const lastUidRef = useRef<string | null>(null)
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    void supabase.auth.getSession().then(({ data }) => {
+      lastUidRef.current = data.session?.user.id ?? null
+      setSession(data.session)
+    })
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s)
-      setTab('home')
-      setStack([])
+      // Reset navigation only when WHO is signed in changes. Token refreshes
+      // and same-user re-auth (the current-password check) fire SIGNED_IN
+      // too, and must not yank the view out from under the user.
+      const nextUid = s?.user.id ?? null
+      if (nextUid !== lastUidRef.current) {
+        lastUidRef.current = nextUid
+        setTab('home')
+        setStack([])
+      }
     })
     return () => sub.subscription.unsubscribe()
   }, [])
 
+  // Data effects key on WHO is signed in, not the session object: token
+  // refreshes and same-user re-auth mint new session objects and must not
+  // blank the app back to its loading gate.
+  const uid = session?.user.id ?? null
+
   useEffect(() => {
-    if (!session) {
+    if (!uid) {
       setGroups(undefined)
       setActiveGroupId(null)
       setMembers([])
@@ -144,7 +154,7 @@ function App() {
     }
     let cancelled = false
     setGroups(undefined)
-    fetchMyGroups(session.user.id)
+    fetchMyGroups(uid)
       .then((gs) => {
         if (cancelled) return
         setGroups(gs)
@@ -157,23 +167,13 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [session])
+  }, [uid])
 
   // Native only (no-op in the browser): register this device for pushes once
   // signed in. Permission prompt fires here on first run.
   useEffect(() => {
-    if (session) void enablePush()
-  }, [session])
-
-  useEffect(() => {
-    if (!session) {
-      setMyAvatar(null)
-      return
-    }
-    fetchMyAvatarKey(session.user.id)
-      .then(setMyAvatar)
-      .catch(() => {})
-  }, [session])
+    if (uid) void enablePush()
+  }, [uid])
 
   // Notification taps land on the group's round/reveal: the tap handler binds
   // at mount (cold-start taps included) and parks the group id until the
@@ -210,8 +210,8 @@ function App() {
       setStack([{ kind: 'title', tmdbId: pushTarget.tmdbId, mediaType: pushTarget.mediaType }])
     } else if (pushTarget.groupId && groups.some((g) => g.id === pushTarget.groupId)) {
       setStack([])
-      setTab('group')
-      storeTab('group')
+      setTab('rate')
+      storeTab('rate')
     }
     setPushTarget(null)
   }, [pushTarget, groups])
@@ -233,16 +233,11 @@ function App() {
 
   // Refresh whatever caches identity bits (name or avatar changed on Profile).
   const refreshMembers = useCallback(() => {
-    if (session) {
-      fetchMyAvatarKey(session.user.id)
-        .then(setMyAvatar)
-        .catch(() => {})
-    }
     if (!groupId) return
     fetchMembers(groupId)
       .then(setMembers)
       .catch(() => {})
-  }, [groupId, session])
+  }, [groupId])
 
   // Refetch the group list after a rename / leave / delete. If the active
   // group is gone the picker falls back (or the create-group gate shows).
@@ -369,27 +364,6 @@ function App() {
                 }}
               />
             )}
-            {top.kind === 'profile' && (
-              <ProfileScreen
-                userId={userId}
-                displayName={myName}
-                groups={groups}
-                activeGroupId={group?.id ?? null}
-                onSwitchGroup={(id) => {
-                  // From the profile a group tap needs a destination: land on
-                  // the Group tab so the switch is visible (Home is group-agnostic).
-                  switchGroup(id)
-                  selectTab('group')
-                }}
-                onCreateGroup={() => pushView({ kind: 'createGroup' })}
-                onOpenTitle={openTitle}
-                onOpenUser={(id) => pushView({ kind: 'user', userId: id })}
-                onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
-                onNameChanged={refreshMembers}
-                onGroupsChanged={refreshGroups}
-                onBack={popView}
-              />
-            )}
             {top.kind === 'user' && (
               <PublicProfileScreen
                 userId={top.userId}
@@ -426,27 +400,12 @@ function App() {
         </div>
       ) : (
         <div className="mx-auto w-full max-w-[480px] px-5 pb-32">
-          {/* ---- Header: brand + profile; group switching lives on the Group tab ---- */}
-          <header className="pt-safe flex items-center justify-between gap-3 pb-5">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <Logo className="h-9 w-9 shrink-0" />
-              <h1 className="truncate font-display text-[24px] font-semibold leading-none tracking-tight">
-                Mash Potato
-              </h1>
-            </div>
-            <button
-              type="button"
-              onClick={() => pushView({ kind: 'profile' })}
-              aria-label="Your profile"
-              className="shrink-0 rounded-full ring-2 ring-teal/70 transition-transform active:scale-95"
-            >
-              <Avatar
-                avatarKey={me?.avatarKey ?? myAvatar}
-                displayName={myName}
-                color={colorForMember(members, userId)}
-                size={36}
-              />
-            </button>
+          {/* ---- Header: just the brand; Profile is the fourth tab ---- */}
+          <header className="pt-safe flex items-center gap-2.5 pb-5">
+            <Logo className="h-9 w-9 shrink-0" />
+            <h1 className="truncate font-display text-[24px] font-semibold leading-none tracking-tight">
+              Mash Potato
+            </h1>
           </header>
 
           {/* key remounts the screen on tab OR group change so entrances replay */}
@@ -463,25 +422,8 @@ function App() {
                 onExplore={() => setTab('discover')}
               />
             )}
-            {tab === 'discover' && <DiscoverScreen onOpenTitle={openTitle} />}
+            {tab === 'discover' && <DiscoverScreen userId={userId} onOpenTitle={openTitle} />}
             {tab === 'rate' &&
-              (group ? (
-                <RateScreen
-                  group={group}
-                  groups={groups}
-                  members={members}
-                  userId={userId}
-                  onGoHome={() => setTab('home')}
-                  onStartedInGroup={switchGroup}
-                />
-              ) : (
-                <NoGroupYet
-                  headline="Rating happens in a group"
-                  note="Pick a title together, score it blind, then catch the Reveal as a crew."
-                  onCreate={() => pushView({ kind: 'createGroup' })}
-                />
-              ))}
-            {tab === 'group' &&
               (group ? (
                 <GroupScreen
                   group={group}
@@ -495,15 +437,35 @@ function App() {
                   onSwitchGroup={switchGroup}
                   onCreateGroup={() => pushView({ kind: 'createGroup' })}
                   onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
-                  onGoRate={() => setTab('rate')}
+                  onStartedInGroup={switchGroup}
                 />
               ) : (
                 <NoGroupYet
-                  headline="No group yet"
-                  note="Your group's rounds, reveals, log, and rubric will live here."
+                  headline="Rating happens in a group"
+                  note="Pick a title together, score it blind, then catch the Reveal as a crew."
                   onCreate={() => pushView({ kind: 'createGroup' })}
                 />
               ))}
+            {tab === 'profile' && (
+              <ProfileScreen
+                userId={userId}
+                displayName={myName}
+                groups={groups}
+                activeGroupId={group?.id ?? null}
+                onSwitchGroup={(id) => {
+                  // A group tap needs a destination: land on Rate so the
+                  // switch is visible (Home is group-agnostic).
+                  switchGroup(id)
+                  selectTab('rate')
+                }}
+                onCreateGroup={() => pushView({ kind: 'createGroup' })}
+                onOpenTitle={openTitle}
+                onOpenUser={(id) => pushView({ kind: 'user', userId: id })}
+                onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
+                onNameChanged={refreshMembers}
+                onGroupsChanged={refreshGroups}
+              />
+            )}
           </main>
 
         </div>

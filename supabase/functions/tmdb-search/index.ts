@@ -11,8 +11,12 @@
 //   { op: 'discover', filters, mediaType }       -> { results: TmdbResult[] }
 //   { op: 'recommendations', tmdbId, mediaType } -> { results: TmdbResult[] }
 //   { op: 'providers', tmdbId, mediaType, region? } -> { providers: WatchProviders | null }
-// where mediaType is 'movie' | 'tv', feed is 'trending' | 'popular', and
-// filters is { genreIds?: number[]; personId?: number; year?: number }.
+// where mediaType is 'movie' | 'tv', feed is 'trending' | 'popular' |
+// 'top_rated' | 'now_playing' | 'upcoming' (the last two map to TMDB's
+// on-the-air / airing-today lists on the TV side), and filters is
+// { genreIds?: number[]; personId?: number; year?: number;
+//   yearFrom?: number; yearTo?: number; sortBy?: 'rating' | 'newest';
+//   minVotes?: number; maxVotes?: number; minRating?: number }.
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -78,11 +82,22 @@ async function handleSearch(body: Record<string, unknown>, apiKey: string): Prom
   return json({ results: (data.results ?? []).slice(0, 8).map(mapListItem) })
 }
 
-// ---- op: browse (trending / popular shelves) -----------------------------
+// ---- op: browse (list shelves: trending / popular / top rated / new) ------
+// Feed names stay media-neutral; the TV side maps the theater-flavored ones
+// to TMDB's closest list (on the air / airing today).
+const BROWSE_FEEDS: Record<string, { movie: string; tv: string }> = {
+  trending: { movie: '/trending/movie/week', tv: '/trending/tv/week' },
+  popular: { movie: '/movie/popular', tv: '/tv/popular' },
+  top_rated: { movie: '/movie/top_rated', tv: '/tv/top_rated' },
+  now_playing: { movie: '/movie/now_playing', tv: '/tv/on_the_air' },
+  upcoming: { movie: '/movie/upcoming', tv: '/tv/airing_today' },
+}
+
 async function handleBrowse(body: Record<string, unknown>, apiKey: string): Promise<Response> {
   const mediaType = normalizeMediaType(body.mediaType)
-  const feed = body.feed === 'popular' ? 'popular' : 'trending'
-  const path = feed === 'popular' ? `/${mediaType}/popular` : `/trending/${mediaType}/week`
+  const feed =
+    typeof body.feed === 'string' && body.feed in BROWSE_FEEDS ? body.feed : 'trending'
+  const path = BROWSE_FEEDS[feed][mediaType]
 
   const res = await tmdbFetch(path, apiKey, { page: '1' })
   if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
@@ -191,19 +206,36 @@ async function handlePerson(body: Record<string, unknown>, apiKey: string): Prom
   })
 }
 
-// ---- op: discover (filter by genre / person / year) ----------------------
+// ---- op: discover (filter by genre / person / year / era / acclaim) -------
 interface DiscoverFilters {
   genreIds?: number[]
   personId?: number
   year?: number
+  /** Inclusive release-year range (decade shelves and the like). */
+  yearFrom?: number
+  yearTo?: number
+  /** Default is popularity; 'rating' needs minVotes to mean anything. */
+  sortBy?: 'rating' | 'newest'
+  minVotes?: number
+  maxVotes?: number
+  minRating?: number
 }
+
+const intOrNull = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.trunc(v) : null
 
 async function handleDiscover(body: Record<string, unknown>, apiKey: string): Promise<Response> {
   const mediaType = normalizeMediaType(body.mediaType)
   const filters = (body.filters ?? {}) as DiscoverFilters
+  const dateKey = mediaType === 'movie' ? 'primary_release_date' : 'first_air_date'
 
   const params: Record<string, string> = {
-    sort_by: 'popularity.desc',
+    sort_by:
+      filters.sortBy === 'rating'
+        ? 'vote_average.desc'
+        : filters.sortBy === 'newest'
+          ? `${dateKey}.desc`
+          : 'popularity.desc',
     include_adult: 'false',
     page: '1',
   }
@@ -218,6 +250,17 @@ async function handleDiscover(body: Record<string, unknown>, apiKey: string): Pr
     params[mediaType === 'movie' ? 'primary_release_year' : 'first_air_date_year'] = String(
       filters.year,
     )
+  }
+  const yearFrom = intOrNull(filters.yearFrom)
+  const yearTo = intOrNull(filters.yearTo)
+  if (yearFrom !== null) params[`${dateKey}.gte`] = `${yearFrom}-01-01`
+  if (yearTo !== null) params[`${dateKey}.lte`] = `${yearTo}-12-31`
+  const minVotes = intOrNull(filters.minVotes)
+  const maxVotes = intOrNull(filters.maxVotes)
+  if (minVotes !== null) params['vote_count.gte'] = String(minVotes)
+  if (maxVotes !== null) params['vote_count.lte'] = String(maxVotes)
+  if (typeof filters.minRating === 'number' && Number.isFinite(filters.minRating)) {
+    params['vote_average.gte'] = String(filters.minRating)
   }
 
   const res = await tmdbFetch(`/discover/${mediaType}`, apiKey, params)

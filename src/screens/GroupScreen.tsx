@@ -39,6 +39,7 @@ import { GroupLog } from '../components/GroupLog'
 import { PlaylistCard } from '../components/PlaylistCard'
 import { PosterShelf } from '../components/PosterShelf'
 import { SessionPanel } from '../components/SessionPanel'
+import { StartRound } from '../components/StartRound'
 
 interface GroupScreenProps {
   group: GroupInfo
@@ -60,8 +61,8 @@ interface GroupScreenProps {
   onCreateGroup: () => void
   /** Open a playlist (the group's shared watchlists live here). */
   onOpenPlaylist: (playlistId: string) => void
-  /** Jump to the Rate tab for the active group. */
-  onGoRate: () => void
+  /** A round was started in a DIFFERENT group; the caller switches to it. */
+  onStartedInGroup: (groupId: string) => void
 }
 
 // Live group view. Members + rubrics come from Postgres through RLS.
@@ -86,9 +87,15 @@ export function GroupScreen({
   onSwitchGroup,
   onCreateGroup,
   onOpenPlaylist,
-  onGoRate,
+  onStartedInGroup,
 }: GroupScreenProps) {
   const isOwner = group.role === 'owner'
+
+  // The gear gates the group's settings cluster (rubric, members, manage);
+  // the default view stays about the round: score, log, watchlists.
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  // "Start the next round" on a revealed panel opens the picker below it.
+  const [startOpen, setStartOpen] = useState(false)
 
   const [others, setOthers] = useState<MemberRubric[]>([])
   const [saved, setSaved] = useState<GroupRubricRow[] | null>(null)
@@ -125,6 +132,7 @@ export function GroupScreen({
   // ---- manage group (rename / remove / leave / delete) ----
   const [manageOpen, setManageOpen] = useState(false)
   const manageRef = useRef<HTMLElement | null>(null)
+  const settingsRef = useRef<HTMLDivElement | null>(null)
   const [newName, setNewName] = useState(group.name)
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
   const [confirmEnd, setConfirmEnd] = useState(false) // leave (member) / delete (owner)
@@ -352,17 +360,22 @@ export function GroupScreen({
     }
   }
 
-  // The gear next to the switcher: open the settings panel and bring it into
-  // view (it lives in the admin corner at the bottom of the tab).
-  function openSettings() {
-    setManageOpen(true)
-    setConfirmRemoveId(null)
-    setConfirmEnd(false)
-    setManageError(null)
-    setNewName(group.name)
-    requestAnimationFrame(() =>
-      manageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-    )
+  // The gear next to the switcher: toggle the settings cluster (rubric,
+  // members, manage) and bring it into view when opening.
+  function toggleSettings() {
+    setSettingsOpen((open) => {
+      const next = !open
+      if (next) {
+        setConfirmRemoveId(null)
+        setConfirmEnd(false)
+        setManageError(null)
+        setNewName(group.name)
+        requestAnimationFrame(() =>
+          settingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+        )
+      }
+      return next
+    })
   }
 
   const dirty = rows !== null && saved !== null && JSON.stringify(rows) !== JSON.stringify(saved)
@@ -450,12 +463,17 @@ export function GroupScreen({
             New
           </button>
         </div>
-        {/* pinned: this group's settings (rename, members, leave/delete) */}
+        {/* pinned: this group's settings (rubric, members, rename, leave) */}
         <button
           type="button"
-          onClick={openSettings}
+          onClick={toggleSettings}
           aria-label={`${group.name} settings`}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:border-teal/50 hover:text-text"
+          aria-expanded={settingsOpen}
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors ${
+            settingsOpen
+              ? 'border-teal/50 bg-teal/10 text-teal'
+              : 'border-line text-muted hover:border-teal/50 hover:text-text'
+          }`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <circle cx="12" cy="12" r="3.2" />
@@ -464,18 +482,40 @@ export function GroupScreen({
         </button>
       </div>
 
-      {/* ---- the group's latest round: invite / blind progress / the Reveal ---- */}
+      {/* ---- the group's latest round: score blind / the Reveal, in place ---- */}
       <div className="mb-7">
         <SessionPanel
           group={group}
           members={members}
           userId={userId}
-          onGoRate={onGoRate}
+          startRound={
+            <StartRound
+              group={group}
+              groups={groups}
+              userId={userId}
+              onStarted={() => setStartOpen(false)}
+              onStartedInGroup={onStartedInGroup}
+            />
+          }
+          onStartNext={() => setStartOpen(true)}
           onDiscuss={(tmdbId, mediaType, seed) =>
             onOpenTitle(tmdbId, mediaType, { groupId: group.id, seed })
           }
         />
       </div>
+
+      {/* ---- pick the next one (opened from a revealed panel) ---- */}
+      {startOpen && (
+        <div className="mb-7">
+          <StartRound
+            group={group}
+            groups={groups}
+            userId={userId}
+            onStarted={() => setStartOpen(false)}
+            onStartedInGroup={onStartedInGroup}
+          />
+        </div>
+      )}
 
       {/* ---- Group log: everything rated together (the group's memory) ---- */}
       {log.length > 0 && (
@@ -550,6 +590,9 @@ export function GroupScreen({
         </div>
       </section>
 
+      {/* ---- the settings cluster: rubric + members + manage (gear-gated) ---- */}
+      {settingsOpen && (
+      <div ref={settingsRef} className="scroll-mt-4">
       {/* ---- The group's mashed rubric (compact) + editor toggle ---- */}
       <section className="mp-rise" style={{ animationDelay: '120ms' }}>
         <div className="mb-3 flex items-baseline justify-between px-1">
@@ -1118,6 +1161,8 @@ export function GroupScreen({
           </p>
         )}
       </section>
+      </div>
+      )}
     </>
   )
 }

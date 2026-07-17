@@ -23,8 +23,15 @@ export function scorecardFromRow(row: {
   member_id: string
   locked: boolean
   scores: unknown
+  one_liner?: string | null
 }): MemberScorecard {
-  return { memberId: row.member_id, locked: row.locked, scores: scoresFromJson(row.scores) }
+  const line = typeof row.one_liner === 'string' ? row.one_liner.trim() : ''
+  return {
+    memberId: row.member_id,
+    locked: row.locked,
+    scores: scoresFromJson(row.scores),
+    oneLiner: line === '' ? null : line,
+  }
 }
 
 /** An entry of a session's rubric snapshot (reveal_sessions.rubric jsonb). */

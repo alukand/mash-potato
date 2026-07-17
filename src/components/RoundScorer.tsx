@@ -1,193 +1,90 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
 import { memberWeightedScore, formatScore } from '../lib/scoring'
 import type { CategoryScores } from '../lib/scoring'
 import {
-  fetchLatestSession,
   fetchLockStatus,
   fetchMyScore,
   fetchSessionRsvps,
-  fetchTitleDetail,
-  onSessionChange,
   posterUrl,
   respondToSession,
   revealSession,
   saveMyScore,
 } from '../lib/api'
-import type {
-  GroupInfo,
-  MemberInfo,
-  NewTitle,
-  SessionInfo,
-  SessionRubricEntry,
-  TmdbResult,
-} from '../lib/api'
+import type { GroupInfo, MemberInfo, SessionInfo, SessionRubricEntry } from '../lib/api'
 import { weightsFromRubric } from '../lib/mapping'
 import { participation, formatWindow } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
-import { useTmdbSearch } from '../hooks/useTmdbSearch'
-import { Avatar } from '../components/avatars'
-import { CtaButton, ScoreSliderRow, fieldClass } from '../components/ui'
-import { GroupInviteSheet } from '../components/GroupInviteSheet'
-import { CategoryLegend } from '../components/CategoryLegend'
+import { Avatar } from './avatars'
+import { CtaButton, ScoreSliderRow, fieldClass } from './ui'
+import { CategoryLegend } from './CategoryLegend'
 
-interface RateScreenProps {
+interface RoundScorerProps {
+  session: SessionInfo
   group: GroupInfo
-  groups: GroupInfo[]
   members: MemberInfo[]
   userId: string
-  onGoHome: () => void
-  /** A round started in a DIFFERENT group; the caller switches to it. */
-  onStartedInGroup: (groupId: string) => void
+  /** The reveal fired (or anything else that should refresh the panel). */
+  onChanged: () => void
 }
-
-// Live blind scoring. Scores are real member_scores rows written through RLS;
-// lock STATUS of others comes from the session_lock_status helper (flags
-// only). The reveal calls the reveal_session RPC.
 
 /** Every category of the session's snapshot starts at the midpoint. */
 const defaultScores = (rubric: SessionRubricEntry[]): CategoryScores =>
   Object.fromEntries(rubric.map((e) => [e.key, 5]))
 
-export function RateScreen({
-  group,
-  groups,
-  members,
-  userId,
-  onGoHome,
-  onStartedInGroup,
-}: RateScreenProps) {
-  const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
+// The live blind round: RSVP, sliders, one-liner, lock, and the Reveal CTA.
+// Scores are real member_scores rows written through RLS; lock STATUS of
+// others comes from the session_lock_status helper (flags only).
+export function RoundScorer({ session, group, members, userId, onChanged }: RoundScorerProps) {
   const [scores, setScores] = useState<CategoryScores>({})
   const [locked, setLocked] = useState(false)
+  const [oneLiner, setOneLiner] = useState('')
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
   const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // new-session form
-  const [titleName, setTitleName] = useState('')
-  const [titleYear, setTitleYear] = useState('')
-  const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie')
-  const [picked, setPicked] = useState<TmdbResult | null>(null)
-  // Genres of the picked title (drives the invite sheet's auto add-ons);
-  // null while loading or for manual entries.
-  const [pickedGenres, setPickedGenres] = useState<number[] | null>(null)
-  // Set once Invite is pressed: the sheet picks the group (recents + search)
-  // and shows that group's rubric receipt before the round starts.
-  const [invitePayload, setInvitePayload] = useState<{
-    title: NewTitle
-    genreIds: number[]
-  } | null>(null)
-
-  // Debounced TMDB search (through the Edge Function); paused once a result is
-  // picked. Shared with Discover via the hook.
-  const { results, searching } = useTmdbSearch(titleName, mediaType, !picked)
-
   const load = useCallback(async () => {
     try {
-      const s = await fetchLatestSession(group.id)
-      setSession(s)
-      if (s?.state === 'blind') {
-        const [mine, locks, answers] = await Promise.all([
-          fetchMyScore(s.id, userId),
-          fetchLockStatus(s.id),
-          fetchSessionRsvps(s.id).catch(() => []),
-        ])
-        const base = defaultScores(s.rubric ?? [])
-        if (mine) {
-          setScores({ ...base, ...mine.scores })
-          setLocked(mine.locked)
-        } else {
-          setScores(base)
-          setLocked(false)
-        }
-        setLockStatus(locks)
-        setRsvps(answers)
+      const [mine, locks, answers] = await Promise.all([
+        fetchMyScore(session.id, userId),
+        fetchLockStatus(session.id),
+        fetchSessionRsvps(session.id).catch(() => []),
+      ])
+      const base = defaultScores(session.rubric ?? [])
+      if (mine) {
+        setScores({ ...base, ...mine.scores })
+        setLocked(mine.locked)
+        setOneLiner(mine.oneLiner ?? '')
+      } else {
+        setScores(base)
+        setLocked(false)
+        setOneLiner('')
       }
+      setLockStatus(locks)
+      setRsvps(answers)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
     }
-  }, [group.id, userId])
-
-
-  // Fetch the picked title's genres so the invite sheet can resolve add-ons.
-  useEffect(() => {
-    if (!picked) {
-      setPickedGenres(null)
-      return
-    }
-    let cancelled = false
-    fetchTitleDetail(picked.tmdbId, mediaType)
-      .then((d) => !cancelled && setPickedGenres(d?.genreIds ?? []))
-      .catch(() => !cancelled && setPickedGenres([]))
-    return () => {
-      cancelled = true
-    }
-  }, [picked, mediaType])
+  }, [session, userId])
 
   useEffect(() => {
     void load()
-    const unsubscribe = onSessionChange(group.id, () => void load())
-    return unsubscribe
-  }, [load, group.id])
+  }, [load])
 
   // keep lock flags fresh while waiting on others (realtime covers the reveal)
   useEffect(() => {
-    if (session?.state !== 'blind' || !locked) return
+    if (!locked) return
     const id = setInterval(() => {
       fetchLockStatus(session.id).then(setLockStatus).catch(() => {})
     }, 15000)
     return () => clearInterval(id)
-  }, [session, locked])
-
-  // "Invite" opens the group picker; the round itself is created there.
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault()
-    if (busy) return
-    setBusy(true)
-    setError(null)
-    try {
-      // Genre add-ons (Humor for a comedy, Fear Factor for a horror, …) come
-      // from the title's TMDB genres; manual entries have none. Usually
-      // already loaded; fall back to fetching here.
-      let genreIds: number[] = pickedGenres ?? []
-      if (picked && pickedGenres === null) {
-        try {
-          genreIds = (await fetchTitleDetail(picked.tmdbId, mediaType))?.genreIds ?? []
-        } catch {
-          // non-fatal: the round just starts without genre categories
-        }
-      }
-      setInvitePayload({
-        title: picked
-          ? {
-              name: picked.name,
-              year: picked.year,
-              mediaType,
-              tmdbId: picked.tmdbId,
-              posterPath: picked.posterPath,
-            }
-          : {
-              name: titleName.trim(),
-              year: titleYear ? Number(titleYear) : null,
-              mediaType,
-              tmdbId: null,
-              posterPath: null,
-            },
-        genreIds: picked ? genreIds : [],
-      })
-    } finally {
-      setBusy(false)
-    }
-  }
+  }, [session.id, locked])
 
   async function handleLockIn() {
-    if (!session) return
     setBusy(true)
     setError(null)
     try {
-      await saveMyScore(session.id, userId, scores, true)
+      await saveMyScore(session.id, userId, scores, true, oneLiner.trim() || null)
       setLocked(true)
       setLockStatus(await fetchLockStatus(session.id))
     } catch (err) {
@@ -198,12 +95,11 @@ export function RateScreen({
   }
 
   async function handleUnlock() {
-    if (!session) return
     setBusy(true)
     setError(null)
     try {
       // keep the row (you stay "in") but drop the lock so sliders re-open
-      await saveMyScore(session.id, userId, scores, false)
+      await saveMyScore(session.id, userId, scores, false, oneLiner.trim() || null)
       setLocked(false)
       setLockStatus(await fetchLockStatus(session.id))
     } catch (err) {
@@ -214,7 +110,6 @@ export function RateScreen({
   }
 
   async function handleRespond(status: 'in' | 'pass') {
-    if (!session) return
     setBusy(true)
     setError(null)
     try {
@@ -228,212 +123,17 @@ export function RateScreen({
   }
 
   async function handleReveal() {
-    if (!session) return
     setBusy(true)
     setError(null)
     try {
       await revealSession(session.id)
-      onGoHome() // watch the drop
+      onChanged() // the panel flips to the Reveal in place
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not reveal')
       setBusy(false)
     }
   }
 
-  if (session === undefined) {
-    return <p className="mp-rise py-10 text-center text-[13px] text-muted">Loading…</p>
-  }
-
-  // ---- no active blind session: start one --------------------------------
-  if (session === null || session.state === 'revealed') {
-    return (
-      <>
-        {session?.state === 'revealed' && (
-          <section className="mp-rise mp-card mb-4 rounded-[26px] p-5">
-            <p className="text-[13px] leading-snug text-muted">
-              <span className="font-semibold text-text">{session.titleName}</span> has been
-              revealed:{' '}
-              <button type="button" onClick={onGoHome} className="font-semibold text-teal">
-                see the result
-              </button>
-              . Ready for the next one?
-            </p>
-          </section>
-        )}
-
-        <section className="mp-rise" style={{ animationDelay: session ? '80ms' : undefined }}>
-          <p className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-            New session
-          </p>
-          <form onSubmit={handleCreate} className="mp-card rounded-[26px] p-6">
-            <div className="mb-4 flex rounded-full border border-line bg-surface-2 p-1">
-              {(['movie', 'tv'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => {
-                    setMediaType(m)
-                    setPicked(null)
-                  }}
-                  className={`flex-1 rounded-full py-2 text-[12px] font-semibold transition-colors ${
-                    mediaType === m ? 'bg-teal/10 text-teal' : 'text-muted'
-                  }`}
-                >
-                  {m === 'movie' ? 'Film' : 'TV'}
-                </button>
-              ))}
-            </div>
-
-            {picked ? (
-              <div className="flex items-center gap-3 rounded-2xl border border-teal/30 bg-teal/5 p-3">
-                {picked.posterPath ? (
-                  <img
-                    src={posterUrl(picked.posterPath, 'w92')}
-                    alt=""
-                    className="h-[60px] w-10 shrink-0 rounded-lg object-cover"
-                  />
-                ) : (
-                  <span
-                    aria-hidden
-                    className="grid h-[60px] w-10 shrink-0 place-items-center rounded-lg font-display text-lg font-semibold text-bg"
-                    style={{ backgroundImage: 'linear-gradient(160deg, #51C5BE, #3E7CB8)' }}
-                  >
-                    {picked.name.charAt(0)}
-                  </span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14px] font-semibold">{picked.name}</p>
-                  <p className="font-mono text-[11px] text-muted">
-                    {mediaType === 'movie' ? 'Film' : 'TV'}
-                    {picked.year ? ` ${picked.year}` : ''}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPicked(null)}
-                  className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-[10px] uppercase tracking-wide text-muted transition-colors hover:text-text"
-                >
-                  Change
-                </button>
-              </div>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  maxLength={200}
-                  placeholder={`Search ${mediaType === 'movie' ? 'films' : 'TV shows'}…`}
-                  value={titleName}
-                  onChange={(e) => setTitleName(e.target.value)}
-                  className={fieldClass}
-                />
-                {searching && (
-                  <p className="mt-2 px-1 font-mono text-[10px] text-muted">searching…</p>
-                )}
-                {results.length > 0 && (
-                  <ul className="mt-2 overflow-hidden rounded-2xl border border-line bg-surface-2">
-                    {results.map((r, i) => (
-                      <li key={`${r.tmdbId}`}>
-                        <button
-                          type="button"
-                          onClick={() => setPicked(r)}
-                          className={`group flex w-full items-center gap-3 px-3 py-2.5 text-left ${
-                            i > 0 ? 'border-t border-line/50' : ''
-                          }`}
-                        >
-                          {r.posterPath ? (
-                            <img
-                              src={posterUrl(r.posterPath, 'w92')}
-                              alt=""
-                              className="h-12 w-8 shrink-0 rounded-md object-cover"
-                            />
-                          ) : (
-                            <span
-                              aria-hidden
-                              className="grid h-12 w-8 shrink-0 place-items-center rounded-md bg-line font-display text-sm font-semibold text-bg"
-                            >
-                              {r.name.charAt(0)}
-                            </span>
-                          )}
-                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium transition-colors group-hover:text-teal">
-                            {r.name}
-                          </span>
-                          <span className="tabular shrink-0 font-mono text-[11px] text-muted">
-                            {r.year ?? '—'}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {titleName.trim().length >= 2 && !searching && (
-                  <div className="mt-3 flex flex-col gap-3">
-                    <input
-                      type="number"
-                      min={1870}
-                      max={2200}
-                      placeholder="Year (only if using it as typed)"
-                      value={titleYear}
-                      onChange={(e) => setTitleYear(e.target.value)}
-                      className={fieldClass}
-                    />
-                    {results.length === 0 && (
-                      <p className="px-1 text-[12px] text-muted">
-                        No matches. Starting will use "{titleName.trim()}" as typed.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-
-            {error && (
-              <p role="alert" className="mt-3 text-[13px] leading-snug text-coral">
-                {error}
-              </p>
-            )}
-            <CtaButton
-              type="submit"
-              disabled={busy || (!picked && titleName.trim().length === 0)}
-              className="mt-4 w-full py-3.5 text-[14px]"
-            >
-              {busy ? 'One sec…' : 'Invite a group to score it blind'}
-            </CtaButton>
-          </form>
-          {invitePayload && (
-            <GroupInviteSheet
-              groups={groups}
-              userId={userId}
-              title={invitePayload.title}
-              genreIds={invitePayload.genreIds}
-              onStarted={(groupId) => {
-                setInvitePayload(null)
-                setTitleName('')
-                setTitleYear('')
-                setPicked(null)
-                if (groupId === group.id) void load()
-                else onStartedInGroup(groupId)
-              }}
-              onClose={() => setInvitePayload(null)}
-            />
-          )}
-          <p className="mt-3 px-2 text-[13px] leading-snug text-muted">
-            Search powered by{' '}
-            <a
-              href="https://www.themoviedb.org"
-              target="_blank"
-              rel="noreferrer"
-              className="text-teal"
-            >
-              TMDB
-            </a>
-            .
-          </p>
-        </section>
-      </>
-    )
-  }
-
-  // ---- active blind session: score it -------------------------------------
   const rubric = session.rubric ?? []
   const weights = weightsFromRubric(rubric)
   const weighted = rubric.length > 0 ? memberWeightedScore(scores, weights) : null
@@ -454,8 +154,6 @@ export function RateScreen({
   const canReveal = group.role === 'owner' || session.createdBy === userId
   // One lock must never drop the reveal on everyone: multi-member groups need
   // a second locked card first (also enforced server-side in reveal_session).
-  // Only members still ELIGIBLE count: in + scored + unanswered-window-open.
-  // A round everyone else passed on reveals with one card, not never.
   const eligibleCount = showRsvps ? part.inIds.length + part.invitedIds.length : members.length
   const revealQuorum = lockedIds.size >= Math.min(2, Math.max(eligibleCount, 1))
 
@@ -464,9 +162,7 @@ export function RateScreen({
       {/* ---- round invite (groups of 3+) ---- */}
       {showRsvps && myPart === 'invited' && !locked && (
         <section className="mp-rise mp-card mb-4 rounded-[26px] border border-teal/20 p-5">
-          <p className="text-[14px] font-semibold leading-snug">
-            In for this one?
-          </p>
+          <p className="text-[14px] font-semibold leading-snug">In for this one?</p>
           <p className="mt-1 text-[13px] leading-snug text-muted">
             {session.titleName}: answers close in {formatWindow(part.windowRemainingMs)}; no
             answer counts as a pass. You can always jump in later.
@@ -582,7 +278,7 @@ export function RateScreen({
 
       {/* ---- The category sliders ---- */}
       <section className="mp-rise mt-4" style={{ animationDelay: '80ms' }}>
-        <p className="mb-2 px-2 text-[13px] leading-snug text-muted">
+        <p className="mb-2 px-1 text-[13px] leading-snug text-muted">
           Score each part for what it's trying to be.
         </p>
         <CategoryLegend entries={rubric} className="mb-3 px-2" />
@@ -604,6 +300,26 @@ export function RateScreen({
             />
           ))}
         </div>
+      </section>
+
+      {/* ---- One-liner: sealed with the scores, drops at the reveal ---- */}
+      <section className="mp-rise mt-4" style={{ animationDelay: '120ms' }}>
+        <label
+          htmlFor="rate-one-liner"
+          className="mb-1.5 block px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
+        >
+          Your one-liner
+        </label>
+        <input
+          id="rate-one-liner"
+          type="text"
+          maxLength={140}
+          value={oneLiner}
+          disabled={locked || busy}
+          onChange={(e) => setOneLiner(e.target.value)}
+          placeholder="In one sentence, what was it about? (optional)"
+          className={`${fieldClass} disabled:opacity-60`}
+        />
       </section>
 
       {/* ---- Blind note + lock in / reveal ---- */}

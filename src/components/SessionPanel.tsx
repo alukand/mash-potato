@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { analyze, categoryStat, formatScore } from '../lib/scoring'
 import type { CategoryScores, MemberScorecard } from '../lib/scoring'
 import { scoreColor } from '../lib/scoreColor'
@@ -8,20 +9,17 @@ import {
   fetchAllScorecards,
   fetchGroupRubrics,
   fetchLatestSession,
-  fetchLockStatus,
-  fetchSessionRsvps,
   lateScoreSession,
   onSessionChange,
   posterUrl,
 } from '../lib/api'
 import type { GroupInfo, MemberInfo, SessionInfo } from '../lib/api'
-import { participation } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
 import { catalogCategory, mashRubrics } from '../lib/rubricCatalog'
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { Avatar } from './avatars'
-import { CtaButton, ScoreSliderRow } from './ui'
-import { RubricReceipt } from './RubricReceipt'
+import { CtaButton, ScoreSliderRow, fieldClassSm } from './ui'
+import { RoundScorer } from './RoundScorer'
 import { ScoreRing } from './ScoreRing'
 import { MashMath } from './MashMath'
 
@@ -29,8 +27,10 @@ interface SessionPanelProps {
   group: GroupInfo
   members: MemberInfo[]
   userId: string
-  /** Jump to the Rate tab to score / start a round. */
-  onGoRate: () => void
+  /** Rendered when the group has no rounds yet (the start-a-round block). */
+  startRound: ReactNode
+  /** "Start the next round" tapped on a revealed panel. */
+  onStartNext: () => void
   /** Open the title's discussion on this group's thread (the debrief). */
   onDiscuss?: (tmdbId: number, mediaType: 'movie' | 'tv', seed: string) => void
 }
@@ -42,20 +42,46 @@ interface SessionPanelProps {
 /** Position of a 1..10 score along the plot track, as a percentage. */
 const pct = (score: number) => ((score - 1) / 9) * 100
 
-export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: SessionPanelProps) {
+/** Category-aware debrief seeds: name the split, then ask why (every part of
+ *  a movie is a choice someone made; the thread is where you defend your read
+ *  of it). Keyed by category KEY with the display label interpolated, so the
+ *  animated relabels (Animation, Voice Acting) read right for free. */
+const DISCUSS_SEEDS: Record<string, (label: string) => string> = {
+  story: (l) => `Split over ${l}. In one sentence, what was it actually about?`,
+  writing: (l) => `Split over ${l}. Quote the line that sold it, or the one that lost you.`,
+  acting: (l) => `Split over ${l}. Which performance did you buy, and which one broke?`,
+  cinematography: (l) => `Split over ${l}. Every frame is a choice. Which image stuck with you?`,
+  pacing: (l) => `Split over ${l}. Where did it drag for you, and where did it fly?`,
+  scoreSound: (l) => `Split over ${l}. Beyond the songs, what did the sound do for you?`,
+  emotionalImpact: (l) => `Split over ${l}. What did the last shot leave you with?`,
+  humor: (l) => `Split over ${l}. Which joke landed hardest, and which one died?`,
+  fearFactor: (l) => `Split over ${l}. What actually got under your skin?`,
+  animation: (l) => `Split over ${l}. Every frame is a choice. Which image stuck with you?`,
+}
+
+const discussSeedFor = (key: string, label: string) =>
+  (DISCUSS_SEEDS[key] ?? ((l: string) => `Split over ${l}. Defend your take…`))(label)
+
+export function SessionPanel({
+  group,
+  members,
+  userId,
+  startRound,
+  onStartNext,
+  onDiscuss,
+}: SessionPanelProps) {
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
   // undefined = cards not fetched yet. Distinct from []: an empty visible set
   // means "sealed for you" (RLS), and treating "still loading" as sealed
   // flashes the seal card at every mount.
   const [scorecards, setScorecards] = useState<MemberScorecard[] | undefined>(undefined)
-  const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
-  const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
   const [memberRubrics, setMemberRubrics] = useState<MemberRubric[]>([])
   const [error, setError] = useState<string | null>(null)
 
   // ---- living reveal: late scoring + category backfill ----
   const [lateOpen, setLateOpen] = useState(false)
   const [lateScores, setLateScores] = useState<CategoryScores>({})
+  const [lateLine, setLateLine] = useState('')
   const [lateBusy, setLateBusy] = useState(false)
   const [backfillValues, setBackfillValues] = useState<Record<string, number>>({})
   const [backfillBusy, setBackfillBusy] = useState<string | null>(null)
@@ -70,6 +96,7 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
     setScorecards(undefined)
     setLateOpen(false)
     setLateScores({})
+    setLateLine('')
     setBackfillValues({})
     setActionError(null)
   }
@@ -86,13 +113,6 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
         ])
         setScorecards(cards)
         setMemberRubrics(rubrics)
-      } else {
-        const [locks, answers] = await Promise.all([
-          fetchLockStatus(s.id),
-          fetchSessionRsvps(s.id).catch(() => []),
-        ])
-        setLockStatus(locks)
-        setRsvps(answers)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
@@ -103,7 +123,7 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
     setLateBusy(true)
     setActionError(null)
     try {
-      await lateScoreSession(sessionId, lateScores)
+      await lateScoreSession(sessionId, lateScores, lateLine.trim() || null)
       setLateOpen(false)
       await load()
     } catch (err) {
@@ -149,113 +169,21 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
     return <p className="mp-rise py-6 text-center text-[13px] text-muted">Loading…</p>
   }
 
-  // ---- no sessions yet ----------------------------------------------------
+  // ---- no sessions yet: the start-a-round block takes the stage -----------
   if (session === null) {
-    return (
-      <section className="mp-rise mp-card rounded-[26px] p-6 text-center">
-        <p className="text-[14px] font-semibold">No rounds yet</p>
-        <p className="mx-auto mt-1.5 max-w-[280px] text-[13px] leading-snug text-muted">
-          Pick a film or show and invite {group.name}: everyone scores blind, then the
-          Reveal drops it all at once.
-        </p>
-        <CtaButton onClick={onGoRate} className="mt-4 w-full py-3 text-[13px]">
-          Pick a movie
-        </CtaButton>
-      </section>
-    )
+    return <>{startRound}</>
   }
 
-  // ---- blind round in progress ---------------------------------------------
+  // ---- blind round in progress: score it right here -----------------------
   if (session.state === 'blind') {
-    const lockedIds = new Set(lockStatus.filter((l) => l.locked).map((l) => l.memberId))
-    const iAmIn = lockedIds.has(userId)
-    // The snapshot is the round's rubric of record; mark genre-flavored
-    // categories so the receipt reads the same as it did at creation.
-    const receiptEntries = (session.rubric ?? []).map((e) => ({
-      ...e,
-      source:
-        catalogCategory(e.key)?.kind === 'genre' ? ('genre' as const) : ('group' as const),
-    }))
-    const part = participation({
-      memberIds: members.map((m) => m.userId),
-      rsvps,
-      scoredMemberIds: lockStatus.map((l) => l.memberId),
-      sessionCreatedAt: session.createdAt,
-    })
-    const showRsvps = members.length > 1
     return (
-      <section className="mp-rise mp-card rounded-[26px] p-6">
-        <div className="flex items-center justify-between gap-2">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-            Round in progress
-          </p>
-          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-gold/30 bg-gold/10 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-gold">
-            <span className="h-1.5 w-1.5 rounded-full bg-gold" />
-            Blind
-          </span>
-        </div>
-        <h2 className="mt-2 font-display text-[27px] font-semibold leading-[1.05]">
-          {session.titleName}
-        </h2>
-        <p className="mt-1 font-mono text-xs text-muted">
-          {session.mediaType === 'movie' ? 'Film' : 'TV'}
-          {session.titleYear ? ` ${session.titleYear}` : ''}
-        </p>
-
-        <div className="mt-6 flex items-center justify-between rounded-2xl bg-surface-2 px-4 py-3.5">
-          <div className="flex -space-x-1.5">
-            {members.map((m) =>
-              // locked members' faces arrive; open cards stay hollow
-              lockedIds.has(m.userId) ? (
-                <span key={m.userId} title={m.displayName} className="rounded-full border-2 border-surface">
-                  <Avatar
-                    avatarKey={m.avatarKey}
-                    displayName={m.displayName}
-                    color={colorForMember(members, m.userId)}
-                    size={26}
-                  />
-                </span>
-              ) : (
-                <span
-                  key={m.userId}
-                  title={m.displayName}
-                  className="grid h-7 w-7 place-items-center rounded-full border-2 border-surface bg-surface font-mono text-[10px] font-bold text-muted"
-                >
-                  {m.displayName.charAt(0).toUpperCase()}
-                </span>
-              ),
-            )}
-          </div>
-          <p className="tabular font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            {lockedIds.size}/{showRsvps ? part.inIds.length : members.length} locked
-          </p>
-        </div>
-
-        {showRsvps && (
-          <p className="mt-2.5 px-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-            {part.inIds.length} in
-            {part.passedIds.length > 0 ? `, ${part.passedIds.length} passed` : ''}
-            {part.invitedIds.length > 0 ? `, ${part.invitedIds.length} invited` : ''}
-          </p>
-        )}
-
-        {receiptEntries.length > 0 && (
-          <RubricReceipt
-            entries={receiptEntries}
-            title="This round's rubric"
-            className="mt-4 border-t border-line/60 pt-4"
-          />
-        )}
-
-        <p className="mt-4 text-[13px] leading-snug text-muted">
-          Ratings stay hidden until the reveal.
-        </p>
-        {!iAmIn && (
-          <CtaButton onClick={onGoRate} className="mt-4 w-full py-3.5 text-[14px]">
-            Score it now
-          </CtaButton>
-        )}
-      </section>
+      <RoundScorer
+        session={session}
+        group={group}
+        members={members}
+        userId={userId}
+        onChanged={() => void load()}
+      />
     )
   }
 
@@ -307,6 +235,15 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
                 />
               ))}
             </div>
+            <input
+              type="text"
+              maxLength={140}
+              value={lateLine}
+              disabled={lateBusy}
+              onChange={(e) => setLateLine(e.target.value)}
+              placeholder="In one sentence, what was it about? (optional)"
+              className={`${fieldClassSm} mt-2 w-full disabled:opacity-60`}
+            />
             <CtaButton
               tone="teal"
               disabled={lateBusy}
@@ -327,6 +264,7 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
                   ]),
                 ),
               )
+              setLateLine(myDraft?.oneLiner ?? '')
               setLateOpen(true)
             }}
             className="mt-4 w-full py-3 text-[13px]"
@@ -373,6 +311,12 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
   const leaderboard = [...result.perMember]
     .filter((m) => m.locked)
     .sort((a, b) => b.weighted - a.weighted)
+
+  // "In one sentence" quotes, leaderboard order. Only members who wrote one.
+  const oneLiners = leaderboard.flatMap((m) => {
+    const line = locked.find((s) => s.memberId === m.memberId)?.oneLiner
+    return line ? [{ memberId: m.memberId, line }] : []
+  })
 
   const categories = rubric.map((entry) => {
     const stat = categoryStat(entry.key, locked)
@@ -514,6 +458,15 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
                   />
                 ))}
               </div>
+              <input
+                type="text"
+                maxLength={140}
+                value={lateLine}
+                disabled={lateBusy}
+                onChange={(e) => setLateLine(e.target.value)}
+                placeholder="In one sentence, what was it about? (optional)"
+                className={`${fieldClassSm} mt-2 w-full disabled:opacity-60`}
+              />
               <CtaButton
                 tone="teal"
                 disabled={lateBusy}
@@ -534,6 +487,7 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
                     ]),
                   ),
                 )
+                setLateLine(myDraft?.oneLiner ?? '')
                 setLateOpen(true)
               }}
               className="mt-3 w-full py-2.5 text-[13px]"
@@ -619,7 +573,7 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
                 onDiscuss(
                   session.titleTmdbId!,
                   session.mediaType,
-                  `Split over ${labelFor(clash.category)}. Defend your take…`,
+                  discussSeedFor(clash.category, labelFor(clash.category)),
                 )
               }
               className="mt-3.5 flex items-center gap-2 rounded-full border border-teal/40 bg-teal/10 px-4 py-2 text-[13px] font-semibold text-teal transition-colors hover:bg-teal/20"
@@ -646,6 +600,39 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
               </p>
             </div>
           )}
+        </section>
+      )}
+
+      {/* ---- In one sentence: everyone's blind takeaway, dropped together.
+           Two 8s can hide opposite readings; this is where that shows. ---- */}
+      {oneLiners.length > 0 && (
+        <section className="mp-rise mt-7" style={{ animationDelay: '120ms' }}>
+          <div className="mb-3 px-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+              In one sentence
+            </p>
+          </div>
+          <div className="mp-card rounded-[26px] px-5 py-2">
+            {oneLiners.map((q, i) => (
+              <div
+                key={q.memberId}
+                className={`flex items-start gap-3 py-3.5 ${i > 0 ? 'border-t border-line/50' : ''}`}
+              >
+                <Avatar
+                  avatarKey={members.find((m) => m.userId === q.memberId)?.avatarKey}
+                  displayName={memberName(q.memberId)}
+                  color={colorForMember(members, q.memberId)}
+                  size={28}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                    {memberName(q.memberId)}
+                  </p>
+                  <p className="mt-0.5 text-[14px] leading-snug">&ldquo;{q.line}&rdquo;</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -727,7 +714,7 @@ export function SessionPanel({ group, members, userId, onGoRate, onDiscuss }: Se
       <section className="mp-rise mt-6 text-center" style={{ animationDelay: '220ms' }}>
         <button
           type="button"
-          onClick={onGoRate}
+          onClick={onStartNext}
           className="rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text"
         >
           Start the next round →

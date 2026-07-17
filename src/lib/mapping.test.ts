@@ -28,7 +28,22 @@ describe('scorecardFromRow', () => {
   it('builds a MemberScorecard from a row', () => {
     expect(
       scorecardFromRow({ member_id: 'user-1', locked: true, scores: { story: 9, humor: 6 } }),
-    ).toEqual({ memberId: 'user-1', locked: true, scores: { story: 9, humor: 6 } })
+    ).toEqual({ memberId: 'user-1', locked: true, scores: { story: 9, humor: 6 }, oneLiner: null })
+  })
+
+  it('trims the one-liner and blanks it to null', () => {
+    expect(
+      scorecardFromRow({
+        member_id: 'user-1',
+        locked: true,
+        scores: {},
+        one_liner: '  Grief, but make it jazz.  ',
+      }).oneLiner,
+    ).toBe('Grief, but make it jazz.')
+    expect(
+      scorecardFromRow({ member_id: 'user-1', locked: true, scores: {}, one_liner: '   ' })
+        .oneLiner,
+    ).toBeNull()
   })
 })
 

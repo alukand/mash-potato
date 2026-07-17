@@ -1,60 +1,220 @@
-import { useEffect, useState } from 'react'
-import { fetchBrowse, fetchDiscover, fetchGenres, fetchGenreShelf, searchPeople } from '../lib/api'
-import type { TmdbGenre, TmdbPerson, TmdbResult } from '../lib/api'
+import { useEffect, useRef, useState } from 'react'
+import {
+  fetchBrowse,
+  fetchDiscover,
+  fetchGenres,
+  fetchMyGlobalRatings,
+  fetchMyReviewedTitles,
+  fetchRecommendations,
+  fetchShelf,
+  searchPeople,
+} from '../lib/api'
+import type { BrowseFeed, DiscoverFilters, TmdbGenre, TmdbPerson, TmdbResult } from '../lib/api'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
+import type { TaggedResult } from '../hooks/useTmdbSearch'
 import { fieldClass } from '../components/ui'
 import { PosterShelf } from '../components/PosterShelf'
 import { PosterResultGrid } from '../components/PosterResultGrid'
 
 interface DiscoverScreenProps {
+  userId: string
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
 }
 
 const MEDIA_KEY = 'mp.discoverMedia'
+type TypeFilter = 'both' | 'movie' | 'tv'
 
-// Genre browse rows under the trending/popular shelves. TMDB genre ids
-// differ between films and TV, so each side gets its own lineup.
-const GENRE_SHELVES: Record<'movie' | 'tv', { heading: string; genreId: number }[]> = {
-  movie: [
-    { heading: 'Comedy nights', genreId: 35 },
-    { heading: 'Horror nights', genreId: 27 },
-    { heading: 'Animated', genreId: 16 },
-    { heading: 'Sci-Fi', genreId: 878 },
-    { heading: 'Thrillers', genreId: 53 },
-    { heading: 'Romance', genreId: 10749 },
-    { heading: 'Documentaries', genreId: 99 },
-  ],
-  tv: [
-    { heading: 'Comedy', genreId: 35 },
-    { heading: 'Animated', genreId: 16 },
-    { heading: 'Sci-Fi & Fantasy', genreId: 10765 },
-    { heading: 'Crime', genreId: 80 },
-    { heading: 'Drama', genreId: 18 },
-    { heading: 'Documentaries', genreId: 99 },
-  ],
+// ---- the shelf lineup (streaming-home style) --------------------------------
+// ONE stack, films and shows interleaved — each row is a recipe (a TMDB list
+// feed or a discover query) on one side of TMDB. The Type filter narrows the
+// stack; rows load lazily as you scroll (LazyShelf) and cache in api.ts.
+type ShelfSpec = { kind: 'browse'; feed: BrowseFeed } | { kind: 'discover'; filters: DiscoverFilters }
+
+type ShelfDef = { key: string; heading: string; media: 'movie' | 'tv'; spec: ShelfSpec }
+
+const movieRow =(key: string, heading: string, spec: ShelfSpec): ShelfDef => ({
+  key,
+  heading,
+  media: 'movie',
+  spec,
+})
+const tvRow = (key: string, heading: string, spec: ShelfSpec): ShelfDef => ({
+  key,
+  heading,
+  media: 'tv',
+  spec,
+})
+const genre = (id: number): ShelfSpec => ({ kind: 'discover', filters: { genreIds: [id] } })
+const browse = (feed: BrowseFeed): ShelfSpec => ({ kind: 'browse', feed })
+
+// A gem needs time to become hidden: cut the row off two years back so
+// brand-new titles with a handful of inflated early votes don't crowd it.
+const GEMS_MAX_YEAR = new Date().getFullYear() - 2
+
+const SHELVES: ShelfDef[] = [
+  movieRow('m-trending', 'Trending films', browse('trending')),
+  tvRow('t-trending', 'Trending TV', browse('trending')),
+  // the personalized rows slot in here (see recs below)
+  movieRow('m-popular', 'Popular films', browse('popular')),
+  tvRow('t-popular', 'Popular shows', browse('popular')),
+  movieRow('m-now', 'In theaters now', browse('now_playing')),
+  tvRow('t-onair', 'On the air now', browse('now_playing')),
+  movieRow('m-soon', 'Coming soon', browse('upcoming')),
+  movieRow('m-top', 'Top rated films', browse('top_rated')),
+  tvRow('t-top', 'Top rated shows', browse('top_rated')),
+  movieRow('m-comedy', 'Comedy nights', genre(35)),
+  tvRow('t-comedy', 'Comedy shows', genre(35)),
+  movieRow('m-horror', 'Horror nights', genre(27)),
+  movieRow('m-gems', 'Hidden gems', {
+    kind: 'discover',
+    filters: { sortBy: 'rating', minRating: 7.4, minVotes: 200, maxVotes: 2500, yearTo: GEMS_MAX_YEAR },
+  }),
+  tvRow('t-gems', 'Hidden gem shows', {
+    kind: 'discover',
+    filters: { sortBy: 'rating', minRating: 7.6, minVotes: 100, maxVotes: 1500, yearTo: GEMS_MAX_YEAR },
+  }),
+  movieRow('m-nineties', '90s throwbacks', {
+    kind: 'discover',
+    filters: { yearFrom: 1990, yearTo: 1999, minVotes: 300 },
+  }),
+  movieRow('m-eighties', '80s classics', {
+    kind: 'discover',
+    filters: { yearFrom: 1980, yearTo: 1989, minVotes: 300 },
+  }),
+  movieRow('m-animated', 'Animated films', genre(16)),
+  tvRow('t-animated', 'Animated shows', genre(16)),
+  movieRow('m-thrillers', 'Acclaimed thrillers', {
+    kind: 'discover',
+    filters: { genreIds: [53], sortBy: 'rating', minVotes: 800 },
+  }),
+  movieRow('m-scifi', 'Sci-Fi films', genre(878)),
+  tvRow('t-scifi', 'Sci-Fi & Fantasy shows', genre(10765)),
+  movieRow('m-action', 'Action', genre(28)),
+  tvRow('t-crime', 'Crime shows', genre(80)),
+  movieRow('m-romance', 'Romance', genre(10749)),
+  movieRow('m-crime', 'Crime films', genre(80)),
+  tvRow('t-drama', 'Drama series', genre(18)),
+  movieRow('m-family', 'Family night', genre(10751)),
+  tvRow('t-mystery', 'TV mysteries', genre(9648)),
+  movieRow('m-fantasy', 'Fantasy', genre(14)),
+  movieRow('m-mystery', 'Mysteries', genre(9648)),
+  tvRow('t-actadv', 'Action & Adventure shows', genre(10759)),
+  movieRow('m-war', 'War stories', genre(10752)),
+  tvRow('t-nineties', '90s TV', {
+    kind: 'discover',
+    filters: { yearFrom: 1990, yearTo: 1999, minVotes: 200 },
+  }),
+  movieRow('m-western', 'Westerns', genre(37)),
+  tvRow('t-kids', 'For the kids', genre(10762)),
+  movieRow('m-music', 'Music & musicals', genre(10402)),
+  tvRow('t-reality', 'Reality', genre(10764)),
+  movieRow('m-history', 'History', genre(36)),
+  movieRow('m-docs', 'Documentaries', genre(99)),
+  tvRow('t-docs', 'Doc series', genre(99)),
+]
+
+const loadShelf = (spec: ShelfSpec, media: 'movie' | 'tv') =>
+  spec.kind === 'browse' ? fetchBrowse(spec.feed, media) : fetchShelf(spec.filters, media)
+
+// A shelf that waits to fetch until it's near the viewport (streaming-home
+// pattern: the lineup is long, the network cost is per-row). Empty rows
+// collapse; the placeholder holds the row's height so the page doesn't jump.
+function LazyShelf({
+  heading,
+  eager,
+  load,
+  onPick,
+}: {
+  heading: string
+  eager?: boolean
+  load: () => Promise<TmdbResult[]>
+  onPick: (item: TmdbResult) => void
+}) {
+  const [items, setItems] = useState<TmdbResult[] | undefined>(undefined)
+  const [visible, setVisible] = useState(eager === true)
+  const hostRef = useRef<HTMLDivElement | null>(null)
+
+  // Visibility via a direct rect check on scroll/resize (not
+  // IntersectionObserver or rAF: parked webviews can starve both, and a
+  // shelf that never loads is a broken page). Listeners detach the moment
+  // the shelf goes visible.
+  useEffect(() => {
+    if (visible) return
+    const el = hostRef.current
+    if (!el) {
+      setVisible(true)
+      return
+    }
+    const check = () => {
+      const r = el.getBoundingClientRect()
+      if (r.top < window.innerHeight + 700 && r.bottom > -700) setVisible(true)
+    }
+    check()
+    window.addEventListener('scroll', check, { passive: true, capture: true })
+    window.addEventListener('resize', check, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', check, { capture: true })
+      window.removeEventListener('resize', check)
+    }
+  }, [visible])
+
+  useEffect(() => {
+    if (!visible) return
+    let cancelled = false
+    load()
+      .then((r) => {
+        if (!cancelled) setItems(r)
+      })
+      .catch(() => {
+        if (!cancelled) setItems([])
+      })
+    return () => {
+      cancelled = true
+    }
+    // load is stable per mount (shelves remount by key on filter change)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible])
+
+  if (items && items.length === 0) return null
+  return (
+    <div ref={hostRef} className="mp-rise">
+      {items ? (
+        <PosterShelf heading={heading} items={items} onPick={onPick} />
+      ) : (
+        <section aria-hidden>
+          <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            {heading}
+          </p>
+          <div className="h-[190px] animate-pulse rounded-xl border border-line/40 bg-surface-2/50" />
+        </section>
+      )}
+    </div>
+  )
 }
 
-// Discover: free-text search, filter by genre / actor / director / year, and
-// trending / popular shelves. Every result opens that title's detail page.
-export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
+// Discover: one search box for films AND shows, filters (type, genre, people,
+// year), and a streaming-style shelf stack mixing both sides of TMDB. Every
+// result opens that title's detail page.
+export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
   const [query, setQuery] = useState('')
-  // The films/TV switch persists: coming back lands where you were browsing.
-  const [mediaType, setMediaTypeState] = useState<'movie' | 'tv'>(() => {
+  // The type filter persists: coming back lands where you were browsing.
+  const [typeFilter, setTypeFilterState] = useState<TypeFilter>(() => {
     try {
-      return localStorage.getItem(MEDIA_KEY) === 'tv' ? 'tv' : 'movie'
+      const v = localStorage.getItem(MEDIA_KEY)
+      return v === 'movie' || v === 'tv' ? v : 'both'
     } catch {
-      return 'movie'
+      return 'both'
     }
   })
-  const setMediaType = (m: 'movie' | 'tv') => {
-    setMediaTypeState(m)
+  const setTypeFilter = (t: TypeFilter) => {
+    setTypeFilterState(t)
     try {
-      localStorage.setItem(MEDIA_KEY, m)
+      localStorage.setItem(MEDIA_KEY, t)
     } catch {
       // ignore
     }
   }
-  const { results, searching } = useTmdbSearch(query, mediaType)
+  const { results, searching } = useTmdbSearch(query, typeFilter)
 
   // filters
   const [showFilters, setShowFilters] = useState(false)
@@ -65,32 +225,37 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
   const [selectedPerson, setSelectedPerson] = useState<TmdbPerson | null>(null)
   const [year, setYear] = useState('')
 
-  const [discoverResults, setDiscoverResults] = useState<TmdbResult[]>([])
+  const [discoverResults, setDiscoverResults] = useState<TaggedResult[]>([])
   const [discovering, setDiscovering] = useState(false)
 
-  // shelves
-  const [trendingMovies, setTrendingMovies] = useState<TmdbResult[]>([])
-  const [trendingTv, setTrendingTv] = useState<TmdbResult[]>([])
-  const [popularMovies, setPopularMovies] = useState<TmdbResult[]>([])
-  const [genreShelves, setGenreShelves] = useState<{ heading: string; items: TmdbResult[] }[]>([])
-  const [shelfError, setShelfError] = useState<string | null>(null)
+  // "Because you rated {title}" seeds, one per side (your latest rating).
+  const [recSeeds, setRecSeeds] = useState<
+    { media: 'movie' | 'tv'; tmdbId: number; name: string }[]
+  >([])
 
   const yearNum = /^\d{4}$/.test(year) ? Number(year) : undefined
   const genreKey = selectedGenreIds.join(',')
   const hasFilters = selectedGenreIds.length > 0 || selectedPerson !== null || yearNum !== undefined
   const textActive = query.trim().length >= 2
 
-  // Load the genre catalog for the current media type (ids differ movie vs tv).
+  // Load the genre catalog for the filter chips (merged across both sides
+  // when the type filter is open — ids are shared where genres overlap).
   useEffect(() => {
     let cancelled = false
     setSelectedGenreIds([])
-    fetchGenres(mediaType)
-      .then((g) => !cancelled && setGenres(g))
+    const want: ('movie' | 'tv')[] = typeFilter === 'both' ? ['movie', 'tv'] : [typeFilter]
+    Promise.all(want.map((m) => fetchGenres(m).catch(() => [] as TmdbGenre[])))
+      .then((lists) => {
+        if (cancelled) return
+        const byId = new Map<number, TmdbGenre>()
+        for (const list of lists) for (const genre of list) byId.set(genre.id, byId.get(genre.id) ?? genre)
+        setGenres([...byId.values()].sort((a, b) => a.name.localeCompare(b.name)))
+      })
       .catch(() => !cancelled && setGenres([]))
     return () => {
       cancelled = true
     }
-  }, [mediaType])
+  }, [typeFilter])
 
   // Debounced people search for the person picker.
   useEffect(() => {
@@ -120,16 +285,30 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
     let stale = false
     setDiscovering(true)
     const t = setTimeout(() => {
-      fetchDiscover(
-        {
-          genreIds: selectedGenreIds,
-          personId: selectedPerson?.id,
-          year: yearNum,
-        },
-        mediaType,
+      const filters = {
+        genreIds: selectedGenreIds,
+        personId: selectedPerson?.id,
+        year: yearNum,
+      }
+      const want: ('movie' | 'tv')[] = typeFilter === 'both' ? ['movie', 'tv'] : [typeFilter]
+      Promise.all(
+        want.map((m) =>
+          fetchDiscover(filters, m)
+            .then((rs) => rs.map((r) => ({ ...r, mediaType: m })))
+            .catch(() => [] as TaggedResult[]),
+        ),
       )
-        .then((r) => !stale && setDiscoverResults(r))
-        .catch(() => !stale && setDiscoverResults([]))
+        .then((lists) => {
+          if (stale) return
+          // interleave films/shows so neither side buries the other
+          const [a, b] = [lists[0] ?? [], lists[1] ?? []]
+          const merged: TaggedResult[] = []
+          for (let i = 0; i < Math.max(a.length, b.length); i++) {
+            if (a[i]) merged.push(a[i])
+            if (b[i]) merged.push(b[i])
+          }
+          setDiscoverResults(merged)
+        })
         .finally(() => !stale && setDiscovering(false))
     }, 300)
     return () => {
@@ -137,48 +316,31 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
       clearTimeout(t)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [genreKey, selectedPerson, yearNum, mediaType, textActive, hasFilters])
+  }, [genreKey, selectedPerson, yearNum, typeFilter, textActive, hasFilters])
 
-  // Trending / popular shelves (cached in api.ts).
+  // Resolve the "Because you rated" seeds (latest rating on each side).
   useEffect(() => {
     let cancelled = false
+    setRecSeeds([])
     Promise.all([
-      fetchBrowse('trending', 'movie'),
-      fetchBrowse('trending', 'tv'),
-      fetchBrowse('popular', 'movie'),
-    ])
-      .then(([tm, tv, pm]) => {
-        if (cancelled) return
-        setTrendingMovies(tm)
-        setTrendingTv(tv)
-        setPopularMovies(pm)
-      })
-      .catch((err) => {
-        if (!cancelled) setShelfError(err instanceof Error ? err.message : 'Could not load shelves')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // Genre rows follow the Films/TV switch (ids differ per side, cached too).
-  useEffect(() => {
-    let cancelled = false
-    const lineup = GENRE_SHELVES[mediaType]
-    Promise.all(
-      lineup.map((s) =>
-        fetchGenreShelf(s.genreId, mediaType)
-          .then((items) => ({ heading: s.heading, items }))
-          .catch(() => ({ heading: s.heading, items: [] as TmdbResult[] })),
-      ),
-    ).then((shelves) => {
+      fetchMyGlobalRatings(userId).catch(() => []),
+      fetchMyReviewedTitles(userId).catch(() => []),
+    ]).then(([solo, grouped]) => {
       if (cancelled) return
-      setGenreShelves(shelves.filter((s) => s.items.length > 0))
+      const all = [...solo, ...grouped]
+      const seeds: { media: 'movie' | 'tv'; tmdbId: number; name: string }[] = []
+      for (const media of ['movie', 'tv'] as const) {
+        const pick = all.find((t) => t.mediaType === media && typeof t.tmdbId === 'number')
+        if (pick && typeof pick.tmdbId === 'number') {
+          seeds.push({ media, tmdbId: pick.tmdbId, name: pick.name })
+        }
+      }
+      setRecSeeds(seeds)
     })
     return () => {
       cancelled = true
     }
-  }, [mediaType])
+  }, [userId])
 
   function toggleGenre(id: number) {
     setSelectedGenreIds((prev) =>
@@ -191,36 +353,25 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
     setSelectedPerson(null)
     setPersonQuery('')
     setYear('')
+    setTypeFilter('both')
   }
 
   const activeFilterCount =
-    selectedGenreIds.length + (selectedPerson ? 1 : 0) + (yearNum !== undefined ? 1 : 0)
+    selectedGenreIds.length +
+    (selectedPerson ? 1 : 0) +
+    (yearNum !== undefined ? 1 : 0) +
+    (typeFilter !== 'both' ? 1 : 0)
+
+  const shelves = SHELVES.filter((s) => typeFilter === 'both' || s.media === typeFilter)
+  const visibleSeeds = recSeeds.filter((s) => typeFilter === 'both' || s.media === typeFilter)
 
   return (
     <div className="flex flex-col gap-6">
       <section className="mp-rise">
-        <p className="mb-3 px-1 text-[13px] leading-snug text-muted">
-          Look up any film or show: rate it solo on the standard rubric and see how it stacks up
-          against everyone else on Mash Potato.
-        </p>
-        <div className="mb-3 flex rounded-full border border-line bg-surface-2 p-1">
-          {(['movie', 'tv'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMediaType(m)}
-              className={`flex-1 rounded-full py-2 text-[12px] font-semibold transition-colors ${
-                mediaType === m ? 'bg-teal/10 text-teal' : 'text-muted'
-              }`}
-            >
-              {m === 'movie' ? 'Films' : 'TV'}
-            </button>
-          ))}
-        </div>
         <input
           type="text"
           maxLength={200}
-          placeholder={`Search ${mediaType === 'movie' ? 'films' : 'TV shows'}…`}
+          placeholder="Search films and shows…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className={fieldClass}
@@ -261,6 +412,34 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
         {/* filter panel */}
         {showFilters && (
           <div className="mp-card mt-3 flex flex-col gap-4 rounded-2xl p-4">
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+                Type
+              </p>
+              <div className="flex gap-1.5">
+                {(
+                  [
+                    ['both', 'All'],
+                    ['movie', 'Films'],
+                    ['tv', 'Shows'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setTypeFilter(value)}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
+                      typeFilter === value
+                        ? 'border-teal/40 bg-teal/10 text-teal'
+                        : 'border-line text-muted hover:text-text'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
                 Genre
@@ -371,7 +550,7 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
       {textActive ? (
         <section className="mp-rise">
           {results.length > 0 ? (
-            <PosterResultGrid results={results} mediaType={mediaType} onOpenTitle={onOpenTitle} />
+            <PosterResultGrid results={results} onOpenTitle={onOpenTitle} />
           ) : (
             !searching && (
               <p className="px-1 text-[13px] text-muted">No matches for “{query.trim()}”.</p>
@@ -383,47 +562,34 @@ export function DiscoverScreen({ onOpenTitle }: DiscoverScreenProps) {
           {discovering ? (
             <p className="px-1 font-mono text-[10px] text-muted">finding titles…</p>
           ) : discoverResults.length > 0 ? (
-            <PosterResultGrid results={discoverResults} mediaType={mediaType} onOpenTitle={onOpenTitle} />
+            <PosterResultGrid results={discoverResults} onOpenTitle={onOpenTitle} />
           ) : (
             <p className="px-1 text-[13px] text-muted">No titles match those filters.</p>
           )}
         </section>
       ) : (
         <div className="flex flex-col gap-6">
-          {shelfError && <p className="px-1 text-[12px] text-coral">{shelfError}</p>}
-          <div className="mp-rise">
-            <PosterShelf
-              heading="Trending films"
-              items={trendingMovies}
-              onPick={(it) => onOpenTitle(it.tmdbId, 'movie')}
-            />
-          </div>
-          <div className="mp-rise" style={{ animationDelay: '80ms' }}>
-            <PosterShelf
-              heading="Trending TV"
-              items={trendingTv}
-              onPick={(it) => onOpenTitle(it.tmdbId, 'tv')}
-            />
-          </div>
-          <div className="mp-rise" style={{ animationDelay: '160ms' }}>
-            <PosterShelf
-              heading="Popular films"
-              items={popularMovies}
-              onPick={(it) => onOpenTitle(it.tmdbId, 'movie')}
-            />
-          </div>
-          {/* genre rows follow the Films/TV switch above */}
-          {genreShelves.map((shelf, i) => (
-            <div
-              key={`${mediaType}:${shelf.heading}`}
-              className="mp-rise"
-              style={{ animationDelay: `${Math.min(240 + i * 80, 640)}ms` }}
-            >
-              <PosterShelf
+          {/* films and shows in one stack; the Type filter narrows it.
+              Rows load as you scroll and empty rows collapse. */}
+          {shelves.map((shelf, i) => (
+            <div key={`${typeFilter}:${shelf.key}`} className="contents">
+              <LazyShelf
                 heading={shelf.heading}
-                items={shelf.items}
-                onPick={(it) => onOpenTitle(it.tmdbId, mediaType)}
+                eager={i < 3}
+                load={() => loadShelf(shelf.spec, shelf.media)}
+                onPick={(it) => onOpenTitle(it.tmdbId, shelf.media)}
               />
+              {/* the personalized rows slot in right under the trending pair */}
+              {i === (typeFilter === 'both' ? 1 : 0) &&
+                visibleSeeds.map((seed) => (
+                  <LazyShelf
+                    key={`recs:${seed.media}:${seed.tmdbId}`}
+                    heading={`Because you rated ${seed.name}`}
+                    eager
+                    load={() => fetchRecommendations(seed.tmdbId, seed.media)}
+                    onPick={(it) => onOpenTitle(it.tmdbId, seed.media)}
+                  />
+                ))}
             </div>
           ))}
         </div>

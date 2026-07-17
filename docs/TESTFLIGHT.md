@@ -77,3 +77,15 @@ ships the required kit; declare it when submitting:
 - Review reports in the Supabase dashboard: `comment_reports` joined to
   `title_comments`; set `removed = true` to take content down, flip
   `profiles.banned` to eject an account, extend `banned_terms` as needed.
+
+## Account deletion (guideline 5.1.1(v)) — satisfied
+
+Apps with account creation must offer in-app account deletion; Mash
+Potato ships it under Profile → Danger zone (type-DELETE confirm →
+`delete_my_account` RPC: owned groups transfer to the longest-standing
+member, solo groups delete, all personal data cascades away). Nothing to
+declare, but if Review asks, that's where it lives. Before shipping the
+next build, also run the hosted dashboard checklist in `docs/DOMAIN.md`
+(auth email templates with the 6-digit code, min password length 8,
+single-confirm email change, leaked-password protection ON) — signup and
+password reset emails need the code templates to be usable in-app.

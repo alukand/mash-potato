@@ -7,12 +7,15 @@ import {
   fetchLatestSession,
   fetchLockStatus,
   fetchMembers,
+  fetchMyGlobalRatings,
+  fetchMyReviewedTitles,
+  fetchMySavedTitles,
   fetchSessionRsvps,
   onSessionChange,
   posterUrl,
   respondToSession,
 } from '../lib/api'
-import type { GroupInfo, MemberInfo, SessionInfo, TmdbResult } from '../lib/api'
+import type { GroupInfo, MemberInfo, SavedTitle, SessionInfo, TmdbResult } from '../lib/api'
 import { participation, formatWindow } from '../lib/rsvp'
 import { PosterShelf } from '../components/PosterShelf'
 import { Logo } from '../components/Logo'
@@ -22,7 +25,8 @@ interface HomeScreenProps {
   groups: GroupInfo[]
   userId: string
   /** Switch to that group and land on the given tab. */
-  onOpenGroup: (groupId: string, dest: 'rate' | 'group') => void
+  /** Rounds and reveals both live on the Rate tab now. */
+  onOpenGroup: (groupId: string, dest: 'rate') => void
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
   /** Jump to Discover. */
   onExplore: () => void
@@ -45,6 +49,9 @@ interface GroupPulse {
 export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore }: HomeScreenProps) {
   const [pulses, setPulses] = useState<GroupPulse[] | undefined>(undefined)
   const [trending, setTrending] = useState<TmdbResult[]>([])
+  const [popular, setPopular] = useState<TmdbResult[]>([])
+  const [saved, setSaved] = useState<SavedTitle[]>([])
+  const [ratedCount, setRatedCount] = useState<number | null>(null)
   const [busyRsvp, setBusyRsvp] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -93,10 +100,35 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
     fetchBrowse('trending', 'movie')
       .then((r) => !cancelled && setTrending(r))
       .catch(() => {})
+    fetchBrowse('popular', 'tv')
+      .then((r) => !cancelled && setPopular(r))
+      .catch(() => {})
     return () => {
       cancelled = true
     }
   }, [])
+
+  // The overview numbers + your saved list (the "what to watch next" pool).
+  useEffect(() => {
+    let cancelled = false
+    fetchMySavedTitles(userId)
+      .then((s) => !cancelled && setSaved(s))
+      .catch(() => {})
+    Promise.all([
+      fetchMyGlobalRatings(userId).catch(() => []),
+      fetchMyReviewedTitles(userId).catch(() => []),
+    ]).then(([solo, grouped]) => {
+      if (cancelled) return
+      const ids = new Set<string>([
+        ...solo.map((t) => t.titleId),
+        ...grouped.map((t) => t.titleId),
+      ])
+      setRatedCount(ids.size)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
 
   async function answer(sessionId: string, status: 'in' | 'pass') {
     setBusyRsvp(sessionId)
@@ -129,8 +161,30 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
     )
   const quiet = live.length === 0 && revealed.length === 0
 
+  const showStats = groups.length > 0 || (ratedCount ?? 0) > 0 || saved.length > 0
+
   return (
     <div className="flex flex-col gap-7">
+      {/* ---- your numbers at a glance ---- */}
+      {showStats && (
+        <section className="mp-rise grid grid-cols-3 gap-2">
+          {(
+            [
+              [groups.length, groups.length === 1 ? 'Group' : 'Groups'],
+              [ratedCount ?? 0, 'Rated'],
+              [saved.length, 'Saved'],
+            ] as const
+          ).map(([n, label]) => (
+            <div key={label} className="mp-card rounded-2xl px-3 py-3 text-center">
+              <p className="tabular font-display text-[24px] font-semibold leading-none">{n}</p>
+              <p className="mt-1 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
+                {label}
+              </p>
+            </div>
+          ))}
+        </section>
+      )}
+
       {/* ---- live rounds across every group ---- */}
       {live.length > 0 && (
         <section className="mp-rise">
@@ -247,7 +301,7 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
                 <button
                   key={session.id}
                   type="button"
-                  onClick={() => onOpenGroup(group.id, 'group')}
+                  onClick={() => onOpenGroup(group.id, 'rate')}
                   className="group flex w-full items-center gap-3 px-4 py-3 text-left"
                 >
                   {session.posterPath ? (
@@ -320,6 +374,27 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
         </section>
       )}
 
+      {/* ---- your saved list: the what-to-watch-next pool ---- */}
+      {saved.filter((s) => s.tmdbId !== null).length > 0 && (
+        <div className="mp-rise" style={{ animationDelay: '120ms' }}>
+          <PosterShelf
+            heading="From your list"
+            items={saved
+              .filter((s) => s.tmdbId !== null)
+              .map((s) => ({
+                tmdbId: s.tmdbId!,
+                name: s.name,
+                year: s.year,
+                posterPath: s.posterPath,
+              }))}
+            onPick={(it) => {
+              const match = saved.find((s) => s.tmdbId === it.tmdbId)
+              onOpenTitle(it.tmdbId, match?.mediaType ?? 'movie')
+            }}
+          />
+        </div>
+      )}
+
       {/* ---- exploratory tail ---- */}
       {trending.length > 0 && (
         <div className="mp-rise" style={{ animationDelay: '160ms' }}>
@@ -327,6 +402,15 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
             heading="Trending this week"
             items={trending}
             onPick={(it) => onOpenTitle(it.tmdbId, 'movie')}
+          />
+        </div>
+      )}
+      {popular.length > 0 && (
+        <div className="mp-rise" style={{ animationDelay: '200ms' }}>
+          <PosterShelf
+            heading="Popular shows"
+            items={popular}
+            onPick={(it) => onOpenTitle(it.tmdbId, 'tv')}
           />
           <button
             type="button"

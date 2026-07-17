@@ -1,16 +1,23 @@
 import { useEffect, useState } from 'react'
 import {
   createPlaylist,
+  deleteMyAccount,
   fetchMyAvatarKey,
+  fetchMyEmail,
   fetchMyExport,
   fetchMyFriends,
   fetchMyGlobalRatings,
   fetchMyPlaylists,
   fetchMyReviewedTitles,
   fetchMySavedTitles,
+  requestEmailChange,
   setGroupVisibility,
+  signOutLocal,
   updateMyAvatar,
   updateMyDisplayName,
+  updateMyPassword,
+  verifyCurrentPassword,
+  verifyEmailChange,
 } from '../lib/api'
 import { signOutWithPushCleanup } from '../lib/push'
 import type {
@@ -41,7 +48,8 @@ interface ProfileScreenProps {
   onNameChanged: () => void
   /** Group visibility flipped; refetch the group list. */
   onGroupsChanged: () => Promise<void>
-  onBack: () => void
+  /** Present when pushed on the view-stack; absent as the Profile tab. */
+  onBack?: () => void
 }
 
 // Personal profile: who you are (editable), every group you're in (tap to
@@ -80,6 +88,98 @@ export function ProfileScreen({
   const [avatarKey, setAvatarKey] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [avatarBusy, setAvatarBusy] = useState(false)
+
+  // ---- account: email + password + deletion ----
+  const [myEmail, setMyEmail] = useState<string | null>(null)
+  const [emailStage, setEmailStage] = useState<'closed' | 'input' | 'verify'>('closed')
+  const [newEmail, setNewEmail] = useState('')
+  const [emailCode, setEmailCode] = useState('')
+  const [emailBusy, setEmailBusy] = useState(false)
+  const [emailNotice, setEmailNotice] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [pwOpen, setPwOpen] = useState(false)
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwBusy, setPwBusy] = useState(false)
+  const [pwNotice, setPwNotice] = useState<string | null>(null)
+  const [pwError, setPwError] = useState<string | null>(null)
+  const [dangerOpen, setDangerOpen] = useState(false)
+  const [dangerText, setDangerText] = useState('')
+  const [dangerBusy, setDangerBusy] = useState(false)
+  const [dangerError, setDangerError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchMyEmail().then((e) => !cancelled && setMyEmail(e))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function handleSendEmailCode() {
+    setEmailBusy(true)
+    setEmailError(null)
+    setEmailNotice(null)
+    try {
+      await requestEmailChange(newEmail.trim())
+      setEmailStage('verify')
+      setEmailNotice(`Code sent to ${newEmail.trim()}.`)
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Could not send the code')
+    } finally {
+      setEmailBusy(false)
+    }
+  }
+
+  async function handleConfirmEmail() {
+    setEmailBusy(true)
+    setEmailError(null)
+    try {
+      await verifyEmailChange(newEmail.trim(), emailCode.trim())
+      setMyEmail(newEmail.trim())
+      setEmailStage('closed')
+      setNewEmail('')
+      setEmailCode('')
+      setEmailNotice('Email updated.')
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Could not verify the code')
+    } finally {
+      setEmailBusy(false)
+    }
+  }
+
+  async function handleChangePassword() {
+    if (!myEmail) return
+    setPwBusy(true)
+    setPwError(null)
+    setPwNotice(null)
+    try {
+      await verifyCurrentPassword(myEmail, pwCurrent)
+      await updateMyPassword(pwNew)
+      setPwOpen(false)
+      setPwCurrent('')
+      setPwNew('')
+      setPwNotice('Password updated.')
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : 'Could not update the password')
+    } finally {
+      setPwBusy(false)
+    }
+  }
+
+  async function handleDeleteAccount() {
+    setDangerBusy(true)
+    setDangerError(null)
+    try {
+      await deleteMyAccount()
+      // The server no longer knows us; clear the local session and let
+      // App's auth listener land on the sign-in screen.
+      await signOutLocal()
+    } catch (err) {
+      setDangerError(err instanceof Error ? err.message : 'Could not delete the account')
+      setDangerBusy(false)
+    }
+  }
 
   async function handlePickAvatar(key: string | null) {
     if (avatarBusy) return
@@ -209,18 +309,24 @@ export function ProfileScreen({
   }
 
   return (
-    <div className="px-5 pt-safe">
+    <div className={onBack ? 'px-5 pt-safe' : ''}>
       <header className="mp-rise mb-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="grid h-9 w-9 place-items-center rounded-full border border-line/60 text-text transition-colors hover:text-teal"
-          aria-label="Back"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="m15 5-7 7 7 7" />
-          </svg>
-        </button>
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="grid h-9 w-9 place-items-center rounded-full border border-line/60 text-text transition-colors hover:text-teal"
+            aria-label="Back"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m15 5-7 7 7 7" />
+            </svg>
+          </button>
+        ) : (
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Your profile
+          </p>
+        )}
         <button
           type="button"
           onClick={() => void signOutWithPushCleanup()}
@@ -529,6 +635,142 @@ export function ProfileScreen({
         )}
       </section>
 
+      {/* ---- account: email + password ---- */}
+      <section className="mp-rise mt-8" style={{ animationDelay: '340ms' }}>
+        <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+          Account
+        </p>
+        <div className="mp-card rounded-2xl px-4 py-1">
+          {/* email row */}
+          <div className="py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[13px] font-semibold">Email</p>
+                <p className="truncate text-[12px] text-muted">{myEmail ?? '…'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailStage(emailStage === 'closed' ? 'input' : 'closed')
+                  setEmailError(null)
+                  setEmailNotice(null)
+                }}
+                className="shrink-0 rounded-full border border-line px-3 py-1.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+              >
+                {emailStage === 'closed' ? 'Change' : 'Cancel'}
+              </button>
+            </div>
+            {emailStage !== 'closed' && (
+              <div className="mt-2.5 flex flex-col gap-2">
+                <input
+                  type="email"
+                  placeholder="New email"
+                  autoComplete="email"
+                  value={newEmail}
+                  disabled={emailBusy || emailStage === 'verify'}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className={`${fieldClassSm} w-full disabled:opacity-60`}
+                />
+                {emailStage === 'verify' && (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="6-digit code from the new address"
+                    autoComplete="one-time-code"
+                    value={emailCode}
+                    disabled={emailBusy}
+                    onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, ''))}
+                    className={`${fieldClassSm} w-full text-center font-mono tracking-[0.3em]`}
+                  />
+                )}
+                <button
+                  type="button"
+                  disabled={emailBusy || (emailStage === 'input' ? newEmail.trim().length < 5 : emailCode.length < 6)}
+                  onClick={() =>
+                    void (emailStage === 'input' ? handleSendEmailCode() : handleConfirmEmail())
+                  }
+                  className="rounded-full border border-teal/40 bg-teal/10 py-2 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20 disabled:opacity-50"
+                >
+                  {emailBusy
+                    ? 'One sec…'
+                    : emailStage === 'input'
+                      ? 'Send code to the new address'
+                      : 'Confirm new email'}
+                </button>
+              </div>
+            )}
+            {emailNotice && !emailError && (
+              <p className="mt-2 text-[12px] leading-snug text-teal">{emailNotice}</p>
+            )}
+            {emailError && (
+              <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
+                {emailError}
+              </p>
+            )}
+          </div>
+
+          {/* password row */}
+          <div className="border-t border-line/50 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[13px] font-semibold">Password</p>
+                <p className="text-[12px] text-muted">Changing it signs nobody out.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPwOpen(!pwOpen)
+                  setPwError(null)
+                  setPwNotice(null)
+                }}
+                className="shrink-0 rounded-full border border-line px-3 py-1.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+              >
+                {pwOpen ? 'Cancel' : 'Change'}
+              </button>
+            </div>
+            {pwOpen && (
+              <div className="mt-2.5 flex flex-col gap-2">
+                <input
+                  type="password"
+                  placeholder="Current password"
+                  autoComplete="current-password"
+                  value={pwCurrent}
+                  disabled={pwBusy}
+                  onChange={(e) => setPwCurrent(e.target.value)}
+                  className={`${fieldClassSm} w-full`}
+                />
+                <input
+                  type="password"
+                  placeholder="New password (8+ characters)"
+                  autoComplete="new-password"
+                  value={pwNew}
+                  disabled={pwBusy}
+                  onChange={(e) => setPwNew(e.target.value)}
+                  className={`${fieldClassSm} w-full`}
+                />
+                <button
+                  type="button"
+                  disabled={pwBusy || pwCurrent.length === 0 || pwNew.length < 8}
+                  onClick={() => void handleChangePassword()}
+                  className="rounded-full border border-teal/40 bg-teal/10 py-2 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20 disabled:opacity-50"
+                >
+                  {pwBusy ? 'Updating…' : 'Update password'}
+                </button>
+              </div>
+            )}
+            {pwNotice && !pwError && (
+              <p className="mt-2 text-[12px] leading-snug text-teal">{pwNotice}</p>
+            )}
+            {pwError && (
+              <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
+                {pwError}
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
       {/* ---- your data ---- */}
       <section className="mp-rise mt-8" style={{ animationDelay: '360ms' }}>
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
@@ -560,7 +802,8 @@ export function ProfileScreen({
                 : 'Export my ratings (JSON)'}
         </button>
         <p className="mt-2 px-2 text-[12px] leading-snug text-muted">
-          Copies every solo rating and saved title as JSON. Your history is yours.
+          Copies your solo ratings, saved titles, group scorecards, one-liners, takes,
+          playlists, and rubric presets as JSON. Your history is yours.
         </p>
         {/* ---- avatar picker sheet ---- */}
         {pickerOpen && (
@@ -633,6 +876,69 @@ export function ProfileScreen({
             alexanderlukasland@gmail.com
           </a>
         </p>
+      </section>
+
+      {/* ---- danger zone: account deletion (App Review 5.1.1(v)) ---- */}
+      <section className="mp-rise mt-8" style={{ animationDelay: '400ms' }}>
+        <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-coral/80">
+          Danger zone
+        </p>
+        {dangerOpen ? (
+          <div className="rounded-2xl border border-coral/40 bg-coral/5 p-4">
+            <p className="text-[13px] font-semibold leading-snug text-coral">
+              Delete your account for good?
+            </p>
+            <p className="mt-1.5 text-[12px] leading-snug text-muted">
+              Your scores, one-liners, takes, playlists, and profile are erased. Groups you
+              own pass to their longest-standing member; groups where you are alone are
+              deleted. Group reveals you were part of keep the others&apos; scores. This
+              cannot be undone.
+            </p>
+            <input
+              type="text"
+              placeholder='Type "DELETE" to confirm'
+              value={dangerText}
+              disabled={dangerBusy}
+              onChange={(e) => setDangerText(e.target.value)}
+              className={`${fieldClassSm} mt-3 w-full`}
+            />
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                disabled={dangerBusy || dangerText.trim() !== 'DELETE'}
+                onClick={() => void handleDeleteAccount()}
+                className="flex-1 rounded-full bg-coral py-2 text-[12px] font-semibold text-bg transition-opacity disabled:opacity-40"
+              >
+                {dangerBusy ? 'Deleting…' : 'Delete my account'}
+              </button>
+              <button
+                type="button"
+                disabled={dangerBusy}
+                onClick={() => {
+                  setDangerOpen(false)
+                  setDangerText('')
+                  setDangerError(null)
+                }}
+                className="flex-1 rounded-full border border-line py-2 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+              >
+                Keep my account
+              </button>
+            </div>
+            {dangerError && (
+              <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
+                {dangerError}
+              </p>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setDangerOpen(true)}
+            className="w-full rounded-full border border-coral/40 py-2.5 text-[13px] font-semibold text-coral transition-colors hover:bg-coral/10"
+          >
+            Delete my account…
+          </button>
+        )}
       </section>
     </div>
   )

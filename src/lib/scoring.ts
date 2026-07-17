@@ -26,6 +26,8 @@ export interface MemberScorecard {
   scores: CategoryScores
   /** Mashed only counts members who have locked in their scores. */
   locked: boolean
+  /** "In one sentence, what was it about?" — display-only, no math. */
+  oneLiner?: string | null
 }
 
 /**

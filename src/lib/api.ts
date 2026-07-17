@@ -30,8 +30,14 @@ export interface MemberInfo {
 
 // ---- auth -------------------------------------------------------------
 
-export async function signUp(email: string, password: string, displayName: string) {
-  const { error } = await supabase.auth.signUp({
+/** Returns whether email confirmation is pending: with Confirm email ON
+ *  there is no session until the 6-digit code is verified. */
+export async function signUp(
+  email: string,
+  password: string,
+  displayName: string,
+): Promise<{ needsConfirmation: boolean }> {
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     // Lands in raw_user_meta_data; the handle_new_user trigger copies it
@@ -39,6 +45,7 @@ export async function signUp(email: string, password: string, displayName: strin
     options: { data: { display_name: displayName } },
   })
   if (error) throw new Error(error.message)
+  return { needsConfirmation: data.session === null }
 }
 
 export async function signIn(email: string, password: string) {
@@ -48,6 +55,107 @@ export async function signIn(email: string, password: string) {
 
 export async function signOut() {
   const { error } = await supabase.auth.signOut()
+  if (error) throw new Error(error.message)
+}
+
+/** Local-only sign-out: clears the stored session without a server round
+ *  trip (used after account deletion, when the server no longer knows us). */
+export async function signOutLocal() {
+  try {
+    await supabase.auth.signOut({ scope: 'local' })
+  } catch {
+    // the SIGNED_OUT event still fires; nothing to recover
+  }
+}
+
+// ---- account management (email codes, password, deletion) ----------------
+// Every email flow is CODE-based (verifyOtp with the 6-digit {{ .Token }}
+// from the templates) — no deep links needed on mobile.
+
+export async function verifySignupCode(email: string, token: string) {
+  const { error } = await supabase.auth.verifyOtp({ email, token, type: 'signup' })
+  if (error) throw new Error(error.message)
+}
+
+export async function resendSignupCode(email: string) {
+  const { error } = await supabase.auth.resend({ type: 'signup', email })
+  if (error) throw new Error(error.message)
+}
+
+export async function requestPasswordReset(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email)
+  if (error) throw new Error(error.message)
+}
+
+/** Passwordless sign-in, step 1: email a 6-digit code to an EXISTING
+ *  account (signup stays its own flow so display names get collected). */
+export async function requestSignInCode(email: string) {
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: false },
+  })
+  if (error) {
+    throw new Error(
+      /signups not allowed|user not found/i.test(error.message)
+        ? 'No account with that email yet. Create one first.'
+        : error.message,
+    )
+  }
+}
+
+/** Passwordless sign-in, step 2: the code from the email. */
+export async function verifySignInCode(email: string, token: string) {
+  const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
+  if (error) throw new Error(error.message)
+}
+
+/** Recovery code + new password in one shot. verifyOtp signs the user in
+ *  (App flips on SIGNED_IN), so the password set rides the same submit. */
+export async function resetPasswordWithCode(email: string, token: string, newPassword: string) {
+  const { error } = await supabase.auth.verifyOtp({ email, token, type: 'recovery' })
+  if (error) throw new Error(error.message)
+  const { error: pwError } = await supabase.auth.updateUser({ password: newPassword })
+  // Already signed in at this point; a weak-password rejection here just
+  // means the old password still stands — surface it, the app is open.
+  if (pwError) throw new Error(pwError.message)
+}
+
+export async function updateMyPassword(newPassword: string) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) throw new Error(error.message)
+}
+
+/** Re-checks the current password before sensitive changes. */
+export async function verifyCurrentPassword(email: string, password: string) {
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) throw new Error('Current password is incorrect')
+}
+
+export async function requestEmailChange(newEmail: string) {
+  const { error } = await supabase.auth.updateUser({ email: newEmail })
+  if (error) throw new Error(error.message)
+}
+
+/** The code lands at the NEW address (single-confirm change). */
+export async function verifyEmailChange(newEmail: string, token: string) {
+  const { error } = await supabase.auth.verifyOtp({
+    email: newEmail,
+    token,
+    type: 'email_change',
+  })
+  if (error) throw new Error(error.message)
+}
+
+export async function fetchMyEmail(): Promise<string | null> {
+  const { data } = await supabase.auth.getUser()
+  return data.user?.email ?? null
+}
+
+/** Server-side account deletion (group handoff included — see the
+ *  delete_my_account migration). The caller MUST sign out right after:
+ *  the live JWT stays valid until expiry, mapped to a uid with no rows. */
+export async function deleteMyAccount() {
+  const { error } = await supabase.rpc('delete_my_account')
   if (error) throw new Error(error.message)
 }
 
@@ -451,7 +559,7 @@ export async function searchTitles(
   return (data as { results: TmdbResult[] }).results ?? []
 }
 
-export type BrowseFeed = 'trending' | 'popular'
+export type BrowseFeed = 'trending' | 'popular' | 'top_rated' | 'now_playing' | 'upcoming'
 
 // Discover shelves change slowly; cache each (feed, mediaType) for the app
 // session so tab revisits are instant. TTL keeps it from going stale mid-use.
@@ -475,19 +583,20 @@ export async function fetchBrowse(
   return results
 }
 
-// Genre shelves (Discover browse rows) reuse the discover op, cached like
-// the browse feeds so tab hops don't refetch.
-const genreShelfCache = new Map<string, { at: number; results: TmdbResult[] }>()
+// Discover shelves (genre / era / acclaim browse rows) reuse the discover
+// op, cached like the browse feeds so tab hops don't refetch. Keyed by the
+// full filter recipe, so every shelf flavor caches independently.
+const discoverShelfCache = new Map<string, { at: number; results: TmdbResult[] }>()
 
-export async function fetchGenreShelf(
-  genreId: number,
+export async function fetchShelf(
+  filters: DiscoverFilters,
   mediaType: 'movie' | 'tv',
 ): Promise<TmdbResult[]> {
-  const key = `${genreId}:${mediaType}`
-  const hit = genreShelfCache.get(key)
+  const key = `${mediaType}:${JSON.stringify(filters)}`
+  const hit = discoverShelfCache.get(key)
   if (hit && Date.now() - hit.at < BROWSE_TTL_MS) return hit.results
-  const results = await fetchDiscover({ genreIds: [genreId] }, mediaType)
-  genreShelfCache.set(key, { at: Date.now(), results })
+  const results = await fetchDiscover(filters, mediaType)
+  discoverShelfCache.set(key, { at: Date.now(), results })
   return results
 }
 
@@ -629,6 +738,14 @@ export interface DiscoverFilters {
   genreIds?: number[]
   personId?: number
   year?: number
+  /** Inclusive release-year range (decade shelves). */
+  yearFrom?: number
+  yearTo?: number
+  /** Default popularity; 'rating' should ride with minVotes. */
+  sortBy?: 'rating' | 'newest'
+  minVotes?: number
+  maxVotes?: number
+  minRating?: number
 }
 
 /** Filtered discovery by genre / person / year (TMDB /discover). */
@@ -667,19 +784,21 @@ export async function revealSession(sessionId: string) {
 export interface MyScore {
   scores: CategoryScores
   locked: boolean
+  /** "In one sentence, what was it about?" — optional, drops at the reveal. */
+  oneLiner: string | null
 }
 
 /** My scorecard for a session (always visible to me), or null. */
 export async function fetchMyScore(sessionId: string, userId: string): Promise<MyScore | null> {
   const { data, error } = await supabase
     .from('member_scores')
-    .select('scores, locked')
+    .select('scores, locked, one_liner')
     .eq('session_id', sessionId)
     .eq('member_id', userId)
     .maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) return null
-  return { scores: scoresFromJson(data.scores), locked: data.locked }
+  return { scores: scoresFromJson(data.scores), locked: data.locked, oneLiner: data.one_liner }
 }
 
 /** Write my scorecard. RLS: self-only, and only while the session is blind. */
@@ -688,9 +807,16 @@ export async function saveMyScore(
   userId: string,
   scores: CategoryScores,
   locked: boolean,
+  oneLiner: string | null,
 ) {
   const { error } = await supabase.from('member_scores').upsert(
-    { session_id: sessionId, member_id: userId, locked, scores },
+    {
+      session_id: sessionId,
+      member_id: userId,
+      locked,
+      scores,
+      one_liner: oneLiner?.trim() || null,
+    },
     { onConflict: 'session_id,member_id' },
   )
   if (error) throw new Error(error.message)
@@ -709,10 +835,12 @@ export async function saveMyScore(
 export async function lateScoreSession(
   sessionId: string,
   scores: CategoryScores,
+  oneLiner: string | null = null,
 ): Promise<void> {
   const { error } = await supabase.rpc('late_score_session', {
     p_session_id: sessionId,
     p_scores: scores,
+    p_one_liner: oneLiner?.trim() || undefined,
   })
   if (error) throw new Error(error.message)
 }
@@ -738,7 +866,7 @@ export async function backfillCategoryScore(
 export async function fetchAllScorecards(sessionId: string): Promise<MemberScorecard[]> {
   const { data, error } = await supabase
     .from('member_scores')
-    .select('member_id, locked, scores')
+    .select('member_id, locked, scores, one_liner')
     .eq('session_id', sessionId)
   if (error) throw new Error(error.message)
   return (data ?? []).map(scorecardFromRow)
@@ -1603,16 +1731,43 @@ export async function setGroupVisibility(groupId: string, isPublic: boolean): Pr
  * Everything the user owns, as one portable object: solo ratings (with their
  * per-category scores) and the saved list. Your history is yours to take.
  */
+/** Everything of yours, as JSON: solo ratings, saved titles, your group
+ *  scorecards (scores + one-liner; only YOUR rows — groupmates' scores are
+ *  theirs), your comments, your playlists, your rubric. RLS already scopes
+ *  every query to self. */
 export async function fetchMyExport(userId: string): Promise<Record<string, unknown>> {
-  const [ratings, saved] = await Promise.all([
+  const [ratings, saved, cards, comments, playlists, rubrics] = await Promise.all([
     supabase
       .from('global_ratings')
       .select('updated_at, scores, titles(tmdb_id, media_type, name, year)')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false }),
     fetchMySavedTitles(userId),
+    supabase
+      .from('member_scores')
+      .select(
+        'updated_at, scores, one_liner, locked, reveal_sessions(state, groups(name), titles(tmdb_id, media_type, name, year))',
+      )
+      .eq('member_id', userId)
+      .order('updated_at', { ascending: false }),
+    supabase
+      .from('title_comments')
+      .select('created_at, body, deleted, titles(tmdb_id, media_type, name)')
+      .eq('author_id', userId)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('playlists')
+      .select('name, is_public, created_at, playlist_items(titles(tmdb_id, media_type, name, year))')
+      .eq('owner_id', userId)
+      .is('group_id', null),
+    supabase
+      .from('user_rubrics')
+      .select('name, is_favorite, rows')
+      .eq('user_id', userId),
   ])
-  if (ratings.error) throw new Error(ratings.error.message)
+  for (const q of [ratings, cards, comments, playlists, rubrics]) {
+    if (q.error) throw new Error(q.error.message)
+  }
   return {
     app: 'Mash Potato',
     exportedAt: new Date().toISOString(),
@@ -1632,6 +1787,47 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
       mediaType: s.mediaType,
       tmdbId: s.tmdbId,
       savedAt: s.savedAt,
+    })),
+    groupScorecards: (cards.data ?? [])
+      .filter((c) => c.reveal_sessions?.titles)
+      .map((c) => ({
+        title: c.reveal_sessions!.titles!.name,
+        year: c.reveal_sessions!.titles!.year,
+        mediaType: c.reveal_sessions!.titles!.media_type,
+        tmdbId: c.reveal_sessions!.titles!.tmdb_id,
+        group: c.reveal_sessions!.groups?.name ?? null,
+        scores: scoresFromJson(c.scores),
+        oneLiner: c.one_liner,
+        locked: c.locked,
+        revealed: c.reveal_sessions!.state === 'revealed',
+        scoredAt: c.updated_at,
+      })),
+    comments: (comments.data ?? [])
+      .filter((c) => !c.deleted && c.titles)
+      .map((c) => ({
+        title: c.titles!.name,
+        mediaType: c.titles!.media_type,
+        tmdbId: c.titles!.tmdb_id,
+        body: c.body,
+        postedAt: c.created_at,
+      })),
+    playlists: (playlists.data ?? []).map((p) => ({
+      name: p.name,
+      isPublic: p.is_public,
+      createdAt: p.created_at,
+      titles: (p.playlist_items ?? [])
+        .filter((i) => i.titles)
+        .map((i) => ({
+          name: i.titles!.name,
+          year: i.titles!.year,
+          mediaType: i.titles!.media_type,
+          tmdbId: i.titles!.tmdb_id,
+        })),
+    })),
+    rubricPresets: (rubrics.data ?? []).map((r) => ({
+      name: r.name,
+      favorite: r.is_favorite,
+      rows: r.rows,
     })),
   }
 }

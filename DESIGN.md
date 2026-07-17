@@ -141,6 +141,23 @@ bare dash): the reveal panel becomes the seal card with blind sliders and
 "Lock in and open the reveal"; log and Home rows swap the Mashed number for
 the lock mark.
 
+**One-line takes (2026-07-17):** the blind card carries one optional
+sentence — "In one sentence, what was it about?" (`member_scores.one_liner`,
+140 max) — and the Reveal drops the sentences together in an "In one
+sentence" strip (leaderboard order, quote rows, hidden when nobody wrote
+one). Two 8s can hide opposite readings; this is where that shows. The
+column rides the scorecard row, so THE ONE RULE seals it with no new
+policies; late scorers pass it through `late_score_session`. Never required,
+never a math input, no push/cred/reactions attached (reward-loop law).
+Source idea: theme-compression from film analysis (reduce the movie to one
+sentence to find what it's about) turned into a blind-then-reveal mechanic.
+
+**Debrief seeds (2026-07-17):** "Talk it out" seeds the composer with a
+category-aware ask-why prompt (DISCUSS_SEEDS in SessionPanel, keyed by
+category KEY with the label interpolated so Animation / Voice Acting read
+right — e.g. Pacing: "Where did it drag for you, and where did it fly?").
+Generic "Defend your take…" stays as the fallback for unmapped categories.
+
 ## View state
 
 Persist by default (localStorage, `mp.*` keys): active tab (`mp.activeTab`),
@@ -209,6 +226,56 @@ lock + muted = private.
 
 ## Changelog
 
+- 2026-07-17 (tab restructure + one search + passwordless): the Group tab
+  merged INTO Rate — the third tab is now the whole ritual: switcher chips,
+  the round in place (SessionPanel grew the blind scoring via RoundScorer;
+  the Reveal flips in place instead of bouncing to Home), StartRound
+  (search + invite) when there is no round or via "Start the next round",
+  the log, recs, and watchlists; the group ADMIN (rubric + members +
+  manage) hides behind the gear as a settings cluster. Profile replaced
+  Group as the 4th tab (header avatar button removed; back button only
+  when stack-pushed). Film/TV toggles are gone everywhere: one search box
+  covers both (useTmdbSearch 'both', interleaved TaggedResults), narrowing
+  moved into filters (Discover panel Type chips, StartRound inline chips,
+  manual entries get a tiny Film/Show pair); Discover's stack became ONE
+  mixed film+TV lineup (41 rows) and lost its intro copy. Auth gained
+  passwordless "Email me a sign-in code" (signInWithOtp + magic_link
+  template; Google/Apple documented as a credential-gated checklist in
+  docs/SOCIAL-LOGIN.md). Home became an overview: stats strip
+  (groups/rated/saved), "From your list" shelf, popular-shows tail.
+- 2026-07-17 (accounts + hardening): full account management shipped.
+  Signup now completes with a 6-digit emailed code (fixes the hosted
+  stuck-signup; Confirm email stays ON), Forgot password = code + new
+  password in one step, Profile gains an Account section (change email
+  via code to the new address, change password with current-password
+  check) and a Danger zone (type-DELETE account deletion; owned groups
+  hand off to the longest-standing member, solo groups delete, App
+  Review 5.1.1(v) satisfied). Export now covers group scorecards +
+  one-liners, takes, playlists, and rubric presets. Security: all
+  definer functions stripped from anon, trigger internals sealed from
+  authenticated (push_notify is unforgeable), search_path pinned,
+  future functions get no default PUBLIC execute (grant explicitly in
+  every new migration!). App only resets navigation when the signed-in
+  USER changes — token refreshes no longer yank the view. Suites: pgTAP
+  145 (new account_test 15), twin +15 (98-account-test). Advisors 69→27
+  findings (rest intentional or dashboard-only; see docs/DOMAIN.md).
+- 2026-07-17 (Discover shelf stack): Discover browses like a streaming
+  home. Per-side lineups (25 film rows / 16 TV rows) mixing TMDB lists
+  (trending, popular, in theaters / on the air, coming soon, top rated),
+  genre rows, era rows (90s, 80s), acclaim recipes (Hidden gems with an
+  aged-two-years cutoff, Acclaimed thrillers) and a personalized "Because
+  you rated {title}" row seeded from your latest rating on that side. Rows
+  lazy-load via a rect-check LazyShelf (no IntersectionObserver: parked
+  webviews can starve it and rAF), empty rows collapse, recipes cache 10min
+  in api.ts (fetchShelf). tmdb-search v12: browse feeds top_rated /
+  now_playing / upcoming + discover era/acclaim filters (yearFrom/To,
+  sortBy rating|newest, minVotes/maxVotes/minRating).
+- 2026-07-17 (one-line takes + debrief seeds): the blind card gains an
+  optional one-sentence take ("In one sentence, what was it about?",
+  `member_scores.one_liner`) that drops with the scores in a Reveal strip;
+  sealed by the same row RLS, carried by `late_score_session` (new defaulted
+  param, drop+recreate). "Talk it out" now seeds category-aware ask-why
+  prompts (relabel-safe). Both suites extended (pgTAP 115, twin 32).
 - 2026-07-16 (playlists travel): the add-to-playlist sheet's create row
   gains a destination picker (Personal or any group's watchlist), and every
   playlist you can see gets "Save a copy" (to your lists or a group) —

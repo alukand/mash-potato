@@ -4,7 +4,7 @@
 create extension if not exists pgtap with schema extensions;
 
 begin;
-select plan(26);
+select plan(30);
 
 -- ---- seed as the test superuser (RLS bypassed) ----
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
@@ -45,10 +45,11 @@ values ('66666666-6666-6666-6666-666666666666',
           {"key":"pacing","label":"Editing & Pacing","weight":20},
           {"key":"scoreSound","label":"Sound & Music","weight":20}]');
 
-insert into public.member_scores (session_id, member_id, scores, locked)
+insert into public.member_scores (session_id, member_id, scores, locked, one_liner)
 values ('66666666-6666-6666-6666-666666666666',
         'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-        '{"story":8,"acting":8,"cinematography":9,"pacing":6,"scoreSound":9}', true);
+        '{"story":8,"acting":8,"cinematography":9,"pacing":6,"scoreSound":9}', true,
+        'Power is a trap either way.');
 
 -- Quorum: one lock in a two-member group cannot drop the reveal on everyone.
 select throws_ok(
@@ -59,10 +60,11 @@ select throws_ok(
 -- ---- act as Ben (member) ----
 set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
 
-insert into public.member_scores (session_id, member_id, scores, locked)
+insert into public.member_scores (session_id, member_id, scores, locked, one_liner)
 values ('66666666-6666-6666-6666-666666666666',
         'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-        '{"story":9,"acting":8,"cinematography":10,"pacing":9,"scoreSound":8}', true);
+        '{"story":9,"acting":8,"cinematography":10,"pacing":9,"scoreSound":8}', true,
+        'A boy becomes the thing he feared.');
 
 -- ================= assertions: BLIND =================
 select is(
@@ -81,6 +83,15 @@ select is(
   (select count(*)::int from public.member_scores
      where session_id = '66666666-6666-6666-6666-666666666666'),
   1, 'blind: Ben sees only his own row');
+
+-- The one-liner rides the same row: writable and readable on your OWN card
+-- while blind (Ana's stays out of reach because her whole row is hidden).
+select is(
+  (select one_liner from public.member_scores
+     where session_id = '66666666-6666-6666-6666-666666666666'
+       and member_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
+  'A boy becomes the thing he feared.',
+  'blind: Ben reads his OWN one-liner');
 
 -- Lock flags (and ONLY lock flags) are visible to members while blind.
 select results_eq(
@@ -118,6 +129,14 @@ select is(
   (select count(*)::int from public.member_scores
      where session_id = '66666666-6666-6666-6666-666666666666'),
   2, 'revealed: Ben sees the whole group');
+
+-- The sentences drop with the scores.
+select is(
+  (select one_liner from public.member_scores
+     where session_id = '66666666-6666-6666-6666-666666666666'
+       and member_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  'Power is a trap either way.',
+  'revealed: Ben CAN now read Ana''s one-liner');
 
 -- Even after reveal, Ben cannot modify Ana's row (write stays self-only).
 -- (results_eq so the data-modifying CTE executes at top level.)
@@ -172,15 +191,30 @@ select throws_ok(
   'P0001', 'scores must map this session''s categories to whole numbers 1-10',
   'late scoring: keys outside the session rubric are rejected');
 
+select throws_ok(
+  $$select public.late_score_session('66666666-6666-6666-6666-666666666666',
+      '{"story":7,"acting":6,"cinematography":8,"pacing":7,"scoreSound":5}'::jsonb,
+      repeat('x', 141))$$,
+  'P0001', 'one-liner must be 140 characters or fewer',
+  'late scoring: an oversized one-liner is rejected');
+
 select lives_ok(
   $$select public.late_score_session('66666666-6666-6666-6666-666666666666',
-      '{"story":7,"acting":6,"cinematography":8,"pacing":7,"scoreSound":5}'::jsonb)$$,
+      '{"story":7,"acting":6,"cinematography":8,"pacing":7,"scoreSound":5}'::jsonb,
+      'Arrived late, still moved.')$$,
   'late scoring: a new member scores a revealed session');
 
 select is(
   (select count(*)::int from public.member_scores
      where session_id = '66666666-6666-6666-6666-666666666666'),
   3, 'late scoring: Cara''s card joins the reveal (she sees all three)');
+
+select is(
+  (select one_liner from public.member_scores
+     where session_id = '66666666-6666-6666-6666-666666666666'
+       and member_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'),
+  'Arrived late, still moved.',
+  'late scoring: the one-liner lands with the late card');
 
 select throws_ok(
   $$select public.late_score_session('66666666-6666-6666-6666-666666666666',

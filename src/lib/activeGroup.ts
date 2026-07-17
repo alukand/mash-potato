@@ -39,12 +39,14 @@ export function storeGroupId(id: string): void {
 // webview) lands you back on the tab you were using.
 
 const TAB_KEY = 'mp.activeTab'
-const TAB_IDS = ['home', 'discover', 'rate', 'group'] as const
+const TAB_IDS = ['home', 'discover', 'rate', 'profile'] as const
 type StoredTab = (typeof TAB_IDS)[number]
 
 export function readStoredTab(): StoredTab | null {
   try {
     const v = localStorage.getItem(TAB_KEY)
+    // The Group tab merged into Rate (2026-07-17); old stored values migrate.
+    if (v === 'group') return 'rate'
     return (TAB_IDS as readonly string[]).includes(v ?? '') ? (v as StoredTab) : null
   } catch {
     return null

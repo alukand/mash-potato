@@ -298,6 +298,7 @@ export type Database = {
           id: string
           locked: boolean
           member_id: string
+          one_liner: string | null
           scores: Json
           session_id: string
           updated_at: string
@@ -307,6 +308,7 @@ export type Database = {
           id?: string
           locked?: boolean
           member_id: string
+          one_liner?: string | null
           scores?: Json
           session_id: string
           updated_at?: string
@@ -316,6 +318,7 @@ export type Database = {
           id?: string
           locked?: boolean
           member_id?: string
+          one_liner?: string | null
           scores?: Json
           session_id?: string
           updated_at?: string
@@ -777,6 +780,7 @@ export type Database = {
         Returns: boolean
       }
       delete_comment: { Args: { p_comment_id: string }; Returns: undefined }
+      delete_my_account: { Args: never; Returns: undefined }
       discussion_gate: {
         Args: { p_group_id: string; p_title_id: string }
         Returns: {
@@ -798,7 +802,7 @@ export type Database = {
       is_group_member: { Args: { p_group_id: string }; Returns: boolean }
       is_group_owner: { Args: { p_group_id: string }; Returns: boolean }
       late_score_session: {
-        Args: { p_scores: Json; p_session_id: string }
+        Args: { p_one_liner?: string; p_scores: Json; p_session_id: string }
         Returns: undefined
       }
       post_comment: {

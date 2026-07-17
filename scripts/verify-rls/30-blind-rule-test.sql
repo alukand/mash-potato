@@ -50,10 +50,11 @@ values ('66666666-6666-6666-6666-666666666666',
           {"key":"pacing","label":"Editing & Pacing","weight":20},
           {"key":"scoreSound","label":"Sound & Music","weight":20}]');
 
-insert into public.member_scores (session_id, member_id, scores, locked)
+insert into public.member_scores (session_id, member_id, scores, locked, one_liner)
 values ('66666666-6666-6666-6666-666666666666',
         'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-        '{"story":8,"acting":8,"cinematography":9,"pacing":6,"scoreSound":9}', true);
+        '{"story":8,"acting":8,"cinematography":9,"pacing":6,"scoreSound":9}', true,
+        'Power is a trap either way.');
 
 -- PASS 4c: quorum — one lock in a two-member group cannot drop the reveal
 do $$
@@ -71,10 +72,11 @@ end $$;
 -- ---- act as Ben (member) ----
 set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
 
-insert into public.member_scores (session_id, member_id, scores, locked)
+insert into public.member_scores (session_id, member_id, scores, locked, one_liner)
 values ('66666666-6666-6666-6666-666666666666',
         'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-        '{"story":9,"acting":8,"cinematography":10,"pacing":9,"scoreSound":8}', true);
+        '{"story":9,"acting":8,"cinematography":10,"pacing":9,"scoreSound":8}', true,
+        'A boy becomes the thing he feared.');
 
 -- ================= assertions: BLIND =================
 
@@ -105,6 +107,19 @@ begin
     where session_id = '66666666-6666-6666-6666-666666666666';
   if c <> 1 then raise exception 'FAIL 3 (blind): Ben should see exactly his own row (rows=%)', c; end if;
   raise notice 'PASS 3 (blind): Ben sees only his own row';
+end $$;
+
+-- one-liners ride the same row: your own is readable while blind
+do $$
+declare v text;
+begin
+  select one_liner into v from public.member_scores
+    where session_id = '66666666-6666-6666-6666-666666666666'
+      and member_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  if v is distinct from 'A boy becomes the thing he feared.' then
+    raise exception 'FAIL 3b (blind): Ben cannot read his own one-liner (got %)', v;
+  end if;
+  raise notice 'PASS 3b (blind): Ben reads his own one-liner';
 end $$;
 
 -- hardening: Ben must not be able to write a scorecard for Ana
@@ -156,6 +171,19 @@ begin
     where session_id = '66666666-6666-6666-6666-666666666666';
   if c <> 2 then raise exception 'FAIL 6 (revealed): Ben should see the whole group (rows=%)', c; end if;
   raise notice 'PASS 6 (revealed): Ben sees the whole group';
+end $$;
+
+-- the sentences drop with the scores
+do $$
+declare v text;
+begin
+  select one_liner into v from public.member_scores
+    where session_id = '66666666-6666-6666-6666-666666666666'
+      and member_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  if v is distinct from 'Power is a trap either way.' then
+    raise exception 'FAIL 6b (revealed): Ana''s one-liner did not drop with the reveal (got %)', v;
+  end if;
+  raise notice 'PASS 6b (revealed): Ben can now read Ana''s one-liner';
 end $$;
 
 do $$
@@ -293,11 +321,27 @@ begin
   end;
 end $$;
 
+-- PASS 13b: an oversized one-liner is rejected
+do $$
+begin
+  begin
+    perform public.late_score_session('66666666-6666-6666-6666-666666666666',
+      '{"story":7,"acting":6,"cinematography":8,"pacing":7,"scoreSound":5}'::jsonb,
+      repeat('x', 141));
+    raise exception 'FAIL 13b: an oversized one-liner was accepted';
+  exception when raise_exception then
+    if sqlerrm = 'one-liner must be 140 characters or fewer' then
+      raise notice 'PASS 13b: late scoring rejects an oversized one-liner';
+    else raise; end if;
+  end;
+end $$;
+
 -- PASS 14: a new member scores the revealed session
 do $$
 begin
   perform public.late_score_session('66666666-6666-6666-6666-666666666666',
-    '{"story":7,"acting":6,"cinematography":8,"pacing":7,"scoreSound":5}'::jsonb);
+    '{"story":7,"acting":6,"cinematography":8,"pacing":7,"scoreSound":5}'::jsonb,
+    'Arrived late, still moved.');
   raise notice 'PASS 14: a new member late-scored the revealed session';
 end $$;
 
@@ -309,6 +353,19 @@ begin
     where session_id = '66666666-6666-6666-6666-666666666666';
   if c <> 3 then raise exception 'FAIL 15: expected 3 scorecards, saw %', c; end if;
   raise notice 'PASS 15: the late card joined the reveal';
+end $$;
+
+-- PASS 15b: the one-liner landed with the late card
+do $$
+declare v text;
+begin
+  select one_liner into v from public.member_scores
+    where session_id = '66666666-6666-6666-6666-666666666666'
+      and member_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  if v is distinct from 'Arrived late, still moved.' then
+    raise exception 'FAIL 15b: late one-liner not stored (got %)', v;
+  end if;
+  raise notice 'PASS 15b: the one-liner landed with the late card';
 end $$;
 
 -- PASS 16: a locked card cannot be re-scored
@@ -472,6 +529,6 @@ begin
   raise notice 'PASS 24: after the invite window an unanswered member no longer holds the reveal';
 end $$;
 
-do $$ begin raise notice '=== ALL 28 ASSERTIONS PASSED — the blind rule holds, reveals open per member, RSVP passes never deadlock ==='; end $$;
+do $$ begin raise notice '=== ALL 32 ASSERTIONS PASSED — the blind rule holds, reveals open per member, one-liners seal with the scores, RSVP passes never deadlock ==='; end $$;
 
 rollback;
