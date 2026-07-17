@@ -110,6 +110,8 @@ export function TitleDetailScreen({
   const [containing, setContaining] = useState<Map<string, string>>(new Map())
   const [listBusyId, setListBusyId] = useState<string | null>(null)
   const [newListName, setNewListName] = useState('')
+  // Where the new list lives: personal (null) or one of your groups.
+  const [newListGroupId, setNewListGroupId] = useState<string | null>(null)
 
   async function refreshLists() {
     const [lists, holds] = await Promise.all([
@@ -177,7 +179,7 @@ export function TitleDetailScreen({
     setListBusyId('new')
     setError(null)
     try {
-      const id = await createPlaylist(userId, name)
+      const id = await createPlaylist(userId, name, newListGroupId)
       await addTitleToPlaylist(id, {
         name: detail.name,
         year: detail.year,
@@ -587,11 +589,44 @@ export function TitleDetailScreen({
                       </button>
                     )
                   })}
-                  <div className="mt-1.5 flex items-center gap-1.5 border-t border-line/50 pt-2.5">
+                  {/* new list destination: yours, or a group watchlist */}
+                  {groups.length > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line/50 pt-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setNewListGroupId(null)}
+                        className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                          newListGroupId === null
+                            ? 'border-teal/50 bg-teal/10 text-teal'
+                            : 'border-line text-muted hover:text-text'
+                        }`}
+                      >
+                        Personal
+                      </button>
+                      {groups.map((g) => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => setNewListGroupId(g.id)}
+                          className={`flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-[11px] font-semibold transition-colors ${
+                            newListGroupId === g.id
+                              ? 'border-teal/50 bg-teal/10 text-teal'
+                              : 'border-line text-muted hover:text-text'
+                          }`}
+                        >
+                          <GroupMark groupId={g.id} name={g.name} size={16} />
+                          {g.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-1.5 flex items-center gap-1.5">
                     <input
                       type="text"
                       maxLength={80}
-                      placeholder="New playlist…"
+                      placeholder={
+                        newListGroupId === null ? 'New playlist…' : 'New group watchlist…'
+                      }
                       value={newListName}
                       onChange={(e) => setNewListName(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && void handleCreateListWithTitle()}

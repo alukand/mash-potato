@@ -209,6 +209,11 @@ lock + muted = private.
 
 ## Changelog
 
+- 2026-07-16 (playlists travel): the add-to-playlist sheet's create row
+  gains a destination picker (Personal or any group's watchlist), and every
+  playlist you can see gets "Save a copy" (to your lists or a group) —
+  duplication is how lists are shared between people and groups
+  (duplicatePlaylist in api.ts; existing RLS covers every path).
 - 2026-07-16 (playlists default public): personal playlists now default to
   public (existing ones backfilled); the per-list toggle stays, group
   watchlists stay pinned private via an insert trigger. Suites updated

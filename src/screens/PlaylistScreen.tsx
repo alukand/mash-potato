@@ -1,32 +1,41 @@
 import { useEffect, useState } from 'react'
 import {
   deletePlaylist,
+  duplicatePlaylist,
   fetchPlaylist,
   removeTitleFromPlaylist,
   updatePlaylist,
 } from '../lib/api'
-import type { PlaylistDetail } from '../lib/api'
+import type { GroupInfo, PlaylistDetail } from '../lib/api'
 import { PosterGrid } from '../components/PosterGrid'
 import { GroupMark, VisibilityChip, fieldClassSm } from '../components/ui'
 
 interface PlaylistScreenProps {
   playlistId: string
   userId: string
+  /** Your groups: destinations for Save a copy. */
+  groups: GroupInfo[]
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
   /** Open the owner's public profile (shown on lists that aren't yours). */
   onOpenUser: (userId: string) => void
+  /** Open another playlist (the freshly saved copy). */
+  onOpenPlaylist: (playlistId: string) => void
   onBack: () => void
   /** The playlist was deleted; pop this view. */
   onDeleted: () => void
 }
 
 // One playlist: your own (rename, visibility, manage items, delete) or
-// someone's public one (browse only). Lives on the App view-stack.
+// someone's public one (browse only). Any list you can see can be saved as
+// a copy — that is how lists travel between people and groups. Lives on the
+// App view-stack.
 export function PlaylistScreen({
   playlistId,
   userId,
+  groups,
   onOpenTitle,
   onOpenUser,
+  onOpenPlaylist,
   onBack,
   onDeleted,
 }: PlaylistScreenProps) {
@@ -37,6 +46,24 @@ export function PlaylistScreen({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Save a copy: open picker -> pick personal or a group -> land on the copy.
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [copying, setCopying] = useState(false)
+
+  async function handleCopy(groupId: string | null) {
+    if (copying) return
+    setCopying(true)
+    setError(null)
+    try {
+      const newId = await duplicatePlaylist(playlistId, userId, groupId)
+      setCopyOpen(false)
+      onOpenPlaylist(newId)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save a copy')
+    } finally {
+      setCopying(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -243,6 +270,56 @@ export function PlaylistScreen({
                     : 'Only you can see this playlist. Tap the chip to share it.'}
                 </p>
               )
+            )}
+
+            {/* any list you can see travels: copy it to yourself or a group */}
+            {!copyOpen ? (
+              <button
+                type="button"
+                onClick={() => setCopyOpen(true)}
+                className="mt-3 flex items-center gap-2 rounded-full border border-line px-4 py-2 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <rect x="9" y="9" width="12" height="12" rx="2.5" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                Save a copy
+              </button>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-line/60 bg-surface-2/50 p-3">
+                <p className="mb-2 font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+                  Copy this list to
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={copying}
+                    onClick={() => void handleCopy(null)}
+                    className="rounded-full border border-line px-3 py-1.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text disabled:opacity-50"
+                  >
+                    {copying ? 'Copying…' : 'My playlists'}
+                  </button>
+                  {groups.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      disabled={copying}
+                      onClick={() => void handleCopy(g.id)}
+                      className="flex items-center gap-1.5 rounded-full border border-line py-1 pl-1 pr-3 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text disabled:opacity-50"
+                    >
+                      <GroupMark groupId={g.id} name={g.name} size={18} />
+                      {g.name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCopyOpen(false)}
+                    className="ml-auto rounded-full px-2 py-1.5 font-mono text-[10px] uppercase text-muted hover:text-text"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
             )}
           </section>
 

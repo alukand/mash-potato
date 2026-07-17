@@ -1428,6 +1428,29 @@ export async function fetchPlaylist(playlistId: string): Promise<PlaylistDetail 
   }
 }
 
+/**
+ * Copy a playlist you can see into one you own: personal (groupId null) or
+ * one of your groups' watchlists. This is how lists are shared around —
+ * a browsed public list, a groupmate's list, or your own gets duplicated
+ * wholesale (name + every title). Returns the new playlist's id.
+ */
+export async function duplicatePlaylist(
+  sourceId: string,
+  userId: string,
+  groupId: string | null,
+): Promise<string> {
+  const source = await fetchPlaylist(sourceId)
+  if (!source) throw new Error('That playlist is private or gone')
+  const newId = await createPlaylist(userId, source.name, groupId)
+  if (source.items.length > 0) {
+    const { error } = await supabase.from('playlist_items').insert(
+      source.items.map((item) => ({ playlist_id: newId, title_id: item.titleId })),
+    )
+    if (error) throw new Error(error.message)
+  }
+  return newId
+}
+
 /** Returns the title's row id so callers can patch their local state. */
 export async function addTitleToPlaylist(playlistId: string, title: NewTitle): Promise<string> {
   const titleId = await ensureTitle(title)

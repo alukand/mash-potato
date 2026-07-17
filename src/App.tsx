@@ -401,8 +401,10 @@ function App() {
               <PlaylistScreen
                 playlistId={top.playlistId}
                 userId={userId}
+                groups={groups}
                 onOpenTitle={openTitle}
                 onOpenUser={(id) => pushView({ kind: 'user', userId: id })}
+                onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
                 onBack={popView}
                 onDeleted={popView}
               />
