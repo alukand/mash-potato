@@ -746,6 +746,8 @@ export interface DiscoverFilters {
   minVotes?: number
   maxVotes?: number
   minRating?: number
+  /** ISO 639-1 original language ('ja' + genre 16 is the anime recipe). */
+  language?: string
 }
 
 /** Filtered discovery by genre / person / year (TMDB /discover). */
@@ -1832,6 +1834,105 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
   }
 }
 
+// ---- group polls (what's next?) ------------------------------------------
+
+export interface PollOptionInfo {
+  id: string
+  titleId: string
+  tmdbId: number | null
+  mediaType: 'movie' | 'tv'
+  name: string
+  year: number | null
+  posterPath: string | null
+  sort: number
+  /** Members currently on this option (live tally). */
+  voterIds: string[]
+}
+
+export interface GroupPollInfo {
+  id: string
+  groupId: string
+  status: 'open' | 'closed'
+  createdBy: string | null
+  winnerOptionId: string | null
+  options: PollOptionInfo[]
+  myOptionId: string | null
+}
+
+/** The group's latest vote (open = live tally; closed = the pick). */
+export async function fetchGroupPoll(
+  groupId: string,
+  userId: string,
+): Promise<GroupPollInfo | null> {
+  const { data, error } = await supabase
+    .from('group_polls')
+    .select(
+      // FK hint: the winner FK is a second path between polls and options,
+      // so the embed must name the poll_id relationship explicitly.
+      'id, group_id, status, created_by, winner_option_id, poll_options!poll_options_poll_id_fkey(id, title_id, sort, titles(tmdb_id, media_type, name, year, poster_path)), poll_votes(option_id, member_id)',
+    )
+    .eq('group_id', groupId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) return null
+  const votes = data.poll_votes ?? []
+  // The composite winner FK makes the generated embed type ambiguous
+  // (object vs array); at runtime PostgREST always returns an array here.
+  const rawOptions = Array.isArray(data.poll_options)
+    ? data.poll_options
+    : data.poll_options
+      ? [data.poll_options]
+      : []
+  return {
+    id: data.id,
+    groupId: data.group_id,
+    status: data.status === 'closed' ? 'closed' : 'open',
+    createdBy: data.created_by,
+    winnerOptionId: data.winner_option_id,
+    myOptionId: votes.find((v) => v.member_id === userId)?.option_id ?? null,
+    options: rawOptions
+      .filter((o) => o.titles)
+      .map((o) => ({
+        id: o.id,
+        titleId: o.title_id,
+        tmdbId: o.titles!.tmdb_id,
+        mediaType: o.titles!.media_type as 'movie' | 'tv',
+        name: o.titles!.name,
+        year: o.titles!.year,
+        posterPath: o.titles!.poster_path,
+        sort: o.sort,
+        voterIds: votes.filter((v) => v.option_id === o.id).map((v) => v.member_id),
+      }))
+      .sort((a, b) => a.sort - b.sort),
+  }
+}
+
+/** Owner-only (enforced server-side): open a vote with 2-5 title options. */
+export async function createGroupPoll(groupId: string, titleIds: string[]): Promise<void> {
+  const { error } = await supabase.rpc('create_group_poll', {
+    p_group_id: groupId,
+    p_title_ids: titleIds,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/** Cast or switch your vote (one per member, open polls only — RLS). */
+export async function voteInPoll(pollId: string, optionId: string, userId: string) {
+  const { error } = await supabase.from('poll_votes').upsert(
+    { poll_id: pollId, option_id: optionId, member_id: userId },
+    { onConflict: 'poll_id,member_id' },
+  )
+  if (error) throw new Error(error.message)
+}
+
+/** Owner-only: close the vote; the server tallies and crowns the winner. */
+export async function closeGroupPoll(pollId: string): Promise<void> {
+  const { error } = await supabase.rpc('close_group_poll', { p_poll_id: pollId })
+  if (error) throw new Error(error.message)
+}
+
 // ---- realtime -----------------------------------------------------------
 
 /**
@@ -1849,6 +1950,35 @@ export function onSessionChange(groupId: string, onChange: () => void): () => vo
         table: 'reveal_sessions',
         filter: `group_id=eq.${groupId}`,
       },
+      onChange,
+    )
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
+
+/**
+ * Fire `onChange` when the group's vote moves: poll opened/closed, or a
+ * ballot cast/switched (votes carry no group column, so that side is
+ * unfiltered — realtime only delivers rows this member can see anyway).
+ */
+export function onPollChange(groupId: string, onChange: () => void): () => void {
+  const channel = supabase
+    .channel(`poll-${groupId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'group_polls',
+        filter: `group_id=eq.${groupId}`,
+      },
+      onChange,
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'poll_votes' },
       onChange,
     )
     .subscribe()

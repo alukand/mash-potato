@@ -24,6 +24,10 @@ interface DiscoverScreenProps {
 const MEDIA_KEY = 'mp.discoverMedia'
 type TypeFilter = 'both' | 'movie' | 'tv'
 
+// Anime is not a TMDB genre: the chip is synthetic (negative id) and expands
+// to Animation (16) + Japanese original language in the discover query.
+const ANIME_CHIP_ID = -16
+
 // ---- the shelf lineup (streaming-home style) --------------------------------
 // ONE stack, films and shows interleaved — each row is a recipe (a TMDB list
 // feed or a discover query) on one side of TMDB. The Type filter narrows the
@@ -83,6 +87,16 @@ const SHELVES: ShelfDef[] = [
   }),
   movieRow('m-animated', 'Animated films', genre(16)),
   tvRow('t-animated', 'Animated shows', genre(16)),
+  // Anime is not a TMDB genre; the standard recipe is Animation + Japanese
+  // original language.
+  movieRow('m-anime', 'Anime films', {
+    kind: 'discover',
+    filters: { genreIds: [16], language: 'ja' },
+  }),
+  tvRow('t-anime', 'Anime series', {
+    kind: 'discover',
+    filters: { genreIds: [16], language: 'ja' },
+  }),
   movieRow('m-thrillers', 'Acclaimed thrillers', {
     kind: 'discover',
     filters: { genreIds: [53], sortBy: 'rating', minVotes: 800 },
@@ -249,6 +263,7 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
         if (cancelled) return
         const byId = new Map<number, TmdbGenre>()
         for (const list of lists) for (const genre of list) byId.set(genre.id, byId.get(genre.id) ?? genre)
+        byId.set(ANIME_CHIP_ID, { id: ANIME_CHIP_ID, name: 'Anime' })
         setGenres([...byId.values()].sort((a, b) => a.name.localeCompare(b.name)))
       })
       .catch(() => !cancelled && setGenres([]))
@@ -285,10 +300,13 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
     let stale = false
     setDiscovering(true)
     const t = setTimeout(() => {
+      const anime = selectedGenreIds.includes(ANIME_CHIP_ID)
+      const realIds = selectedGenreIds.filter((id) => id > 0)
       const filters = {
-        genreIds: selectedGenreIds,
+        genreIds: anime && !realIds.includes(16) ? [...realIds, 16] : realIds,
         personId: selectedPerson?.id,
         year: yearNum,
+        language: anime ? 'ja' : undefined,
       }
       const want: ('movie' | 'tv')[] = typeFilter === 'both' ? ['movie', 'tv'] : [typeFilter]
       Promise.all(

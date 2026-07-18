@@ -53,10 +53,12 @@ const TABS: TabDef[] = [
 interface BottomNavProps {
   active: TabId
   onSelect: (tab: TabId) => void
+  /** First-run tour: this tab breathes a gold ring while it's being shown. */
+  highlight?: TabId | null
 }
 
 // Floating pill nav.
-export function BottomNav({ active, onSelect }: BottomNavProps) {
+export function BottomNav({ active, onSelect, highlight = null }: BottomNavProps) {
   return (
     <nav
       className="fixed inset-x-5 z-20 mx-auto flex max-w-[400px] items-center gap-1 rounded-full border border-line p-1.5 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.9)] backdrop-blur-xl"
@@ -67,6 +69,7 @@ export function BottomNav({ active, onSelect }: BottomNavProps) {
     >
       {TABS.map((tab) => {
         const isActive = tab.id === active
+        const isHighlighted = tab.id === highlight
         return (
           <button
             key={tab.id}
@@ -74,6 +77,8 @@ export function BottomNav({ active, onSelect }: BottomNavProps) {
             onClick={() => onSelect(tab.id)}
             aria-current={isActive ? 'page' : undefined}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-[11px] font-semibold transition-colors ${
+              isHighlighted ? 'mp-tour-pulse' : ''
+            } ${
               isActive
                 ? 'bg-teal/10 text-teal shadow-[inset_0_0_0_1px_rgba(81,197,190,0.25),0_0_16px_-6px_rgba(81,197,190,0.55)]'
                 : 'text-muted hover:text-text'

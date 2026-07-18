@@ -224,8 +224,41 @@ trigger pins them private). Friends are simply your groupmates — no follow
 graph. Visibility chips share one vocabulary: globe + teal = public,
 lock + muted = private.
 
+**Onboarding (2026-07-18):** first-run is two beats. (1) The slides teach
+with LIVE MINIATURES of the product, not icons: the avatar trio mashing
+into an 8.2 pill, blind slider fills growing under a "Locked, hidden from
+the group" chip, the signature beat — a real ScoreRing counting up under
+"United on Story. Split over Pacing.", a What's-next vote tally, and a
+mini tab bar on the closer. Mockups replay on slide activation (keyed
+remount; keyframes mp-grow-x / mp-pop, transform-only, killed by the
+reduced-motion guard). (2) After the first signed-in landing,
+FirstRunTour dims the app (nav stays lit above the scrim), pulses each
+tab with a gold ring (mp-tour-pulse) while SWITCHING to that real screen,
+four beats, skippable, once per device (mp.toured). Group-less users get
+slides first, then the tour; users who arrive with groups skip straight
+to the tour.
+
 ## Changelog
 
+- 2026-07-18 (onboarding): slides rebuilt as live product miniatures
+  (see Onboarding recipe above) + the first-run tab tour (FirstRunTour,
+  BottomNav highlight prop, mp.toured). New keyframes mp-grow-x, mp-pop,
+  mp-tour-pulse in index.css, all under the reduced-motion kill.
+- 2026-07-17 (anime + group votes): "Anime" joined Discover — not a TMDB
+  genre, so it's the Animation+Japanese recipe (tmdb-search v13 discover
+  filter `language` → with_original_language): Anime films / Anime series
+  shelf rows plus a synthetic Anime chip in the filter panel (negative id,
+  expands to 16 + 'ja'). Groups got "What's next?" votes: the owner lines
+  up 2-5 titles (group-watchlist quick-picks + dual search), members cast
+  one switchable vote with a live tally (realtime) and voter avatars, the
+  owner closes it (majority wins, ties break by option order) and the
+  winner rolls into GroupInviteSheet to start the round. Schema:
+  group_polls / poll_options / poll_votes with composite FKs so votes and
+  winners can only point at options of their own poll, one open poll per
+  group, RPC-only poll writes, self-only open-only ballots. Suites: pgTAP
+  144 (+14 group_polls_test), twin +14 (99-poll-test). PostgREST note:
+  the winner FK creates a second polls↔options path — embeds must hint
+  poll_options!poll_options_poll_id_fkey.
 - 2026-07-17 (tab restructure + one search + passwordless): the Group tab
   merged INTO Rate — the third tab is now the whole ritual: switcher chips,
   the round in place (SessionPanel grew the blind scoring via RoundScorer;
@@ -257,7 +290,7 @@ lock + muted = private.
   future functions get no default PUBLIC execute (grant explicitly in
   every new migration!). App only resets navigation when the signed-in
   USER changes — token refreshes no longer yank the view. Suites: pgTAP
-  145 (new account_test 15), twin +15 (98-account-test). Advisors 69→27
+  130 (new account_test 15), twin +15 (98-account-test). Advisors 69→27
   findings (rest intentional or dashboard-only; see docs/DOMAIN.md).
 - 2026-07-17 (Discover shelf stack): Discover browses like a streaming
   home. Per-side lineups (25 film rows / 16 TV rows) mixing TMDB lists

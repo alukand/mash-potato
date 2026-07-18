@@ -48,6 +48,7 @@ Invoke-Sql "PUSH-TRIGGERS TEST" (Join-Path $repo "scripts\verify-rls\90-push-tes
 Invoke-Sql "FRIENDS-PLAYLISTS TEST" (Join-Path $repo "scripts\verify-rls\95-friends-playlists-test.sql")
 Invoke-Sql "DISCUSSION TEST" (Join-Path $repo "scripts\verify-rls\97-discussion-test.sql")
 Invoke-Sql "ACCOUNT TEST" (Join-Path $repo "scripts\verify-rls\98-account-test.sql")
+Invoke-Sql "POLL TEST" (Join-Path $repo "scripts\verify-rls\99-poll-test.sql")
 
 Write-Host ""
 Write-Host "RLS verification complete - the blind rule holds." -ForegroundColor Green

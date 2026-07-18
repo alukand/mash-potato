@@ -16,7 +16,8 @@
 // on-the-air / airing-today lists on the TV side), and filters is
 // { genreIds?: number[]; personId?: number; year?: number;
 //   yearFrom?: number; yearTo?: number; sortBy?: 'rating' | 'newest';
-//   minVotes?: number; maxVotes?: number; minRating?: number }.
+//   minVotes?: number; maxVotes?: number; minRating?: number;
+//   language?: string (ISO 639-1 original language — 'ja' + genre 16 = anime) }.
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -219,6 +220,8 @@ interface DiscoverFilters {
   minVotes?: number
   maxVotes?: number
   minRating?: number
+  /** ISO 639-1 original language ('ja' + genre 16 is the anime recipe). */
+  language?: string
 }
 
 const intOrNull = (v: unknown): number | null =>
@@ -261,6 +264,9 @@ async function handleDiscover(body: Record<string, unknown>, apiKey: string): Pr
   if (maxVotes !== null) params['vote_count.lte'] = String(maxVotes)
   if (typeof filters.minRating === 'number' && Number.isFinite(filters.minRating)) {
     params['vote_average.gte'] = String(filters.minRating)
+  }
+  if (typeof filters.language === 'string' && /^[a-z]{2}$/.test(filters.language)) {
+    params.with_original_language = filters.language
   }
 
   const res = await tmdbFetch(`/discover/${mediaType}`, apiKey, params)

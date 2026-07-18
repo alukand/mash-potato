@@ -36,6 +36,7 @@ import { AVATAR_PALETTE } from '../lib/palette'
 import { CtaButton, GroupMark, fieldClass, fieldClassSm } from '../components/ui'
 import { CategoryLegend } from '../components/CategoryLegend'
 import { GroupLog } from '../components/GroupLog'
+import { GroupPoll } from '../components/GroupPoll'
 import { PlaylistCard } from '../components/PlaylistCard'
 import { PosterShelf } from '../components/PosterShelf'
 import { SessionPanel } from '../components/SessionPanel'
@@ -534,6 +535,9 @@ export function GroupScreen({
           />
         </div>
       )}
+
+      {/* ---- what's next? the group votes on it ---- */}
+      <GroupPoll group={group} members={members} userId={userId} />
 
       {/* ---- shared watchlists: what to watch next, curated together ---- */}
       <section className="mp-rise mb-7" style={{ animationDelay: '100ms' }}>

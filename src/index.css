@@ -209,6 +209,47 @@ body::after {
   animation: mp-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
+/* Onboarding mockup beats: bars grow (transform-only), chips pop in. */
+@keyframes mp-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.mp-grow-x {
+  transform-origin: left center;
+  animation: mp-grow-x 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes mp-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.mp-pop {
+  animation: mp-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* First-run tour: the highlighted tab breathes a gold ring. */
+@keyframes mp-tour-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(231, 178, 78, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(231, 178, 78, 0);
+  }
+}
+.mp-tour-pulse {
+  animation: mp-tour-pulse 1.6s ease-out infinite;
+}
+
 /* Locked requirement: honor reduced-motion everywhere. */
 @media (prefers-reduced-motion: reduce) {
   *,

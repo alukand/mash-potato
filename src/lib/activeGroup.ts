@@ -61,6 +61,25 @@ export function storeTab(tab: StoredTab): void {
   }
 }
 
+// First-run tour (the tab walkthrough after the first sign-in), shown once.
+const TOURED_KEY = 'mp.toured'
+
+export function readToured(): boolean {
+  try {
+    return localStorage.getItem(TOURED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function storeToured(): void {
+  try {
+    localStorage.setItem(TOURED_KEY, '1')
+  } catch {
+    // ignore
+  }
+}
+
 // Recently engaged groups (switched to, invited to a round). The invite
 // picker floats these to the top, most recent first.
 

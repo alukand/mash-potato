@@ -8,14 +8,17 @@ import {
   readOnboarded,
   readStoredGroupId,
   readStoredTab,
+  readToured,
   storeGroupId,
   storeOnboarded,
   storeTab,
+  storeToured,
   touchRecentGroup,
 } from './lib/activeGroup'
 import { bindPushOpenHandler, enablePush } from './lib/push'
 import { Logo } from './components/Logo'
 import { BottomNav } from './components/BottomNav'
+import { FirstRunTour } from './components/FirstRunTour'
 import { OnboardingSlides } from './components/OnboardingSlides'
 import { CtaButton } from './components/ui'
 import type { TabId } from './components/BottomNav'
@@ -101,6 +104,9 @@ function App() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [members, setMembers] = useState<MemberInfo[]>([])
   const [stack, setStack] = useState<StackView[]>([])
+  // First-run tab walkthrough: dims the app, pulses each tab in turn.
+  const [tourActive, setTourActive] = useState(false)
+  const [tourTab, setTourTab] = useState<TabId>('home')
   const [loadError, setLoadError] = useState<string | null>(null)
   // A notification tap names its target before groups have loaded; park it here.
   const [pushTarget, setPushTarget] = useState<{
@@ -174,6 +180,18 @@ function App() {
   useEffect(() => {
     if (uid) void enablePush()
   }, [uid])
+
+  // The first signed-in landing gets the tab walkthrough, once per device.
+  // Group-less first-timers see the slides first (onboarded flips after).
+  useEffect(() => {
+    if (!uid || groups === undefined || showCreateGroup) return
+    if (tourActive || readToured()) return
+    if (!onboarded && groups.length === 0) return
+    setTourActive(true)
+    setTourTab('home')
+    setStack([])
+    setTab('home')
+  }, [uid, groups, onboarded, showCreateGroup, tourActive])
 
   // Notification taps land on the group's round/reveal: the tap handler binds
   // at mount (cold-start taps included) and parks the group id until the
@@ -471,7 +489,23 @@ function App() {
         </div>
       )}
 
-      <BottomNav active={tab} onSelect={selectTab} />
+      <BottomNav active={tab} onSelect={selectTab} highlight={tourActive ? tourTab : null} />
+
+      {tourActive && (
+        <FirstRunTour
+          onStep={(t) => {
+            setTourTab(t)
+            setTab(t)
+            storeTab(t)
+          }}
+          onDone={() => {
+            storeToured()
+            setTourActive(false)
+            setTab('home')
+            storeTab('home')
+          }}
+        />
+      )}
     </div>
   )
 }

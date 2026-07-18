@@ -156,10 +156,20 @@ trigger internals → no grant at all). Anon executes nothing. The twin's
   backfill; session===null renders the `startRound` prop) →
   components/StartRound.tsx (dual search w/ All/Films/Shows chips + manual
   type pair + GroupInviteSheet) opened for next rounds → log → recs →
-  watchlists (content, not settings). Every round is an invite (RSVP shows
-  for groups of 2+). First run shows OnboardingSlides once (`mp.onboarded`),
-  then the app opens GROUP-LESS (Home/Discover/Profile work; Rate shows a
-  NoGroupYet card) — no forced create-group gate. useTmdbSearch takes
+  components/GroupPoll.tsx ("What's next?" votes: owner opens 2-5 options
+  via create_group_poll, members cast one switchable ballot each
+  [poll_votes, self-only + open-only RLS], live tally over realtime,
+  close_group_poll crowns the majority winner [ties = option order] and
+  the winner rolls into GroupInviteSheet; PostgREST embeds need
+  poll_options!poll_options_poll_id_fkey because the winner FK is a second
+  relationship) → watchlists (content, not settings). Every round is an invite (RSVP shows
+  for groups of 2+). First run shows OnboardingSlides once (`mp.onboarded`,
+  live product miniatures per slide), then the app opens GROUP-LESS
+  (Home/Discover/Profile work; Rate shows a NoGroupYet card) — no forced
+  create-group gate — and the first signed-in landing runs FirstRunTour
+  once (`mp.toured`): dims the app, pulses each tab (BottomNav `highlight`
+  prop), switches to each real screen; group-holders skip slides and go
+  straight to the tour. useTmdbSearch takes
   'movie' | 'tv' | 'both' and returns TaggedResult (per-item mediaType);
   PosterResultGrid consumes tagged results. Shared UI recipes (fieldClass,
   CtaButton, GroupMark, VisibilityChip, ScoreSliderRow — the one
@@ -188,7 +198,7 @@ trigger internals → no grant at all). Anon executes nothing. The twin's
   discover/recommendations/providers — providers = where-to-watch, JustWatch
   data, attribution shown in the UI; v12 browse feeds also top_rated/
   now_playing/upcoming, discover filters also yearFrom/To, sortBy,
-  min/maxVotes, minRating). Auth email-confirmation is OFF (no
+  min/maxVotes, minRating; v13 adds language — Anime = 16 + 'ja'). Auth email-confirmation is OFF (no
   deep-link handling yet).
   `send-push` deployed + `notification_config` seeded on hosted; APNs secrets
   (PUSH_SHARED_SECRET / APNS_AUTH_KEY / APNS_KEY_ID / APPLE_TEAM_ID) still

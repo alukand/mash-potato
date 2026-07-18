@@ -225,6 +225,58 @@ export type Database = {
           },
         ]
       }
+      group_polls: {
+        Row: {
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          group_id: string
+          id: string
+          status: string
+          winner_option_id: string | null
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          group_id: string
+          id?: string
+          status?: string
+          winner_option_id?: string | null
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          group_id?: string
+          id?: string
+          status?: string
+          winner_option_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_polls_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_polls_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_polls_winner_is_own_option"
+            columns: ["winner_option_id", "id"]
+            isOneToOne: false
+            referencedRelation: "poll_options"
+            referencedColumns: ["id", "poll_id"]
+          },
+        ]
+      }
       groups: {
         Row: {
           created_at: string
@@ -438,6 +490,85 @@ export type Database = {
             columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      poll_options: {
+        Row: {
+          id: string
+          poll_id: string
+          sort: number
+          title_id: string
+        }
+        Insert: {
+          id?: string
+          poll_id: string
+          sort?: number
+          title_id: string
+        }
+        Update: {
+          id?: string
+          poll_id?: string
+          sort?: number
+          title_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poll_options_poll_id_fkey"
+            columns: ["poll_id"]
+            isOneToOne: false
+            referencedRelation: "group_polls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "poll_options_title_id_fkey"
+            columns: ["title_id"]
+            isOneToOne: false
+            referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      poll_votes: {
+        Row: {
+          created_at: string
+          member_id: string
+          option_id: string
+          poll_id: string
+        }
+        Insert: {
+          created_at?: string
+          member_id: string
+          option_id: string
+          poll_id: string
+        }
+        Update: {
+          created_at?: string
+          member_id?: string
+          option_id?: string
+          poll_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poll_votes_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "poll_votes_option_id_poll_id_fkey"
+            columns: ["option_id", "poll_id"]
+            isOneToOne: false
+            referencedRelation: "poll_options"
+            referencedColumns: ["id", "poll_id"]
+          },
+          {
+            foreignKeyName: "poll_votes_poll_id_fkey"
+            columns: ["poll_id"]
+            isOneToOne: false
+            referencedRelation: "group_polls"
             referencedColumns: ["id"]
           },
         ]
@@ -775,9 +906,14 @@ export type Database = {
         Args: { p_category_key: string; p_score: number; p_session_id: string }
         Returns: undefined
       }
+      close_group_poll: { Args: { p_poll_id: string }; Returns: undefined }
       comments_open_for_me: {
         Args: { p_group_id: string; p_title_id: string }
         Returns: boolean
+      }
+      create_group_poll: {
+        Args: { p_group_id: string; p_title_ids: string[] }
+        Returns: string
       }
       delete_comment: { Args: { p_comment_id: string }; Returns: undefined }
       delete_my_account: { Args: never; Returns: undefined }
@@ -805,6 +941,8 @@ export type Database = {
         Args: { p_one_liner?: string; p_scores: Json; p_session_id: string }
         Returns: undefined
       }
+      poll_group_id: { Args: { p_poll_id: string }; Returns: string }
+      poll_is_open: { Args: { p_poll_id: string }; Returns: boolean }
       post_comment: {
         Args: {
           p_body: string
