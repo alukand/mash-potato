@@ -153,7 +153,11 @@ trigger internals → no grant at all). Anon executes nothing. The twin's
   editor, members + Manage: rename/remove/leave/delete) → SessionPanel
   (the WHOLE round lifecycle: blind → components/RoundScorer.tsx inline
   sliders/one-liner/lock/reveal-in-place; sealed; revealed w/ late score +
-  backfill; session===null renders the `startRound` prop) →
+  backfill; session===null renders the `startRound` prop; a
+  `viewSessionId` prop shows ANY past night — GroupLog rows set it, so
+  sealed/late scoring reaches every old reveal, with an "earlier night"
+  banner + Back to the latest; the dot plot is colored per member with a
+  name legend, and the reveal hero taps through to TitleDetail) →
   components/StartRound.tsx (dual search w/ All/Films/Shows chips + manual
   type pair + GroupInviteSheet) opened for next rounds → log → recs →
   components/GroupPoll.tsx ("What's next?" votes: owner opens 2-5 options

@@ -97,6 +97,8 @@ export function GroupScreen({
   const [settingsOpen, setSettingsOpen] = useState(false)
   // "Start the next round" on a revealed panel opens the picker below it.
   const [startOpen, setStartOpen] = useState(false)
+  // A log row reopens that night in the panel (null = the latest round).
+  const [viewSessionId, setViewSessionId] = useState<string | null>(null)
 
   const [others, setOthers] = useState<MemberRubric[]>([])
   const [saved, setSaved] = useState<GroupRubricRow[] | null>(null)
@@ -207,6 +209,7 @@ export function GroupScreen({
     setConfirmEnd(false)
     setManageError(null)
     setRenamed(false)
+    setViewSessionId(null)
   }, [group.id, group.name])
 
   async function handleSavePreset() {
@@ -483,12 +486,30 @@ export function GroupScreen({
         </button>
       </div>
 
-      {/* ---- the group's latest round: score blind / the Reveal, in place ---- */}
+      {/* ---- viewing an earlier night from the log ---- */}
+      {viewSessionId && (
+        <div className="mp-rise mb-4 flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface-2 px-4 py-2.5">
+          <p className="min-w-0 text-[12px] leading-snug text-muted">
+            An earlier night from the log.
+          </p>
+          <button
+            type="button"
+            onClick={() => setViewSessionId(null)}
+            className="shrink-0 rounded-full border border-teal/40 bg-teal/10 px-3 py-1.5 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20"
+          >
+            Back to the latest
+          </button>
+        </div>
+      )}
+
+      {/* ---- the group's round: score blind / the Reveal, in place ---- */}
       <div className="mb-7">
         <SessionPanel
           group={group}
           members={members}
           userId={userId}
+          viewSessionId={viewSessionId}
+          onOpenTitle={(tmdbId, mediaType) => onOpenTitle(tmdbId, mediaType)}
           startRound={
             <StartRound
               group={group}
@@ -521,7 +542,14 @@ export function GroupScreen({
       {/* ---- Group log: everything rated together (the group's memory) ---- */}
       {log.length > 0 && (
         <div className="mb-7">
-          <GroupLog entries={log} onOpenTitle={onOpenTitle} animationDelay="60ms" />
+          <GroupLog
+            entries={log}
+            onOpenSession={(sessionId) => {
+              setViewSessionId(sessionId)
+              window.scrollTo(0, 0)
+            }}
+            animationDelay="60ms"
+          />
         </div>
       )}
 

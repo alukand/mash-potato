@@ -416,6 +416,32 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
   }
 }
 
+/** One specific session (any past night from the log). RLS scopes to members. */
+export async function fetchSessionById(sessionId: string): Promise<SessionInfo | null> {
+  const { data, error } = await supabase
+    .from('reveal_sessions')
+    .select(
+      'id, state, created_by, created_at, rubric, titles(id, tmdb_id, name, year, media_type, poster_path)',
+    )
+    .eq('id', sessionId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data?.titles) return null
+  return {
+    id: data.id,
+    state: data.state,
+    createdBy: data.created_by,
+    createdAt: data.created_at,
+    titleId: data.titles.id,
+    titleName: data.titles.name,
+    titleYear: data.titles.year,
+    titleTmdbId: data.titles.tmdb_id,
+    mediaType: data.titles.media_type,
+    posterPath: data.titles.poster_path,
+    rubric: rubricFromJson(data.rubric),
+  }
+}
+
 /**
  * Find-or-create the title row. TMDB picks are deduped on (tmdb_id,
  * media_type); manual entries always insert (titles has no update policy,

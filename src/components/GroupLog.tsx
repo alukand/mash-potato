@@ -6,15 +6,16 @@ import type { GroupLogEntry } from '../lib/api'
 
 interface GroupLogProps {
   entries: GroupLogEntry[]
-  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  /** Open that night's full reveal in the panel (late scoring included). */
+  onOpenSession: (sessionId: string) => void
   /** mp-rise stagger, e.g. '240ms'. */
   animationDelay?: string
 }
 
 // The group's full reveal history, with quick text + media filters and a
 // one-line memory strip (average Mashed + the group's best round) once
-// there's enough history to mean something.
-export function GroupLog({ entries, onOpenTitle, animationDelay }: GroupLogProps) {
+// there's enough history to mean something. Every row reopens that night.
+export function GroupLog({ entries, onOpenSession, animationDelay }: GroupLogProps) {
   const [query, setQuery] = useState('')
   const [media, setMedia] = useState<'all' | 'movie' | 'tv'>('all')
 
@@ -96,9 +97,8 @@ export function GroupLog({ entries, onOpenTitle, animationDelay }: GroupLogProps
             <button
               key={e.sessionId}
               type="button"
-              disabled={e.tmdbId === null}
-              onClick={() => e.tmdbId !== null && onOpenTitle(e.tmdbId, e.mediaType)}
-              className="group flex w-full items-center gap-3 px-4 py-3 text-left disabled:cursor-default"
+              onClick={() => onOpenSession(e.sessionId)}
+              className="group flex w-full items-center gap-3 px-4 py-3 text-left"
             >
               {e.posterPath ? (
                 <img

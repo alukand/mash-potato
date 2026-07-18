@@ -240,6 +240,14 @@ to the tour.
 
 ## Changelog
 
+- 2026-07-18 (any night, anyone's color): log rows reopen THAT night's
+  full reveal in the panel (SessionPanel viewSessionId + fetchSessionById,
+  "An earlier night from the log" banner with Back to the latest) — which
+  fixes late scoring being trapped on the newest reveal: the sealed card
+  and late_score_session now reach every past round. The category dot
+  plot colors every dot by member (colorForMember, your dot ringed) and
+  the old you/others legend became a per-member name legend + group-mean
+  marker. The reveal hero (poster/title) taps through to the title page.
 - 2026-07-18 (onboarding): slides rebuilt as live product miniatures
   (see Onboarding recipe above) + the first-run tab tour (FirstRunTour,
   BottomNav highlight prop, mp.toured). New keyframes mp-grow-x, mp-pop,

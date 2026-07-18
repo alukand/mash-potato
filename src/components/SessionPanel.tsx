@@ -9,6 +9,7 @@ import {
   fetchAllScorecards,
   fetchGroupRubrics,
   fetchLatestSession,
+  fetchSessionById,
   lateScoreSession,
   onSessionChange,
   posterUrl,
@@ -27,12 +28,16 @@ interface SessionPanelProps {
   group: GroupInfo
   members: MemberInfo[]
   userId: string
+  /** View a SPECIFIC past session (from the log) instead of the latest. */
+  viewSessionId?: string | null
   /** Rendered when the group has no rounds yet (the start-a-round block). */
   startRound: ReactNode
   /** "Start the next round" tapped on a revealed panel. */
   onStartNext: () => void
   /** Open the title's discussion on this group's thread (the debrief). */
   onDiscuss?: (tmdbId: number, mediaType: 'movie' | 'tv', seed: string) => void
+  /** Tap the reveal's poster/title to open the title page. */
+  onOpenTitle?: (tmdbId: number, mediaType: 'movie' | 'tv') => void
 }
 
 // The group's latest session, live: blind rounds show invite + lock progress,
@@ -66,9 +71,11 @@ export function SessionPanel({
   group,
   members,
   userId,
+  viewSessionId = null,
   startRound,
   onStartNext,
   onDiscuss,
+  onOpenTitle,
 }: SessionPanelProps) {
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
   // undefined = cards not fetched yet. Distinct from []: an empty visible set
@@ -103,7 +110,9 @@ export function SessionPanel({
 
   const load = useCallback(async () => {
     try {
-      const s = await fetchLatestSession(group.id)
+      const s = viewSessionId
+        ? await fetchSessionById(viewSessionId)
+        : await fetchLatestSession(group.id)
       setSession(s)
       if (!s) return
       if (s.state === 'revealed') {
@@ -117,7 +126,7 @@ export function SessionPanel({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
     }
-  }, [group.id])
+  }, [group.id, viewSessionId])
 
   async function handleLateScore(sessionId: string) {
     setLateBusy(true)
@@ -341,10 +350,18 @@ export function SessionPanel({
     <>
       {/* ---- Hero: title + Mashed ring + member leaderboard ---- */}
       <section className="mp-rise mp-card rounded-[26px] p-6">
-        <div className="flex items-start gap-4">
+        <button
+          type="button"
+          disabled={session.titleTmdbId === null || !onOpenTitle}
+          onClick={() =>
+            session.titleTmdbId !== null &&
+            onOpenTitle?.(session.titleTmdbId, session.mediaType)
+          }
+          className="group flex w-full items-start gap-4 text-left disabled:cursor-default"
+        >
           <div
             aria-hidden
-            className="relative grid h-[84px] w-14 shrink-0 place-items-center overflow-hidden rounded-xl font-display text-2xl font-semibold text-bg"
+            className="relative grid h-[84px] w-14 shrink-0 place-items-center overflow-hidden rounded-xl font-display text-2xl font-semibold text-bg transition-transform group-active:scale-95"
             style={{ backgroundImage: 'linear-gradient(160deg, #E7B24E, #E07A5F)' }}
           >
             {session.posterPath ? (
@@ -369,11 +386,11 @@ export function SessionPanel({
                 Revealed
               </span>
             </div>
-            <h2 className="mt-1.5 font-display text-[27px] font-semibold leading-[1.05]">
+            <h2 className="mt-1.5 font-display text-[27px] font-semibold leading-[1.05] transition-colors group-hover:text-teal">
               {session.titleName}
             </h2>
           </div>
-        </div>
+        </button>
 
         <div className="mt-6 flex items-center gap-4">
           <ScoreRing value={result.mashed} size={150} stroke={11} />
@@ -676,10 +693,16 @@ export function SessionPanel({
                   {c.dots.map((d) => (
                     <span
                       key={d.memberId}
-                      className={`absolute top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full ${
-                        d.memberId === userId ? 'bg-gold' : 'bg-muted'
+                      title={memberName(d.memberId)}
+                      className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
+                        d.memberId === userId
+                          ? 'h-[9px] w-[9px] ring-1 ring-text/70'
+                          : 'h-[7px] w-[7px]'
                       }`}
-                      style={{ left: `${pct(d.score)}%` }}
+                      style={{
+                        left: `${pct(d.score)}%`,
+                        backgroundColor: colorForMember(members, d.memberId),
+                      }}
                     />
                   ))}
                   <span
@@ -696,13 +719,19 @@ export function SessionPanel({
               </li>
             ))}
           </ul>
-          <div className="flex items-center gap-4 border-t border-line/50 px-1 pb-3 pt-3 font-mono text-[10px] text-muted">
-            <span className="flex items-center gap-1.5">
-              <span className="h-[7px] w-[7px] rounded-full bg-gold" /> you
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-[7px] w-[7px] rounded-full bg-muted" /> others
-            </span>
+          {/* who's which color: every locked member, leaderboard order */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-line/50 px-1 pb-3 pt-3 font-mono text-[10px] text-muted">
+            {leaderboard.map((m) => (
+              <span key={m.memberId} className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className={`h-[7px] w-[7px] shrink-0 rounded-full ${
+                    m.memberId === userId ? 'ring-1 ring-text/70' : ''
+                  }`}
+                  style={{ backgroundColor: colorForMember(members, m.memberId) }}
+                />
+                <span className="truncate">{memberName(m.memberId)}</span>
+              </span>
+            ))}
             <span className="flex items-center gap-1.5">
               <span className="h-3 w-[3px] rounded-full bg-teal" /> group mean
             </span>
