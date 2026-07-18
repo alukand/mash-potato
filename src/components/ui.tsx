@@ -212,3 +212,66 @@ export function GroupMark({ groupId, name, size = 24, className = '' }: GroupMar
     </span>
   )
 }
+
+interface ExtraCategoryChipsProps {
+  /** Session categories outside this member's own rubric (opt-in). */
+  extras: { key: string; label: string; weight: number }[]
+  /** Whether a key is currently on the member's card. */
+  isOn: (key: string) => boolean
+  disabled?: boolean
+  onToggle: (key: string) => void
+  className?: string
+}
+
+/**
+ * The opt-in extras row: genre add-ons and groupmates' categories this
+ * member does not carry. Tapping adds the category to their card (a slider
+ * appears); tapping again removes it. A skipped extra never lands on the
+ * card, so its weight drops out of that member's personal denominator and
+ * the group mean averages only the people who rated it.
+ */
+export function ExtraCategoryChips({
+  extras,
+  isOn,
+  disabled = false,
+  onToggle,
+  className = '',
+}: ExtraCategoryChipsProps) {
+  if (extras.length === 0) return null
+  return (
+    <div className={className}>
+      <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+        Extras, if you want them
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {extras.map((e) => {
+          const on = isOn(e.key)
+          return (
+            <button
+              key={e.key}
+              type="button"
+              disabled={disabled}
+              aria-pressed={on}
+              onClick={() => onToggle(e.key)}
+              className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors active:scale-95 disabled:opacity-50 ${
+                on
+                  ? 'border-teal/40 bg-teal/10 text-teal'
+                  : 'border-dashed border-line text-muted hover:text-text'
+              }`}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" className="shrink-0" aria-hidden>
+                {on ? <path d="M6 6l12 12M18 6 6 18" /> : <path d="M12 5v14M5 12h14" />}
+              </svg>
+              {e.label}
+              <span className="tabular font-mono text-[10px] opacity-80">{e.weight}</span>
+            </button>
+          )
+        })}
+      </div>
+      <p className="mt-2 text-[12px] leading-snug text-muted">
+        Rate them or skip them, your call. A skipped one just isn't on your card, and
+        its weight drops out of your number.
+      </p>
+    </div>
+  )
+}

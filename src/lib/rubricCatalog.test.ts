@@ -6,6 +6,7 @@ import {
   mashRubrics,
   resolveSessionRubric,
   resolveSessionRubricTagged,
+  splitRubricForMember,
   RUBRIC_CATALOG,
 } from './rubricCatalog'
 import type { GroupRubricRow } from './api'
@@ -243,5 +244,39 @@ describe('animated titles (genre 16)', () => {
     expect(entries.find((e) => e.key === 'acting')?.weight).toBe(20)
     expect(entries.find((e) => e.key === 'cinematography')?.label).toBe('Cinematography')
     expect(entries.map((e) => e.key)).not.toContain('animation')
+  })
+})
+
+describe('splitRubricForMember', () => {
+  const snapshot = [
+    { key: 'story', label: 'Story', weight: 20 },
+    { key: 'acting', label: 'Acting', weight: 20 },
+    { key: 'humor', label: 'Humor', weight: 35 },
+  ]
+
+  it('marks session categories outside your rubric as opt-in extras', () => {
+    const mine = [row('story'), row('acting')]
+    const { core, extras } = splitRubricForMember(snapshot, mine)
+    expect(core.map((e) => e.key)).toEqual(['story', 'acting'])
+    expect(extras.map((e) => e.key)).toEqual(['humor'])
+  })
+
+  it('treats disabled rows as not carried', () => {
+    const mine = [row('story'), row('acting', { enabled: false })]
+    const { core, extras } = splitRubricForMember(snapshot, mine)
+    expect(core.map((e) => e.key)).toEqual(['story'])
+    expect(extras.map((e) => e.key)).toEqual(['acting', 'humor'])
+  })
+
+  it('falls back to everything-core when you have no rubric', () => {
+    expect(splitRubricForMember(snapshot, null).core).toHaveLength(3)
+    expect(splitRubricForMember(snapshot, []).extras).toHaveLength(0)
+  })
+
+  it('falls back to everything-core when your rubric shares nothing', () => {
+    const mine = [row('pacing')]
+    const { core, extras } = splitRubricForMember(snapshot, mine)
+    expect(core).toHaveLength(3)
+    expect(extras).toHaveLength(0)
   })
 })

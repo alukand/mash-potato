@@ -230,6 +230,8 @@ function App() {
       setStack([])
       setTab('rate')
       storeTab('rate')
+      // Even when already on this tab and group, land the eye on the round.
+      window.scrollTo(0, 0)
     }
     setPushTarget(null)
   }, [pushTarget, groups])

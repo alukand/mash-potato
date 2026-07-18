@@ -131,6 +131,28 @@ export interface MemberRubric {
   rows: GroupRubricRow[]
 }
 
+/**
+ * Split a session's rubric snapshot into the categories YOU carry (core:
+ * always on your card) and the extras (genre add-ons and other members'
+ * picks). Extras are OPT-IN per member at scoring time: skip one and the
+ * key simply never lands on your card, so its weight drops out of your
+ * personal denominator and the group mean averages only the people who
+ * rated it. Nobody's score is ever imputed.
+ *
+ * Members without a personal rubric (or whose rubric shares nothing with
+ * the snapshot) treat everything as core: a card needs at least one slider.
+ */
+export function splitRubricForMember<T extends { key: string }>(
+  sessionRubric: T[],
+  myRows: { key: string; enabled: boolean }[] | null | undefined,
+): { core: T[]; extras: T[] } {
+  if (!myRows || myRows.length === 0) return { core: sessionRubric, extras: [] }
+  const mine = new Set(myRows.filter((r) => r.enabled).map((r) => r.key))
+  const core = sessionRubric.filter((e) => mine.has(e.key))
+  if (core.length === 0) return { core: sessionRubric, extras: [] }
+  return { core, extras: sessionRubric.filter((e) => !mine.has(e.key)) }
+}
+
 /** Parse a preset's jsonb rows (user_rubrics.rows) into validated rubric rows. */
 export function presetRowsFromJson(value: unknown): GroupRubricRow[] {
   if (!Array.isArray(value)) return []

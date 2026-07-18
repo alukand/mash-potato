@@ -520,6 +520,10 @@ export function GroupScreen({
             />
           }
           onStartNext={() => setStartOpen(true)}
+          onViewLatest={() => {
+            setViewSessionId(null)
+            window.scrollTo(0, 0)
+          }}
           onDiscuss={(tmdbId, mediaType, seed) =>
             onOpenTitle(tmdbId, mediaType, { groupId: group.id, seed })
           }

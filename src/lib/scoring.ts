@@ -89,6 +89,8 @@ export interface CategoryStat {
   max: number
   /** max − min: how much the group disagreed on this category. */
   range: number
+  /** How many members rated it — extras are per-member, so this can trail the group. */
+  raters: number
 }
 
 export function categoryStat(
@@ -102,7 +104,7 @@ export function categoryStat(
   const min = Math.min(...values)
   const max = Math.max(...values)
   const mean = values.reduce((a, b) => a + b, 0) / values.length
-  return { category, mean, min, max, range: max - min }
+  return { category, mean, min, max, range: max - min, raters: values.length }
 }
 
 /** Stats for every category, in the given (session snapshot) order. */
@@ -121,12 +123,14 @@ export function allCategoryStats(
 /**
  * Most contested category = widest range of member scores.
  * Ties break toward the earlier category in the given order.
+ * One voice can neither agree nor clash: categories fewer than two members
+ * rated (per-member extras) never headline. Null when none qualify.
  */
 export function mostContestedCategory(
   categories: CategoryId[],
   scorecards: MemberScorecard[],
 ): CategoryStat | null {
-  const stats = allCategoryStats(categories, scorecards)
+  const stats = allCategoryStats(categories, scorecards).filter((s) => s.raters >= 2)
   if (stats.length === 0) return null
   return stats.reduce((best, s) => (s.range > best.range ? s : best))
 }
@@ -134,12 +138,13 @@ export function mostContestedCategory(
 /**
  * Most united category = narrowest range.
  * Ties break toward the earlier category in the given order.
+ * Same two-rater floor as mostContestedCategory.
  */
 export function mostUnitedCategory(
   categories: CategoryId[],
   scorecards: MemberScorecard[],
 ): CategoryStat | null {
-  const stats = allCategoryStats(categories, scorecards)
+  const stats = allCategoryStats(categories, scorecards).filter((s) => s.raters >= 2)
   if (stats.length === 0) return null
   return stats.reduce((best, s) => (s.range < best.range ? s : best))
 }

@@ -205,8 +205,15 @@ body::after {
     transform: none;
   }
 }
+/* fill-mode BACKWARDS, deliberately: `both`/`forwards` retain the final
+   keyframe as a computed identity transform, which turns the element into
+   the containing block for position:fixed — every overlay sheet inside an
+   animated section then anchors to the content box instead of the viewport
+   (the "sheet opens a page down" bug). `backwards` still holds the hidden
+   from-state through animation-delay, and the to-state equals the natural
+   style, so releasing the fill is visually seamless. */
 .mp-rise {
-  animation: mp-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: mp-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
 
 /* Onboarding mockup beats: bars grow (transform-only), chips pop in. */
@@ -220,7 +227,7 @@ body::after {
 }
 .mp-grow-x {
   transform-origin: left center;
-  animation: mp-grow-x 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: mp-grow-x 0.7s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 @keyframes mp-pop {
   from {
@@ -233,7 +240,7 @@ body::after {
   }
 }
 .mp-pop {
-  animation: mp-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: mp-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 /* First-run tour: the highlighted tab breathes a gold ring. */

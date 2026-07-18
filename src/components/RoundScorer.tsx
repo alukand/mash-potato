@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { memberWeightedScore, formatScore } from '../lib/scoring'
 import type { CategoryScores } from '../lib/scoring'
 import {
+  fetchGroupRubrics,
   fetchLockStatus,
   fetchMyScore,
   fetchSessionRsvps,
@@ -10,12 +11,13 @@ import {
   revealSession,
   saveMyScore,
 } from '../lib/api'
-import type { GroupInfo, MemberInfo, SessionInfo, SessionRubricEntry } from '../lib/api'
+import type { GroupInfo, GroupRubricRow, MemberInfo, SessionInfo, SessionRubricEntry } from '../lib/api'
+import { splitRubricForMember } from '../lib/rubricCatalog'
 import { weightsFromRubric } from '../lib/mapping'
 import { participation, formatWindow } from '../lib/rsvp'
 import { colorForMember } from '../lib/palette'
 import { Avatar } from './avatars'
-import { CtaButton, ScoreSliderRow, fieldClass } from './ui'
+import { CtaButton, ExtraCategoryChips, ScoreSliderRow, fieldClass } from './ui'
 import { CategoryLegend } from './CategoryLegend'
 
 interface RoundScorerProps {
@@ -40,17 +42,25 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
   const [oneLiner, setOneLiner] = useState('')
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
   const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
+  // undefined = still loading; the split into core vs opt-in extras waits.
+  const [myRows, setMyRows] = useState<GroupRubricRow[] | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const [mine, locks, answers] = await Promise.all([
+      const [mine, locks, answers, rubrics] = await Promise.all([
         fetchMyScore(session.id, userId),
         fetchLockStatus(session.id),
         fetchSessionRsvps(session.id).catch(() => []),
+        fetchGroupRubrics(group.id).catch(() => []),
       ])
-      const base = defaultScores(session.rubric ?? [])
+      const rows = rubrics.find((r) => r.userId === userId)?.rows ?? null
+      setMyRows(rows)
+      // Only YOUR core categories pre-seed at the midpoint; extras join the
+      // card when you add them (a drafted extra counts as added).
+      const { core } = splitRubricForMember(session.rubric ?? [], rows)
+      const base = defaultScores(core)
       if (mine) {
         setScores({ ...base, ...mine.scores })
         setLocked(mine.locked)
@@ -65,7 +75,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
     }
-  }, [session, userId])
+  }, [session, group.id, userId])
 
   useEffect(() => {
     void load()
@@ -276,30 +286,64 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
         </div>
       </section>
 
-      {/* ---- The category sliders ---- */}
+      {/* ---- The category sliders: your core + the extras you added ---- */}
       <section className="mp-rise mt-4" style={{ animationDelay: '80ms' }}>
         <p className="mb-2 px-1 text-[13px] leading-snug text-muted">
           Score each part for what it's trying to be.
         </p>
         <CategoryLegend entries={rubric} className="mb-3 px-2" />
-        <div className="mp-card rounded-[26px] px-5 py-1">
-          {rubric.map((entry, i) => (
-            <ScoreSliderRow
-              key={entry.key}
-              className={`py-4 ${i > 0 ? 'border-t border-line/50' : ''}`}
-              label={entry.label}
-              sub={
-                <p className="mt-0.5 font-mono text-[10px] text-muted">
-                  weight{' '}
-                  {weightTotal > 0 ? Math.round((entry.weight / weightTotal) * 100) : '—'}%
-                </p>
-              }
-              value={scores[entry.key] ?? 5}
-              disabled={locked || busy}
-              onChange={(v) => setScores((prev) => ({ ...prev, [entry.key]: v }))}
-            />
-          ))}
-        </div>
+        {myRows === undefined ? (
+          <p className="px-2 py-4 text-[13px] text-muted">Loading your rubric…</p>
+        ) : (
+          (() => {
+            const { core, extras } = splitRubricForMember(rubric, myRows)
+            const sliderEntries = [
+              ...core,
+              ...extras.filter((e) => scores[e.key] !== undefined),
+            ]
+            return (
+              <>
+                <div className="mp-card rounded-[26px] px-5 py-1">
+                  {sliderEntries.map((entry, i) => (
+                    <ScoreSliderRow
+                      key={entry.key}
+                      className={`py-4 ${i > 0 ? 'border-t border-line/50' : ''}`}
+                      label={entry.label}
+                      sub={
+                        <p className="mt-0.5 font-mono text-[10px] text-muted">
+                          weight{' '}
+                          {weightTotal > 0
+                            ? Math.round((entry.weight / weightTotal) * 100)
+                            : '—'}
+                          %
+                        </p>
+                      }
+                      value={scores[entry.key] ?? 5}
+                      disabled={locked || busy}
+                      onChange={(v) => setScores((prev) => ({ ...prev, [entry.key]: v }))}
+                    />
+                  ))}
+                </div>
+                <ExtraCategoryChips
+                  extras={extras}
+                  isOn={(key) => scores[key] !== undefined}
+                  disabled={locked || busy}
+                  onToggle={(key) =>
+                    setScores((prev) => {
+                      if (prev[key] !== undefined) {
+                        const next = { ...prev }
+                        delete next[key]
+                        return next
+                      }
+                      return { ...prev, [key]: 5 }
+                    })
+                  }
+                  className="mt-3 px-1"
+                />
+              </>
+            )
+          })()
+        )}
       </section>
 
       {/* ---- One-liner: sealed with the scores, drops at the reveal ---- */}
@@ -362,7 +406,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
         ) : (
           <CtaButton
             onClick={() => void handleLockIn()}
-            disabled={busy}
+            disabled={busy || Object.keys(scores).length === 0}
             className="mt-4 w-full py-3.5 text-[14px]"
           >
             {busy ? 'Locking…' : 'Lock in your scores'}

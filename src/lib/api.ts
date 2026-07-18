@@ -1113,6 +1113,37 @@ export async function fetchTitleHistory(
   })
 }
 
+/**
+ * Has this group already revealed a round on this title? Re-rate awareness:
+ * the invite CTA becomes "Rate it again" and the old night stays in the log.
+ * Manual entries (no TMDB id) never match.
+ */
+export async function hasGroupRatedTitle(
+  groupId: string,
+  tmdbId: number | null,
+  mediaType: 'movie' | 'tv',
+): Promise<boolean> {
+  if (tmdbId === null) return false
+  const { data: title, error: titleError } = await supabase
+    .from('titles')
+    .select('id')
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .maybeSingle()
+  if (titleError) throw new Error(titleError.message)
+  if (!title) return false
+  const { data, error } = await supabase
+    .from('reveal_sessions')
+    .select('id')
+    .eq('group_id', groupId)
+    .eq('title_id', title.id)
+    .eq('state', 'revealed')
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data !== null
+}
+
 // ---- personal rubric presets ----------------------------------------------
 
 export interface UserRubricPreset {

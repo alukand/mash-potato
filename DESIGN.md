@@ -115,15 +115,28 @@ diving's published difficulty table, game-jam N/A opt-outs):
    0.85× — keys never change, so scores and history stay coherent; only
    labels and weights shift. The animation add-on only stands in when the
    group carries no Cinematography row to relabel.
-3. **Per round (binary only)**: the creator may leave a genre add-on out
-   (on/off chip in the RubricReceipt, locked by the session snapshot).
-   NEVER weight sliders per movie: it's a studied manipulation vector that
-   would bypass the blind moat, and per-event rule-setting kills group
-   momentum.
+3. **Per member, per card (2026-07-17)**: genre add-ons are EXTRAS — each
+   member decides on their OWN scorecard whether to rate one ("Extras, if
+   you want them" chips under the sliders, `ExtraCategoryChips` in ui.tsx).
+   A skipped extra simply isn't on that member's card: their weighted score
+   is computed without its weight (never a phantom 0), the category row
+   averages only its raters and wears an "(n/m)" partial marker, and the
+   backfill nag only covers categories the member's own rubric carries
+   (`splitRubricForMember`). Nobody decides for the table — the creator's
+   old per-round opt-out chip is gone. NEVER weight sliders per movie:
+   it's a studied manipulation vector that would bypass the blind moat,
+   and per-event rule-setting kills group momentum.
 
-The RubricReceipt is a receipt, not a form: read-only base chips + toggleable
-genre chips at creation; fully read-only on the blind card. Scoring copy sets
-the intent-relative norm: "Score each part for what it's trying to be."
+The RubricReceipt is a PURE receipt, never a form: every chip read-only,
+genre add-ons marked teal with "everyone picks their own extras" copy.
+Scoring copy sets the intent-relative norm: "Score each part for what it's
+trying to be."
+
+**One voice can't headline (2026-07-17):** THE REVEAL's most-united /
+most-contested pick only considers categories at least TWO members rated
+(`CategoryStat.raters`); a single-rater extra has range 0 by definition and
+would otherwise always win "United on…". No qualifying category → no
+headline block.
 
 **Living reveals (2026-07-12):** a revealed Mashed is the score SO FAR, not a
 frozen verdict. Members without a locked card (late joiners, round-sitters)
@@ -140,6 +153,20 @@ scoring is genuinely blind. Sealed surfaces show a lock + "Sealed" (never a
 bare dash): the reveal panel becomes the seal card with blind sliders and
 "Lock in and open the reveal"; log and Home rows swap the Mashed number for
 the lock mark.
+
+**Re-rate rounds (2026-07-18):** locked scores never change, so a changed
+mind gets a FRESH blind round on the same title. "Rate it again" sits on
+every revealed panel (any member, any past night from the log) and the
+invite sheet's CTA becomes "Rate it again with X" when the group has
+mashed the title before. The new round snapshots the group's CURRENT
+rubric, one blind round at a time still holds, the old night stays in the
+log untouched, and the LATEST reveal is the group's current verdict:
+TitleDetail marks older nights "an earlier round" and the Combined row
+counts one Mashed per group. Discussion re-seals by itself while the new
+round is blind (`comments_open_for_me` spans every session of the
+group+title pair). Solo ratings are the editable side of the same coin:
+one rating per person per title, edited in place (the action chip reads
+"Solo N · Edit").
 
 **One-line takes (2026-07-17):** the blind card carries one optional
 sentence — "In one sentence, what was it about?" (`member_scores.one_liner`,
@@ -240,6 +267,42 @@ to the tour.
 
 ## Changelog
 
+- 2026-07-18 (changed minds): re-rate rounds + editable solo ratings (see
+  the "Re-rate rounds" recipe above). SessionPanel's revealed footer pairs
+  "Rate it again" with "Start the next round" (guarded by the one-blind-
+  round rule, works from any past night via the log, resolves genre extras
+  fresh from TMDB); GroupInviteSheet detects a prior reveal
+  (hasGroupRatedTitle) and swaps its CTA + reassurance copy; TitleDetail
+  verdicts mark superseded nights "an earlier round" and Combined counts
+  latest-per-group (two nights from one group no longer fake a second
+  verdict). The solo chip now reads "Solo N · Edit" so editing is
+  discoverable. Reveal headline edge: when one category wins BOTH crowns
+  (all shared ranges equal — common with two members), the "United on X.
+  Split over X." lie becomes "Same wavelength, every category." (range 0)
+  or "Split by N, every category."
+- 2026-07-18 (extras are yours to pick): genre add-ons stopped being the
+  creator's call — the RubricReceipt is now a pure receipt (opt-out chips
+  gone; the full resolved rubric always ships in the snapshot) and every
+  scorer picks their own extras on their card via "Extras, if you want
+  them" chips (ExtraCategoryChips in ui.tsx, add at 5 / remove drops the
+  key). splitRubricForMember (rubricCatalog) splits the snapshot into your
+  core vs extras from your member rubric rows; a skipped extra is simply
+  absent — weighted score computed without its weight, category rows
+  average raters only with an "(n/m)" marker, the backfill nag covers only
+  categories YOUR rubric carries, and locking needs ≥1 scored category.
+  THE REVEAL's united/contested headline gained a two-rater floor
+  (CategoryStat.raters) so a single-voice extra can't crown "United on…".
+  Blind, sealed, and open-late cards all share the same treatment.
+- 2026-07-18 (sheets anchor to the viewport): mp-rise (and mp-grow-x /
+  mp-pop) switched from fill-mode `both` to `backwards` — retained fills
+  compute to an identity transform, which made every animated section the
+  containing block for position:fixed, so overlay sheets (group invite,
+  avatar picker, playlists) opened a page or two below the viewport.
+  `backwards` keeps the pre-delay hidden state and releases at rest (the
+  to-state equals natural style, so the release is invisible). LAW: any
+  entrance animation wrapping a fixed overlay must not retain its fill.
+  Push routing also scrolls to top so a notification tap visibly lands on
+  the round even when already on that tab.
 - 2026-07-18 (any night, anyone's color): log rows reopen THAT night's
   full reveal in the panel (SessionPanel viewSessionId + fetchSessionById,
   "An earlier night from the log" banner with Back to the latest) — which

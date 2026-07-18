@@ -3,6 +3,7 @@ import {
   createSession,
   fetchGroupRubrics,
   fetchLatestSession,
+  hasGroupRatedTitle,
 } from '../lib/api'
 import type { GroupInfo, NewTitle } from '../lib/api'
 import type { MemberRubric } from '../lib/rubricCatalog'
@@ -45,7 +46,9 @@ export function GroupInviteSheet({
   // null = the selected group's rubric + round state are still loading.
   const [rubrics, setRubrics] = useState<MemberRubric[] | null>(null)
   const [blindLive, setBlindLive] = useState(false)
-  const [excluded, setExcluded] = useState<Set<string>>(new Set())
+  // This group already revealed a round on this title: the CTA becomes
+  // "Rate it again" and the copy promises the old night survives.
+  const [ratedBefore, setRatedBefore] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -66,14 +69,16 @@ export function GroupInviteSheet({
     setSelected(g)
     setRubrics(null)
     setBlindLive(false)
-    setExcluded(new Set())
+    setRatedBefore(false)
     setError(null)
-    const [rows, latest] = await Promise.all([
+    const [rows, latest, rated] = await Promise.all([
       fetchGroupRubrics(g.id).catch(() => []),
       fetchLatestSession(g.id).catch(() => null),
+      hasGroupRatedTitle(g.id, title.tmdbId ?? null, title.mediaType).catch(() => false),
     ])
     setRubrics(rows)
     setBlindLive(latest?.state === 'blind')
+    setRatedBefore(rated)
   }
 
   async function handleStart() {
@@ -83,11 +88,9 @@ export function GroupInviteSheet({
     try {
       const mashed = mashRubrics(rubrics)
       const rows = mashed.length > 0 ? mashed : defaultRubricRows()
-      const rubric = resolveSessionRubric(
-        rows,
-        genreIds,
-        configuredCategoryKeys(rubrics),
-      ).filter((entry) => !excluded.has(entry.key))
+      // The full resolved rubric ships in the snapshot; whether to rate a
+      // genre add-on is each member's own call at scoring time.
+      const rubric = resolveSessionRubric(rows, genreIds, configuredCategoryKeys(rubrics))
       await createSession(selected.id, userId, title, rubric)
       touchRecentGroup(selected.id)
       onStarted(selected.id)
@@ -199,31 +202,28 @@ export function GroupInviteSheet({
               <p className="py-6 text-center text-[13px] text-muted">Loading the rubric…</p>
             ) : (
               <>
-                <RubricReceipt
-                  className="mt-4"
-                  entries={receiptEntries}
-                  excludedKeys={excluded}
-                  onToggleGenre={(key) =>
-                    setExcluded((prev) => {
-                      const next = new Set(prev)
-                      if (next.has(key)) next.delete(key)
-                      else next.add(key)
-                      return next
-                    })
-                  }
-                />
+                <RubricReceipt className="mt-4" entries={receiptEntries} />
                 <CtaButton
                   onClick={() => void handleStart()}
                   disabled={starting || blindLive}
                   className="mt-4 w-full py-3.5 text-[14px] disabled:opacity-50"
                 >
-                  {starting ? 'Starting…' : `Invite ${selected.name} to score it blind`}
+                  {starting
+                    ? 'Starting…'
+                    : ratedBefore
+                      ? `Rate it again with ${selected.name}`
+                      : `Invite ${selected.name} to score it blind`}
                 </CtaButton>
-                {blindLive && (
+                {blindLive ? (
                   <p className="mt-2 text-center font-mono text-[10px] text-muted">
                     Finish {selected.name}'s current blind round first.
                   </p>
-                )}
+                ) : ratedBefore ? (
+                  <p className="mt-2 text-center font-mono text-[10px] text-muted">
+                    {selected.name} has mashed this one before. A fresh blind
+                    round starts; the old night stays in the log.
+                  </p>
+                ) : null}
               </>
             )}
             {error && (

@@ -6,20 +6,30 @@ import { scoreColor } from '../lib/scoreColor'
 import { weightsFromRubric } from '../lib/mapping'
 import {
   backfillCategoryScore,
+  createSession,
   fetchAllScorecards,
   fetchGroupRubrics,
   fetchLatestSession,
   fetchSessionById,
+  fetchTitleDetail,
   lateScoreSession,
   onSessionChange,
   posterUrl,
 } from '../lib/api'
 import type { GroupInfo, MemberInfo, SessionInfo } from '../lib/api'
 import { colorForMember } from '../lib/palette'
-import { catalogCategory, mashRubrics } from '../lib/rubricCatalog'
+import { touchRecentGroup } from '../lib/activeGroup'
+import {
+  catalogCategory,
+  configuredCategoryKeys,
+  defaultRubricRows,
+  mashRubrics,
+  resolveSessionRubric,
+  splitRubricForMember,
+} from '../lib/rubricCatalog'
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { Avatar } from './avatars'
-import { CtaButton, ScoreSliderRow, fieldClassSm } from './ui'
+import { CtaButton, ExtraCategoryChips, ScoreSliderRow, fieldClassSm } from './ui'
 import { RoundScorer } from './RoundScorer'
 import { ScoreRing } from './ScoreRing'
 import { MashMath } from './MashMath'
@@ -34,6 +44,8 @@ interface SessionPanelProps {
   startRound: ReactNode
   /** "Start the next round" tapped on a revealed panel. */
   onStartNext: () => void
+  /** A re-rate round started: jump the view back to the (new) latest round. */
+  onViewLatest?: () => void
   /** Open the title's discussion on this group's thread (the debrief). */
   onDiscuss?: (tmdbId: number, mediaType: 'movie' | 'tv', seed: string) => void
   /** Tap the reveal's poster/title to open the title page. */
@@ -74,6 +86,7 @@ export function SessionPanel({
   viewSessionId = null,
   startRound,
   onStartNext,
+  onViewLatest,
   onDiscuss,
   onOpenTitle,
 }: SessionPanelProps) {
@@ -93,6 +106,10 @@ export function SessionPanel({
   const [backfillValues, setBackfillValues] = useState<Record<string, number>>({})
   const [backfillBusy, setBackfillBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  // ---- re-rate: a fresh blind round on the same title ----
+  const [rerateBusy, setRerateBusy] = useState(false)
+  const [rerateError, setRerateError] = useState<string | null>(null)
 
   // Reset per-session state the moment the session changes (a new round can
   // replace the latest session without remounting this component). Render-time
@@ -155,6 +172,48 @@ export function SessionPanel({
     }
   }
 
+  // Locked scores never change; a changed mind gets a fresh blind round on the
+  // same title. Snapshots the group's CURRENT rubric (rules may have evolved
+  // since the first night) and the old reveal stays in the log untouched.
+  async function handleRerate(s: SessionInfo) {
+    setRerateBusy(true)
+    setRerateError(null)
+    try {
+      const latest = await fetchLatestSession(group.id)
+      if (latest?.state === 'blind') {
+        setRerateError('Finish the current blind round first.')
+        return
+      }
+      const genreIds =
+        s.titleTmdbId !== null
+          ? ((await fetchTitleDetail(s.titleTmdbId, s.mediaType).catch(() => null))
+              ?.genreIds ?? [])
+          : []
+      const mashed = mashRubrics(memberRubrics)
+      const rows = mashed.length > 0 ? mashed : defaultRubricRows()
+      const rubric = resolveSessionRubric(rows, genreIds, configuredCategoryKeys(memberRubrics))
+      await createSession(
+        group.id,
+        userId,
+        {
+          name: s.titleName,
+          year: s.titleYear,
+          mediaType: s.mediaType,
+          tmdbId: s.titleTmdbId,
+          posterPath: s.posterPath,
+        },
+        rubric,
+      )
+      touchRecentGroup(group.id)
+      if (!viewSessionId) await load()
+      onViewLatest?.()
+    } catch (err) {
+      setRerateError(err instanceof Error ? err.message : 'Could not start the round')
+    } finally {
+      setRerateBusy(false)
+    }
+  }
+
   useEffect(() => {
     void load()
     const unsubscribe = onSessionChange(group.id, () => void load())
@@ -204,10 +263,27 @@ export function SessionPanel({
   // A draft the viewer saved blind but never locked: seed the sliders with it
   // so those scores aren't silently replaced by flat 5s.
   const myDraft = scorecards.find((s) => s.memberId === userId && !s.locked)
+  // Late scoring follows the same split as blind scoring: your own
+  // categories are the card; the rest are opt-in extras.
+  const myLateRows = memberRubrics.find((m) => m.userId === userId)?.rows ?? null
+  const toggleLateExtra = (key: string) =>
+    setLateScores((prev) => {
+      if (prev[key] !== undefined) {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      }
+      return { ...prev, [key]: 5 }
+    })
   if (locked.length === 0) {
     // Revealed, but SEALED for you: RLS hides everyone's scores until your
     // own card is locked, so scoring here is still genuinely blind.
     const sealedRubric = session.rubric ?? []
+    const sealedSplit = splitRubricForMember(sealedRubric, myLateRows)
+    const sealedEntries = [
+      ...sealedSplit.core,
+      ...sealedSplit.extras.filter((e) => lateScores[e.key] !== undefined),
+    ]
     return (
       <section className="mp-rise mp-card rounded-[26px] p-6">
         <div className="flex items-center justify-between gap-2">
@@ -233,7 +309,7 @@ export function SessionPanel({
         {lateOpen ? (
           <>
             <div className="mt-2">
-              {sealedRubric.map((entry) => (
+              {sealedEntries.map((entry) => (
                 <ScoreSliderRow
                   key={entry.key}
                   className="border-t border-line/40 py-3"
@@ -244,6 +320,13 @@ export function SessionPanel({
                 />
               ))}
             </div>
+            <ExtraCategoryChips
+              extras={sealedSplit.extras}
+              isOn={(key) => lateScores[key] !== undefined}
+              disabled={lateBusy}
+              onToggle={toggleLateExtra}
+              className="mt-3"
+            />
             <input
               type="text"
               maxLength={140}
@@ -255,7 +338,7 @@ export function SessionPanel({
             />
             <CtaButton
               tone="teal"
-              disabled={lateBusy}
+              disabled={lateBusy || Object.keys(lateScores).length === 0}
               onClick={() => void handleLateScore(session.id)}
               className="mt-2 w-full py-3 text-[13px]"
             >
@@ -267,10 +350,16 @@ export function SessionPanel({
             onClick={() => {
               setLateScores(
                 Object.fromEntries(
-                  sealedRubric.map((e) => [
-                    e.key,
-                    typeof myDraft?.scores[e.key] === 'number' ? myDraft.scores[e.key] : 5,
-                  ]),
+                  [
+                    // your categories at the midpoint; drafted extras ride along
+                    ...sealedSplit.core.map((e) => [
+                      e.key,
+                      typeof myDraft?.scores[e.key] === 'number' ? myDraft.scores[e.key] : 5,
+                    ]),
+                    ...sealedSplit.extras
+                      .filter((e) => typeof myDraft?.scores[e.key] === 'number')
+                      .map((e) => [e.key, myDraft!.scores[e.key]]),
+                  ],
                 ),
               )
               setLateLine(myDraft?.oneLiner ?? '')
@@ -295,6 +384,7 @@ export function SessionPanel({
   const weights = weightsFromRubric(rubric)
   const categoryKeys = rubric.map((e) => e.key)
   const labelFor = (key: string) => rubric.find((e) => e.key === key)?.label ?? key
+  const lateSplit = splitRubricForMember(rubric, myLateRows)
 
   // The reveal stays open: a member with no locked card can add scores, and a
   // locked member fills in categories the rubric gained since (snapshot keys
@@ -306,9 +396,15 @@ export function SessionPanel({
     effectiveNow.find((r) => r.key === key)?.label ??
     catalogCategory(key)?.label ??
     key
+  // Only nag about categories YOU carry: a deliberately skipped extra is a
+  // choice, not a gap. (No personal rubric yet -> fall back to everything.)
+  const myKeys = new Set(
+    (myLateRows ?? []).filter((r) => r.enabled).map((r) => r.key),
+  )
   const missingKeys = myCard
     ? [...new Set([...categoryKeys, ...effectiveNow.map((r) => r.key)])].filter(
-        (k) => typeof myCard.scores[k] !== 'number',
+        (k) =>
+          (myKeys.size === 0 || myKeys.has(k)) && typeof myCard.scores[k] !== 'number',
       )
     : []
 
@@ -327,20 +423,23 @@ export function SessionPanel({
     return line ? [{ memberId: m.memberId, line }] : []
   })
 
-  const categories = rubric.map((entry) => {
-    const stat = categoryStat(entry.key, locked)
-    return {
-      id: entry.key,
-      label: entry.label,
-      weightPct: weightTotal > 0 ? Math.round((entry.weight / weightTotal) * 100) : 0,
-      mean: stat?.mean ?? 0,
-      min: stat?.min ?? 0,
-      max: stat?.max ?? 0,
-      dots: locked
-        .filter((s) => typeof s.scores[entry.key] === 'number')
-        .map((s) => ({ memberId: s.memberId, score: s.scores[entry.key] })),
-    }
-  })
+  const categories = rubric
+    .map((entry) => {
+      const stat = categoryStat(entry.key, locked)
+      return {
+        id: entry.key,
+        label: entry.label,
+        weightPct: weightTotal > 0 ? Math.round((entry.weight / weightTotal) * 100) : 0,
+        mean: stat?.mean ?? 0,
+        min: stat?.min ?? 0,
+        max: stat?.max ?? 0,
+        dots: locked
+          .filter((s) => typeof s.scores[entry.key] === 'number')
+          .map((s) => ({ memberId: s.memberId, score: s.scores[entry.key] })),
+      }
+    })
+    // an extra everybody skipped has no scores to plot
+    .filter((c) => c.dots.length > 0)
 
   const aligned = result.mostUnited
   const clash = result.mostContested
@@ -464,7 +563,10 @@ export function SessionPanel({
           {lateOpen ? (
             <>
               <div className="mt-2">
-                {rubric.map((entry) => (
+                {[
+                  ...lateSplit.core,
+                  ...lateSplit.extras.filter((e) => lateScores[e.key] !== undefined),
+                ].map((entry) => (
                   <ScoreSliderRow
                     key={entry.key}
                     className="border-t border-line/40 py-3"
@@ -475,6 +577,13 @@ export function SessionPanel({
                   />
                 ))}
               </div>
+              <ExtraCategoryChips
+                extras={lateSplit.extras}
+                isOn={(key) => lateScores[key] !== undefined}
+                disabled={lateBusy}
+                onToggle={toggleLateExtra}
+                className="mt-3"
+              />
               <input
                 type="text"
                 maxLength={140}
@@ -486,7 +595,7 @@ export function SessionPanel({
               />
               <CtaButton
                 tone="teal"
-                disabled={lateBusy}
+                disabled={lateBusy || Object.keys(lateScores).length === 0}
                 onClick={() => void handleLateScore(session.id)}
                 className="mt-2 w-full py-2.5 text-[13px]"
               >
@@ -497,12 +606,15 @@ export function SessionPanel({
             <CtaButton
               onClick={() => {
                 setLateScores(
-                  Object.fromEntries(
-                    rubric.map((e) => [
+                  Object.fromEntries([
+                    ...lateSplit.core.map((e) => [
                       e.key,
                       typeof myDraft?.scores[e.key] === 'number' ? myDraft.scores[e.key] : 5,
                     ]),
-                  ),
+                    ...lateSplit.extras
+                      .filter((e) => typeof myDraft?.scores[e.key] === 'number')
+                      .map((e) => [e.key, myDraft!.scores[e.key]]),
+                  ]),
                 )
                 setLateLine(myDraft?.oneLiner ?? '')
                 setLateOpen(true)
@@ -573,14 +685,35 @@ export function SessionPanel({
             The Reveal
           </p>
           <h3 className="mt-2.5 font-display text-[27px] font-medium leading-[1.22]">
-            United on{' '}
             {/* Bricolage carries no italic (faux-oblique only); the stress
                 comes from color + a true weight step instead. */}
-            <span className="font-semibold text-teal">{labelFor(aligned.category)}</span>. Split
-            over <span className="font-semibold text-coral">{labelFor(clash.category)}</span>.
+            {aligned.category === clash.category ? (
+              // One category winning BOTH crowns means every shared category
+              // tied on range (common in two-member groups): naming a united
+              // and a split category would be a lie, so name the sweep.
+              clash.range === 0 ? (
+                <>
+                  Same wavelength, <span className="font-semibold text-teal">every category</span>.
+                </>
+              ) : (
+                <>
+                  Split by {clash.range},{' '}
+                  <span className="font-semibold text-coral">every category</span>.
+                </>
+              )
+            ) : (
+              <>
+                United on{' '}
+                <span className="font-semibold text-teal">{labelFor(aligned.category)}</span>.
+                Split over{' '}
+                <span className="font-semibold text-coral">{labelFor(clash.category)}</span>.
+              </>
+            )}
           </h3>
           <p className="mt-2 font-mono text-[11px] text-muted">
-            agreement range {aligned.range}, clash range {clash.range}
+            {aligned.category === clash.category
+              ? `every category, range ${clash.range}`
+              : `agreement range ${aligned.range}, clash range ${clash.range}`}
           </p>
           {/* the debrief: the reveal is the trigger, the thread is the room */}
           {onDiscuss && session.titleTmdbId !== null && (
@@ -741,13 +874,32 @@ export function SessionPanel({
 
       {/* ---- Next round ---- */}
       <section className="mp-rise mt-6 text-center" style={{ animationDelay: '220ms' }}>
-        <button
-          type="button"
-          onClick={onStartNext}
-          className="rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text"
-        >
-          Start the next round →
-        </button>
+        <div className="flex items-center justify-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => void handleRerate(session)}
+            disabled={rerateBusy}
+            className="rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text disabled:opacity-50"
+          >
+            {rerateBusy ? 'Starting…' : 'Rate it again'}
+          </button>
+          <button
+            type="button"
+            onClick={onStartNext}
+            className="rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+          >
+            Start the next round →
+          </button>
+        </div>
+        {rerateError ? (
+          <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
+            {rerateError}
+          </p>
+        ) : (
+          <p className="mt-2 font-mono text-[10px] text-muted">
+            Rate it again runs a fresh blind round. This night stays in the log.
+          </p>
+        )}
       </section>
     </>
   )

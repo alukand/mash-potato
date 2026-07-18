@@ -117,6 +117,31 @@ describe('category analysis', () => {
     expect(categoryOutlier('story', [])).toBeNull()
     expect(mostContestedCategory(sampleCategories, [])).toBeNull()
   })
+
+  it('counts raters per category', () => {
+    const cards = [
+      card('a', { story: 8, humor: 9 }),
+      card('b', { story: 6 }),
+    ]
+    expect(categoryStat('story', cards)?.raters).toBe(2)
+    expect(categoryStat('humor', cards)?.raters).toBe(1)
+  })
+
+  it('never headlines a category only one member rated', () => {
+    // humor: one rater, range 0 — would win "united" without the floor.
+    // story: both raters, range 2.
+    const cards = [
+      card('a', { story: 8, humor: 9 }),
+      card('b', { story: 6 }),
+    ]
+    const cats = ['story', 'humor']
+    expect(mostUnitedCategory(cats, cards)?.category).toBe('story')
+    expect(mostContestedCategory(cats, cards)?.category).toBe('story')
+    // Nobody shares a category: no agreement or clash to headline at all.
+    const disjoint = [card('a', { story: 8 }), card('b', { humor: 6 })]
+    expect(mostUnitedCategory(cats, disjoint)).toBeNull()
+    expect(mostContestedCategory(cats, disjoint)).toBeNull()
+  })
 })
 
 describe('dynamic categories', () => {

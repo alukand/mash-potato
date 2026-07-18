@@ -64,18 +64,25 @@ trigger internals → no grant at all). Anon executes nothing. The twin's
 
 - `src/lib/scoring.ts` — ALL scoring math, pure, unit-tested. Categories are
   DYNAMIC (string keys); category-iterating functions take the session's
-  ordered category list.
+  ordered category list. Partial-tolerant BY DESIGN: a key absent from a
+  member's card drops its weight from THEIR denominator; `CategoryStat.
+  raters` counts who rated it, and the united/contested headline needs ≥2
+  raters (one voice can't agree or clash).
 - `src/lib/rubricCatalog.ts` — the category catalog (base/optional/genre),
   DEFAULT_WEIGHTS, `mashRubrics` (per-member rubrics → effective group rubric;
-  absent/disabled counts as 0), and `resolveSessionRubric[Tagged]` (effective
+  absent/disabled counts as 0), `resolveSessionRubric[Tagged]` (effective
   rubric ∪ TMDB-genre add-ons; pass `configuredCategoryKeys(raw rubrics)` so
-  a category the whole group disabled stays out). Animated titles (genre 16)
+  a category the whole group disabled stays out), and `splitRubricForMember`
+  (session snapshot → my core vs extras from my member-rubric rows; no rows
+  or no overlap → everything core). Animated titles (genre 16)
   relabel `cinematography` → Animation (same weight) and `acting` → Voice
   Acting at 0.85× (keys unchanged for history coherence). PRODUCT LAW
-  (researched 2026-07-12, see
+  (researched 2026-07-12, per-member since 2026-07-18, see
   DESIGN.md "Rubric cadence"): weights never change per movie — per-round
-  flexibility is only the binary genre add-on opt-out in `RubricReceipt` at
-  session creation.
+  flexibility is PER MEMBER at scoring time: genre extras are opt-in chips
+  on each scorer's own card (`ExtraCategoryChips` in ui.tsx; skipped =
+  absent, never 0), the full resolved rubric always ships in the snapshot,
+  and `RubricReceipt` is a pure read-only receipt.
 - `src/lib/mapping.ts` — jsonb `scores` / `rubric` snapshot validators.
 - `src/lib/api.ts` — every Supabase call; screens never import the client.
   Member ratings live in `member_scores.scores` (jsonb map) plus an optional
@@ -157,7 +164,14 @@ trigger internals → no grant at all). Anon executes nothing. The twin's
   `viewSessionId` prop shows ANY past night — GroupLog rows set it, so
   sealed/late scoring reaches every old reveal, with an "earlier night"
   banner + Back to the latest; the dot plot is colored per member with a
-  name legend, and the reveal hero taps through to TitleDetail) →
+  name legend, and the reveal hero taps through to TitleDetail; the
+  revealed footer pairs "Rate it again" with "Start the next round" —
+  re-rating is a FRESH blind round on the same title [any member, current
+  rubric, one-blind-round guard, old night stays in the log; DESIGN.md
+  "Re-rate rounds"], the LATEST reveal is the group's current verdict
+  [TitleDetail marks older nights "an earlier round", Combined counts
+  latest-per-group], and GroupInviteSheet's CTA becomes "Rate it again
+  with X" via `hasGroupRatedTitle`) →
   components/StartRound.tsx (dual search w/ All/Films/Shows chips + manual
   type pair + GroupInviteSheet) opened for next rounds → log → recs →
   components/GroupPoll.tsx ("What's next?" votes: owner opens 2-5 options

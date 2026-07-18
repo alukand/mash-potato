@@ -503,7 +503,7 @@ export function TitleDetailScreen({
                 <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5Z" />
               </svg>
               {myScores
-                ? `Solo ${formatScore(memberWeightedScore(myScores, DEFAULT_WEIGHTS))}`
+                ? `Solo ${formatScore(memberWeightedScore(myScores, DEFAULT_WEIGHTS))} · Edit`
                 : 'Rate it solo'}
             </button>
             <button
@@ -890,10 +890,18 @@ export function TitleDetailScreen({
           {history.length > 0 ? (
             <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
               {(() => {
-                // Combined verdict: the mean of every group Mashed you can see
-                // (sealed rounds stay out until you score them). Only worth a
-                // row once two or more groups have weighed in.
+                // Combined verdict: the mean of the LATEST Mashed per group you
+                // can see (re-rated nights count once — history is newest-first,
+                // so the first entry per group is its current verdict; sealed
+                // rounds stay out until you score them). Only worth a row once
+                // two or more groups have weighed in.
+                const seen = new Set<string>()
                 const visible = history
+                  .filter((entry) => {
+                    if (seen.has(entry.groupId)) return false
+                    seen.add(entry.groupId)
+                    return true
+                  })
                   .map((entry) => mashedScore(entry.scorecards, weightsFromRubric(entry.rubric)))
                   .filter((m): m is number => m !== null)
                 if (visible.length < 2) return null
@@ -903,7 +911,7 @@ export function TitleDetailScreen({
                     <div className="min-w-0">
                       <p className="truncate text-[14px] font-semibold">All your groups</p>
                       <p className="font-mono text-[10px] text-muted">
-                        {visible.length} verdicts combined
+                        {visible.length} groups combined
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
@@ -917,14 +925,20 @@ export function TitleDetailScreen({
                   </div>
                 )
               })()}
-              {history.map((entry) => {
+              {history.map((entry, i) => {
                 const mashed = mashedScore(entry.scorecards, weightsFromRubric(entry.rubric))
+                // A newer reveal from the same group above this one means the
+                // group re-rated: this row is history, not the current verdict.
+                const rerated = history
+                  .slice(0, i)
+                  .some((h) => h.groupId === entry.groupId)
                 return (
                   <div key={entry.sessionId} className="flex items-center justify-between px-5 py-3.5">
                     <div className="min-w-0">
                       <p className="truncate text-[14px] font-semibold">{entry.groupName}</p>
                       <p className="font-mono text-[10px] text-muted">
                         {formatRevealed(entry.revealedAt)}
+                        {rerated ? ' · an earlier round' : ''}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
