@@ -291,8 +291,19 @@ the twin's 98 file assert the local posture.
   Codemagic `ios-testflight` workflow builds + uploads (see `codemagic.yaml`
   + `docs/TESTFLIGHT.md`). App record Apple ID 6788610092.
 - Hosted Supabase project ref: `lvmcwvhlfijvegxbqipc` (MCP config in
-  `.mcp.json`) — all migrations applied, `TMDB_API_KEY` set as a dashboard
-  secret, `tmdb-search` deployed (ops: search/browse/detail/genres/person/
+  `.mcp.json`) — all migrations applied (through 20260726150000
+  cancel_session; messaging + cancel deployed 2026-07-26 via
+  `npx supabase db push --linked`, which works here even though
+  `supabase login` needs a TTY. Note db push ends with a pg-delta
+  "failed to cache migrations catalog" cert error and exit 255 AFTER the
+  migrations land — verify with list_migrations, do not re-run).
+  Post-deploy probe passed: all 29 new/re-issued RPCs answer 401
+  (`42501 permission denied`) to the anon key, with `GET /rest/v1/titles`
+  → 200 and a nonexistent RPC → 404 proving the probe distinguishes
+  outcomes. Advisors: 0 ERROR; the 54
+  `authenticated_security_definer_function_executable` WARNs are this
+  app's architecture (writes only via definer RPCs), not findings.
+  `TMDB_API_KEY` set as a dashboard secret, `tmdb-search` deployed (ops: search/browse/detail/genres/person/
   discover/recommendations/providers — providers = where-to-watch, JustWatch
   data, attribution shown in the UI; v12 browse feeds also top_rated/
   now_playing/upcoming, discover filters also yearFrom/To, sortBy,
