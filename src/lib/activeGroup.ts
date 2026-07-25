@@ -80,6 +80,15 @@ export function storeToured(): void {
   }
 }
 
+/** Forget the tour so it can run again ("Replay the walkthrough" in Profile). */
+export function clearToured(): void {
+  try {
+    localStorage.removeItem(TOURED_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 // Recently engaged groups (switched to, invited to a round). The invite
 // picker floats these to the top, most recent first.
 

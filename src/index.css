@@ -257,12 +257,19 @@ body::after {
   animation: mp-tour-pulse 1.6s ease-out infinite;
 }
 
-/* Locked requirement: honor reduced-motion everywhere. */
+/* Locked requirement: honor reduced-motion everywhere.
+   animation-DELAY is killed too, and that line is load-bearing: the entrance
+   animations use fill-mode `backwards` (see the law above), which holds the
+   HIDDEN from-state for the whole delay no matter how short the duration is.
+   With ~53 staggered animationDelay values across the app, leaving delay
+   alone meant reduced-motion users stared at blank space and then a snap —
+   MashMath's last line was invisible for 2-3 seconds. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;

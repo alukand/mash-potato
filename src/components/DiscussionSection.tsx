@@ -80,6 +80,8 @@ export function DiscussionSection({
   const [replyTo, setReplyTo] = useState<string | null>(null)
   const [replyBody, setReplyBody] = useState('')
   const [busy, setBusy] = useState(false)
+  /** Comment id whose reactions are mid-flight (disables that row's chips). */
+  const [reactBusyId, setReactBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [termsOpen, setTermsOpen] = useState(false)
   const [menuFor, setMenuFor] = useState<string | null>(null)
@@ -195,14 +197,20 @@ export function DiscussionSection({
     }
   }
 
+  // Guarded: this awaits a write AND a full reload, so without a busy flag a
+  // tap looked like nothing happened and a second tap silently undid it.
   async function toggleReaction(comment: DiscussionComment, kind: ReactionKind) {
+    if (reactBusyId) return
     setError(null)
+    setReactBusyId(comment.id)
     try {
       if (comment.myReaction === kind) await clearReaction(comment.id, userId)
       else await setReaction(comment.id, userId, kind)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not react')
+    } finally {
+      setReactBusyId(null)
     }
   }
 
@@ -293,10 +301,11 @@ export function DiscussionSection({
                       onClick={() => void toggleReaction(c, r.kind)}
                       aria-label={r.label}
                       aria-pressed={mine}
-                      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] transition-colors ${
+                      disabled={reactBusyId === c.id}
+                      className={`flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[12px] transition-colors disabled:opacity-60 ${
                         mine
                           ? 'border-teal/50 bg-teal/10'
-                          : 'border-line bg-surface-2 hover:border-teal/40'
+                          : 'border-line bg-surface-2 hover:border-teal/40 active:border-teal/40'
                       }`}
                     >
                       <span aria-hidden>{r.glyph}</span>
@@ -313,7 +322,7 @@ export function DiscussionSection({
                       setReplyTo((prev) => (prev === c.id ? null : c.id))
                       setReplyBody('')
                     }}
-                    className="ml-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-text"
+                    className="ml-1 px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-text active:text-text"
                   >
                     Reply
                   </button>
@@ -325,7 +334,7 @@ export function DiscussionSection({
                     setConfirmAction(null)
                   }}
                   aria-label="More"
-                  className="ml-auto grid h-6 w-6 place-items-center rounded-full text-muted transition-colors hover:text-text"
+                  className="-my-2 ml-auto grid h-10 w-10 place-items-center rounded-full text-muted transition-colors hover:text-text active:text-text"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                     <circle cx="5" cy="12" r="1.6" />

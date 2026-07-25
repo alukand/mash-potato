@@ -256,7 +256,6 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
   // when the type filter is open — ids are shared where genres overlap).
   useEffect(() => {
     let cancelled = false
-    setSelectedGenreIds([])
     const want: ('movie' | 'tv')[] = typeFilter === 'both' ? ['movie', 'tv'] : [typeFilter]
     Promise.all(want.map((m) => fetchGenres(m).catch(() => [] as TmdbGenre[])))
       .then((lists) => {
@@ -265,6 +264,10 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
         for (const list of lists) for (const genre of list) byId.set(genre.id, byId.get(genre.id) ?? genre)
         byId.set(ANIME_CHIP_ID, { id: ANIME_CHIP_ID, name: 'Anime' })
         setGenres([...byId.values()].sort((a, b) => a.name.localeCompare(b.name)))
+        // Keep the picks that still exist in the new catalog instead of
+        // clearing them: switching All -> Films used to silently discard
+        // every genre chip the user had selected.
+        setSelectedGenreIds((prev) => prev.filter((id) => byId.has(id)))
       })
       .catch(() => !cancelled && setGenres([]))
     return () => {

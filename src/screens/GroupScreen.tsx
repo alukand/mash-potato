@@ -40,7 +40,16 @@ import { credFlair } from '../lib/cred'
 import { Avatar } from '../components/avatars'
 import type { MemberRubric, TasteMode } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
-import { CtaButton, GroupMark, TasteModePicker, fieldClass, fieldClassSm } from '../components/ui'
+import {
+  CtaButton,
+  GearIcon,
+  GroupMark,
+  HeaderAction,
+  SettingsButton,
+  TasteModePicker,
+  fieldClass,
+  fieldClassSm,
+} from '../components/ui'
 import { CategoryLegend } from '../components/CategoryLegend'
 import { GroupLog } from '../components/GroupLog'
 import { GroupPoll } from '../components/GroupPoll'
@@ -133,6 +142,11 @@ export function GroupScreen({
     items: TmdbResult[]
   } | null>(null)
   const [editOpen, setEditOpen] = useState(false)
+  // Two-step guards for the edits that used to fire instantly.
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmDeletePreset, setConfirmDeletePreset] = useState<string | null>(null)
+  /** Preset id awaiting "yes, replace my unsaved sliders". */
+  const [confirmApplyPreset, setConfirmApplyPreset] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [justSaved, setJustSaved] = useState(false)
@@ -414,6 +428,11 @@ export function GroupScreen({
   const effective =
     rows === null ? [] : mashRubrics([...others, { userId, rows }])
   const effectiveMax = Math.max(1, ...effective.map((r) => r.weight))
+  // Your own weight per category, for the "you 30 → group 18" readout.
+  const myWeights =
+    rows === null
+      ? null
+      : new Map(rows.filter((r) => r.enabled).map((r) => [r.key, r.weight]))
 
   function updateRow(key: string, patch: Partial<GroupRubricRow>) {
     setRows((prev) =>
@@ -474,9 +493,12 @@ export function GroupScreen({
   }
 
   return (
-    <>
+    // A flex column purely so the settings cluster can sit visually right
+    // under the switcher (order) while staying late in the DOM. The control
+    // is in the header; opening it used to jump you ~1000px down the page.
+    <div className="flex flex-col">
       {/* ---- your groups: pick which one you're looking at ---- */}
-      <div className="mp-rise -mx-5 mb-5 flex items-center gap-2 px-5">
+      <div className="mp-rise -mx-5 mb-5 flex order-[-2] items-center gap-2 px-5">
         <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {groups.map((g) => {
             const active = g.id === group.id
@@ -508,24 +530,15 @@ export function GroupScreen({
             New
           </button>
         </div>
-        {/* pinned: this group's settings (rubric, members, rename, leave) */}
-        <button
-          type="button"
-          onClick={toggleSettings}
-          aria-label={`${group.name} settings`}
-          aria-expanded={settingsOpen}
-          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors ${
-            settingsOpen
-              ? 'border-teal/50 bg-teal/10 text-teal'
-              : 'border-line text-muted hover:border-teal/50 hover:text-text'
-          }`}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <circle cx="12" cy="12" r="3.2" />
-            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z" />
-          </svg>
-        </button>
       </div>
+
+      {/* The settings control lives in the app header's top-right slot, the
+          same place on every screen. It used to be an unlabelled cog pinned
+          to the end of the scrolling chip strip, where it read as one more
+          group chip. */}
+      <HeaderAction>
+        <SettingsButton open={settingsOpen} onClick={toggleSettings} />
+      </HeaderAction>
 
       {/* ---- viewing an earlier night from the log ---- */}
       {viewSessionId && (
@@ -669,7 +682,7 @@ export function GroupScreen({
 
       {/* ---- the settings cluster: rubric + members + manage (gear-gated) ---- */}
       {settingsOpen && (
-      <div ref={settingsRef} className="scroll-mt-4">
+      <div ref={settingsRef} className="order-[-1] mb-7 scroll-mt-4">
       {/* ---- How this group scores (the mode) ---- */}
       <section className="mp-rise" style={{ animationDelay: '100ms' }}>
         <div className="mb-3 flex items-baseline justify-between px-1">
@@ -685,7 +698,19 @@ export function GroupScreen({
             {TASTE_MODES[group.tasteMode].blurb}{' '}
             {isCasual
               ? 'Everyone scores the same three categories, so there is nothing to set up.'
-              : 'Everyone tunes their own rubric and the group scores with the mash.'}
+              : 'Everyone tunes their own weights and the group scores with the mash.'}
+          </p>
+          {/* The door out of the simple mode. Casual groups hide the editor
+              entirely, so without this there is no sign the depth exists. */}
+          <p className="mt-2 text-[13px] leading-snug text-muted">
+            {isCasual
+              ? `${TASTE_MODES.buff.plural} score the craft rubric instead: seven categories, each with its own weight.`
+              : `${TASTE_MODES.casual.plural} score three quick calls instead, with no weights to tune.`}{' '}
+            {isOwner
+              ? 'You can switch this group over any time.'
+              : `Ask the group owner if you'd rather score as ${
+                  isCasual ? TASTE_MODES.buff.plural : TASTE_MODES.casual.plural
+                }.`}
           </p>
           {isOwner &&
             (modeDraft === null ? (
@@ -743,17 +768,33 @@ export function GroupScreen({
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
             Group rubric
           </p>
-          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">Mashed</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">
+            {editOpen && dirty ? 'Preview' : 'Mashed'}
+          </p>
         </div>
+        {editOpen && dirty && (
+          // This card silently re-mashes your unsaved dragging. Say so, or the
+          // numbers look like they changed for the whole group already.
+          <p className="mb-2 px-2 text-[12px] leading-snug text-gold">
+            Previewing your unsaved changes. Nobody else sees this until you save.
+          </p>
+        )}
         <div className="mp-card rounded-[26px] px-5 py-1">
           {effective.length === 0 ? (
             <p className="py-4 text-[13px] text-muted">Loading…</p>
           ) : (
             effective.map((row, i) => (
               <div key={row.key} className={`py-3 ${i > 0 ? 'border-t border-line/50' : ''}`}>
-                <div className="flex items-baseline justify-between">
-                  <p className="text-[13px] font-medium">{row.label}</p>
-                  <span className="tabular font-mono text-[13px] font-semibold text-teal">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="min-w-0 truncate text-[13px] font-medium">{row.label}</p>
+                  <span className="shrink-0 tabular font-mono text-[13px] font-semibold text-teal">
+                    {/* The answer to "why is my favourite category so small?" */}
+                    {!isCasual && myWeights !== null && (
+                      <span className="font-normal text-muted">
+                        you {myWeights.get(row.key) ?? 0}{' '}
+                        <span aria-label="becomes">→</span>{' '}
+                      </span>
+                    )}
                     {row.weight}
                   </span>
                 </div>
@@ -773,8 +814,14 @@ export function GroupScreen({
         <p className="mt-3 px-2 text-[13px] leading-snug text-muted">
           {isCasual
             ? 'Every member scores these three, and a genre night adds its own category on top.'
-            : `The average of ${others.length + 1} rubric${others.length === 0 ? '' : 's'}: a category someone doesn't carry counts as 0 for them, so lone picks weigh less.`}
+            : `Every category is divided by all ${others.length + 1} member${others.length === 0 ? '' : 's'}, whether or not they carry it, so a category only you picked lands about ${others.length + 1}× smaller than you set it.`}
         </p>
+        {!isCasual && (
+          // The single most common misread: these look like percentages.
+          <p className="mt-1.5 px-2 text-[13px] leading-snug text-muted">
+            Only the ratios matter. Sliding everything up changes nothing.
+          </p>
+        )}
         <CategoryLegend entries={effective} className="mt-3 px-2" />
         {!isCasual && (
           <button
@@ -783,7 +830,7 @@ export function GroupScreen({
             aria-expanded={editOpen}
             className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
           >
-            {editOpen ? 'Close the editor' : 'Edit your rubric'}
+            {editOpen ? 'Done editing' : 'Edit your weights'}
             {!editOpen && dirty && <span className="text-gold">unsaved</span>}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 transition-transform ${editOpen ? 'rotate-180' : ''}`} aria-hidden>
               <path d="m6 9 6 6 6-6" />
@@ -820,11 +867,15 @@ export function GroupScreen({
                   <div className="flex items-center justify-between gap-3">
                     <p className="min-w-0 truncate text-[13px] font-medium">{row.label}</p>
                     <div className="flex shrink-0 items-center gap-2.5">
-                      {row.enabled && (
-                        <span className="tabular font-mono text-[13px] font-semibold text-teal">
-                          {row.weight}
-                        </span>
-                      )}
+                      {/* Shown even when off, so turning a row back on doesn't
+                          feel like the number was thrown away. */}
+                      <span
+                        className={`tabular font-mono text-[13px] font-semibold ${
+                          row.enabled ? 'text-teal' : 'text-muted'
+                        }`}
+                      >
+                        {row.weight}
+                      </span>
                       <button
                         type="button"
                         role="switch"
@@ -845,23 +896,31 @@ export function GroupScreen({
                     </div>
                   </div>
                   {row.enabled && (
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={row.weight}
-                      disabled={busy}
-                      aria-label={`${row.label} weight`}
-                      onChange={(e) => updateRow(row.key, { weight: Number(e.target.value) })}
-                      className="mp-slider mt-1"
-                      style={
-                        {
-                          '--thumb': 'var(--color-teal)',
-                          '--fill': row.weight,
-                        } as CSSProperties
-                      }
-                    />
+                    <>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={row.weight}
+                        disabled={busy}
+                        aria-label={`${row.label} weight`}
+                        onChange={(e) => updateRow(row.key, { weight: Number(e.target.value) })}
+                        className="mp-slider mt-1"
+                        style={
+                          {
+                            '--thumb': 'var(--color-teal)',
+                            '--fill': row.weight,
+                          } as CSSProperties
+                        }
+                      />
+                      {/* End caps: the rail had no scale at all, which is part
+                          of why the numbers read as percentages. */}
+                      <div className="mt-0.5 flex justify-between font-mono text-[9px] text-muted/70">
+                        <span>barely counts</span>
+                        <span>counts most</span>
+                      </div>
+                    </>
                   )}
                 </div>
               ))
@@ -873,20 +932,39 @@ export function GroupScreen({
             <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
               Add categories
             </p>
-            <div className="flex flex-wrap gap-1.5">
+            {/* Rows, not chips: the definition used to be a title= tooltip,
+                which a touch device never shows. This is the one place a
+                category most needs explaining. */}
+            <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
               {addable.map((c) => (
                 <button
                   key={c.key}
                   type="button"
                   disabled={busy}
                   onClick={() => addCategory(c.key)}
-                  title={c.blurb}
-                  className="flex items-center gap-1 rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[11px] text-muted transition-colors hover:border-teal/50 hover:text-text"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2 disabled:opacity-50"
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                  {c.label}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline gap-1.5">
+                      <span className="truncate text-[13px] font-medium">{c.label}</span>
+                      {c.kind === 'genre' && (
+                        <span className="shrink-0 font-mono text-[9px] uppercase tracking-wide text-teal">
+                          genre night
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block text-[12px] leading-snug text-muted">
+                      {c.blurb}
+                    </span>
+                  </span>
+                  <span
+                    aria-hidden
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-line text-muted"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </span>
                 </button>
               ))}
             </div>
@@ -899,29 +977,92 @@ export function GroupScreen({
           </p>
         )}
 
-        {/* ---- apply a rubric: app default / favorite / saved presets ---- */}
+        {/* ---- start from a saved set (replaces every slider above) ---- */}
         <div className="mt-4">
           <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
-            Apply a rubric
+            Start from a saved set
+          </p>
+          <p className="mb-2 px-1 text-[12px] leading-snug text-muted">
+            Replaces every slider above. Nothing is saved until you tap Save.
           </p>
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                disabled={busy || rows === null}
-                onClick={() => setRows(defaultRubricRows())}
-                className="flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-left text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text disabled:opacity-50"
-              >
-                App default
-              </button>
+              {confirmReset ? (
+                // Was a one-tap wipe of unsaved edits; every other destructive
+                // action in this screen confirms first.
+                <div className="flex flex-1 items-center gap-1.5 rounded-xl border border-gold/40 bg-gold/5 px-3 py-1.5">
+                  <p className="min-w-0 flex-1 text-[12px] leading-snug text-muted">
+                    Replace your sliders with the app default?
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmReset(false)}
+                    className="shrink-0 rounded-full px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-text"
+                  >
+                    Keep
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRows(defaultRubricRows())
+                      setConfirmReset(false)
+                    }}
+                    className="shrink-0 rounded-full border border-gold/50 bg-gold/10 px-2.5 py-1 text-[11px] font-semibold text-gold"
+                  >
+                    Replace
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy || rows === null}
+                  onClick={() => (dirty ? setConfirmReset(true) : setRows(defaultRubricRows()))}
+                  className="flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-left text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text disabled:opacity-50"
+                >
+                  App default
+                </button>
+              )}
             </div>
-            {presets.map((p) => (
+            {presets.map((p) =>
+              confirmApplyPreset === p.id ? (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-1.5 rounded-xl border border-gold/40 bg-gold/5 px-3 py-1.5"
+                >
+                  <p className="min-w-0 flex-1 text-[12px] leading-snug text-muted">
+                    Replace your unsaved sliders with “{p.name}”?
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmApplyPreset(null)}
+                    className="shrink-0 rounded-full px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-text"
+                  >
+                    Keep
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRows(p.rows.map((r) => ({ ...r })))
+                      setConfirmApplyPreset(null)
+                    }}
+                    className="shrink-0 rounded-full border border-gold/50 bg-gold/10 px-2.5 py-1 text-[11px] font-semibold text-gold"
+                  >
+                    Replace
+                  </button>
+                </div>
+              ) : (
               <div key={p.id} className="flex items-center gap-1.5">
                 <button
                   type="button"
                   disabled={busy || presetBusy}
-                  onClick={() => setRows(p.rows.map((r) => ({ ...r })))}
-                  className="min-w-0 flex-1 truncate rounded-xl border border-line bg-surface-2 px-3 py-2 text-left text-[12px] font-semibold transition-colors hover:border-teal/50 disabled:opacity-50"
+                  // Same destructive replacement as "App default" above, so
+                  // it goes through the same dirty guard.
+                  onClick={() =>
+                    dirty
+                      ? setConfirmApplyPreset(p.id)
+                      : setRows(p.rows.map((r) => ({ ...r })))
+                  }
+                  className="min-w-0 flex-1 truncate rounded-xl border border-line bg-surface-2 px-3 py-2 text-left text-[12px] font-semibold transition-colors hover:border-teal/50 active:bg-surface disabled:opacity-50"
                 >
                   {p.name}
                 </button>
@@ -945,19 +1086,46 @@ export function GroupScreen({
                     <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5Z" />
                   </svg>
                 </button>
-                <button
-                  type="button"
-                  disabled={presetBusy}
-                  onClick={() => void handleDeletePreset(p)}
-                  aria-label={`Delete ${p.name}`}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:text-coral disabled:opacity-50"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-                    <path d="M6 6l12 12M18 6 6 18" />
-                  </svg>
-                </button>
+                {/* two-tap delete: the ✕ used to erase a preset instantly.
+                    It also needs a way OUT — every other confirm in this file
+                    pairs the destructive button with a Keep. */}
+                {confirmDeletePreset === p.id ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeletePreset(null)}
+                      className="shrink-0 rounded-full px-2 py-1.5 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-text"
+                    >
+                      Keep
+                    </button>
+                    <button
+                      type="button"
+                      disabled={presetBusy}
+                      onClick={() => {
+                        setConfirmDeletePreset(null)
+                        void handleDeletePreset(p)
+                      }}
+                      className="shrink-0 rounded-full bg-coral/90 px-2.5 py-1.5 text-[11px] font-bold text-bg disabled:opacity-50"
+                    >
+                      Delete?
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={presetBusy}
+                    onClick={() => setConfirmDeletePreset(p.id)}
+                    aria-label={`Delete ${p.name}`}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:text-coral disabled:opacity-50"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                      <path d="M6 6l12 12M18 6 6 18" />
+                    </svg>
+                  </button>
+                )}
               </div>
-            ))}
+              ),
+            )}
           </div>
 
           {showSavePreset ? (
@@ -1048,11 +1216,10 @@ export function GroupScreen({
                 : 'border-line text-muted hover:text-text'
             }`}
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <circle cx="12" cy="12" r="3.2" />
-              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z" />
-            </svg>
-            {manageOpen ? 'Done' : 'Settings'}
+            <GearIcon size={11} />
+            {/* NOT "Settings" — the header gear owns that word. This one only
+                opens rename / add / remove / leave. */}
+            {manageOpen ? 'Done' : 'Manage'}
           </button>
         </div>
         <div className="mp-card rounded-[26px] px-4">
@@ -1070,7 +1237,7 @@ export function GroupScreen({
                       type="button"
                       disabled={isYou}
                       onClick={() => !isYou && onOpenUser(m.userId)}
-                      className="group flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
+                      className="group -mx-1 flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left transition-colors active:bg-surface-2 disabled:cursor-default disabled:active:bg-transparent"
                     >
                       <Avatar
                         avatarKey={m.avatarKey}
@@ -1178,8 +1345,11 @@ export function GroupScreen({
                       <li key={u.userId}>
                         <button
                           type="button"
+                          // handleAdd only removes the row AFTER its await, so
+                          // without this a fast double tap fired two inserts.
+                          disabled={addedIds.has(u.userId)}
                           onClick={() => void handleAdd(u)}
-                          className={`group flex w-full items-center gap-3 px-3 py-2.5 text-left ${
+                          className={`group flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors active:bg-surface disabled:opacity-50 ${
                             i > 0 ? 'border-t border-line/50' : ''
                           }`}
                         >
@@ -1310,6 +1480,6 @@ export function GroupScreen({
       </section>
       </div>
       )}
-    </>
+    </div>
   )
 }

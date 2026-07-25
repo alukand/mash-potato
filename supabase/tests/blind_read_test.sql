@@ -1,10 +1,10 @@
--- Proves THE ONE RULE: a member can read others' scores only once the session
+﻿-- Proves THE ONE RULE: a member can read others' scores only once the session
 -- is 'revealed'. Run with: npx supabase test db   (needs the local stack up).
 
 create extension if not exists pgtap with schema extensions;
 
 begin;
-select plan(30);
+select plan(37);
 
 -- ---- seed as the test superuser (RLS bypassed) ----
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
@@ -225,12 +225,12 @@ select throws_ok(
 -- A second, still-blind session: late scoring keeps its hands off.
 set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
 insert into public.reveal_sessions (id, group_id, title_id, created_by)
-values ('55555555-5555-5555-5555-555555555555',
+values ('5b5b5b5b-5b5b-5b5b-5b5b-5b5b5b5b5b5b',
         '99999999-9999-9999-9999-999999999999',
         '77777777-7777-7777-7777-777777777777',
         'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
 select throws_ok(
-  $$select public.late_score_session('55555555-5555-5555-5555-555555555555',
+  $$select public.late_score_session('5b5b5b5b-5b5b-5b5b-5b5b-5b5b5b5b5b5b',
       '{"story":5}'::jsonb)$$,
   'P0001', 'late scoring is only for revealed sessions',
   'late scoring: blind sessions are untouched');
@@ -324,6 +324,67 @@ set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","
 select lives_ok(
   $$select public.reveal_session('33333333-3333-3333-3333-333333333333')$$,
   'quorum: after the invite window an unanswered member no longer holds it');
+
+-- ---- cancelling a blind round (the way out of a mistaken invite) ----------
+-- Ben (a plain member) starts one, so we can test both authorization paths.
+set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+insert into public.reveal_sessions (id, group_id, title_id, created_by, rubric)
+values ('5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c',
+        '99999999-9999-9999-9999-999999999999',
+        '77777777-7777-7777-7777-777777777777',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        '[{"key":"story","label":"Story","weight":20}]');
+insert into public.member_scores (session_id, member_id, scores, locked)
+values ('5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '{"story":7}', true);
+insert into public.session_rsvps (session_id, member_id, status)
+values ('5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'in');
+
+-- 31: a member who neither owns the group nor started it cannot cancel
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+select throws_ok(
+  $$select public.cancel_session('5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c')$$,
+  'P0001', 'only the group owner or whoever started it can call off a round',
+  'cancel: a bystander cannot call off someone else''s round');
+
+-- 32: a revealed round is history, even for the owner
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+select throws_ok(
+  $$select public.cancel_session('44444444-4444-4444-4444-444444444444')$$,
+  'P0001', 'a revealed round is part of the group history',
+  'cancel: a revealed round cannot be cancelled');
+
+-- 33: the person who started it can call it off
+set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+select lives_ok(
+  $$select public.cancel_session('5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c')$$,
+  'cancel: the member who started the round can call it off');
+
+-- 34/35: it took the scorecards and the RSVPs with it
+select is((select count(*)::int from public.member_scores
+            where session_id = '5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c'), 0,
+  'cancel: the round''s scorecards cascade away');
+select is((select count(*)::int from public.session_rsvps
+            where session_id = '5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c'), 0,
+  'cancel: the round''s RSVPs cascade away');
+
+-- 36: and the owner can cancel a round they did not start
+insert into public.reveal_sessions (id, group_id, title_id, created_by, rubric)
+values ('5a5a5a5a-5a5a-5a5a-5a5a-5a5a5a5a5a5a',
+        '99999999-9999-9999-9999-999999999999',
+        '77777777-7777-7777-7777-777777777777',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        '[{"key":"story","label":"Story","weight":20}]');
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+select lives_ok(
+  $$select public.cancel_session('5a5a5a5a-5a5a-5a5a-5a5a-5a5a5a5a5a5a')$$,
+  'cancel: the group owner can call off a round they did not start');
+
+-- 37: cancelling something that is already gone says so
+select throws_ok(
+  $$select public.cancel_session('5a5a5a5a-5a5a-5a5a-5a5a-5a5a5a5a5a5a')$$,
+  'P0001', 'that round is gone', 'cancel: a missing round reports itself');
 
 select * from finish();
 rollback;

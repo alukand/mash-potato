@@ -112,6 +112,7 @@ export function SessionPanel({
   // ---- re-rate: a fresh blind round on the same title ----
   const [rerateBusy, setRerateBusy] = useState(false)
   const [rerateError, setRerateError] = useState<string | null>(null)
+  const [confirmRerate, setConfirmRerate] = useState(false)
 
   // Reset per-session state the moment the session changes (a new round can
   // replace the latest session without remounting this component). Render-time
@@ -180,6 +181,7 @@ export function SessionPanel({
   async function handleRerate(s: SessionInfo) {
     setRerateBusy(true)
     setRerateError(null)
+    setConfirmRerate(false)
     try {
       const latest = await fetchLatestSession(group.id)
       if (latest?.state === 'blind') {
@@ -228,10 +230,25 @@ export function SessionPanel({
       : (members.find((m) => m.userId === id)?.displayName ?? 'Member')
 
   if (error) {
+    // A transient fetch failure used to permanently blank the round — the
+    // whole point of this screen — with no way to refill it.
     return (
-      <p role="alert" className="mp-rise py-6 text-center text-[13px] text-coral">
-        {error}
-      </p>
+      <div className="mp-rise py-6 text-center">
+        <p role="alert" className="text-[13px] leading-snug text-coral">
+          {error}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setError(null)
+            setSession(undefined)
+            void load()
+          }}
+          className="mt-3 rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text active:bg-surface-2"
+        >
+          Try again
+        </button>
+      </div>
     )
   }
 
@@ -458,7 +475,7 @@ export function SessionPanel({
             session.titleTmdbId !== null &&
             onOpenTitle?.(session.titleTmdbId, session.mediaType)
           }
-          className="group flex w-full items-start gap-4 text-left disabled:cursor-default"
+          className="group -mx-2 flex w-full items-start gap-4 rounded-2xl px-2 py-1 text-left transition-colors active:bg-surface-2 disabled:cursor-default disabled:active:bg-transparent"
         >
           <div
             aria-hidden
@@ -876,23 +893,55 @@ export function SessionPanel({
 
       {/* ---- Next round ---- */}
       <section className="mp-rise mt-6 text-center" style={{ animationDelay: '220ms' }}>
-        <div className="flex items-center justify-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => void handleRerate(session)}
-            disabled={rerateBusy}
-            className="rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text disabled:opacity-50"
-          >
-            {rerateBusy ? 'Starting…' : 'Rate it again'}
-          </button>
-          <button
-            type="button"
-            onClick={onStartNext}
-            className="rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text"
-          >
-            Start the next round →
-          </button>
-        </div>
+        {/* Re-rating replaces this reveal with a fresh blind card for
+            EVERYONE, so it asks first — the same operation already names its
+            cost before the CTA in GroupInviteSheet. */}
+        {confirmRerate ? (
+          <div className="mx-auto max-w-[360px] rounded-2xl border border-gold/40 bg-gold/5 p-4 text-left">
+            <p className="text-[13px] font-semibold leading-snug text-gold">
+              Score {session.titleName} again?
+            </p>
+            <p className="mt-1.5 text-[12px] leading-snug text-muted">
+              Everyone gets a fresh blind card and this reveal moves into the
+              log as an earlier round.
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmRerate(false)}
+                className="flex-1 rounded-full border border-line py-2 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRerate(session)}
+                disabled={rerateBusy}
+                className="flex-1 rounded-full border border-gold/50 bg-gold/10 py-2 text-[12px] font-semibold text-gold disabled:opacity-50"
+              >
+                {rerateBusy ? 'Starting…' : 'Start it'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setConfirmRerate(true)}
+              disabled={rerateBusy}
+              className="rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text active:bg-surface-2 disabled:opacity-50"
+            >
+              Rate it again
+            </button>
+            <button
+              type="button"
+              onClick={onStartNext}
+              className="rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text active:bg-surface-2"
+            >
+              Start the next round →
+            </button>
+          </div>
+        )}
         {rerateError ? (
           <p role="alert" className="mt-2 text-[12px] leading-snug text-coral">
             {rerateError}

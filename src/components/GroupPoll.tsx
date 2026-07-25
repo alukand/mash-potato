@@ -41,6 +41,8 @@ export function GroupPoll({ group, members, userId }: GroupPollProps) {
   const [poll, setPoll] = useState<GroupPollInfo | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** Closing a vote is final for the whole group, so it asks first. */
+  const [confirmClose, setConfirmClose] = useState(false)
 
   // ---- builder (owner) ----
   const [building, setBuilding] = useState(false)
@@ -163,6 +165,7 @@ export function GroupPoll({ group, members, userId }: GroupPollProps) {
     if (!poll) return
     setBusy(true)
     setError(null)
+    setConfirmClose(false)
     try {
       await closeGroupPoll(poll.id)
       await load()
@@ -194,6 +197,10 @@ export function GroupPoll({ group, members, userId }: GroupPollProps) {
         },
         genreIds,
       })
+    } catch (err) {
+      // Was a bare try/finally: a failed fetchTitleDetail rejected unhandled
+      // and "Start the round" silently did nothing.
+      setError(err instanceof Error ? err.message : 'Could not open the round')
     } finally {
       setBusy(false)
     }
@@ -222,7 +229,9 @@ export function GroupPoll({ group, members, userId }: GroupPollProps) {
                 type="button"
                 disabled={busy}
                 onClick={() => void handleVote(o.id)}
-                className={`flex w-full items-center gap-3 py-3 text-left ${
+                // voting is this section's whole point and had NO press
+                // feedback at all: no hover, no active, nothing
+                className={`group -mx-2 flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left transition-colors active:bg-surface-2 ${
                   i > 0 ? 'border-t border-line/50' : ''
                 }`}
               >
@@ -281,16 +290,41 @@ export function GroupPoll({ group, members, userId }: GroupPollProps) {
             <p className="text-[12px] leading-snug text-muted">
               Tap to vote or switch. {totalVotes}/{members.length} voted.
             </p>
-            {isOwner && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void handleClose()}
-                className="mt-2 w-full rounded-full border border-teal/40 bg-teal/10 py-2 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20 disabled:opacity-50"
-              >
-                {busy ? 'One sec…' : 'Close the vote'}
-              </button>
-            )}
+            {isOwner &&
+              (confirmClose ? (
+                <div className="mt-2 rounded-2xl border border-teal/30 bg-teal/5 p-3">
+                  <p className="text-[12px] leading-snug text-muted">
+                    Close voting and crown the leader? Nobody can change their
+                    pick after this.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmClose(false)}
+                      className="flex-1 rounded-full border border-line py-2 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+                    >
+                      Keep it open
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleClose()}
+                      className="flex-1 rounded-full border border-teal/40 bg-teal/10 py-2 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20 disabled:opacity-50"
+                    >
+                      {busy ? 'One sec…' : 'Close it'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setConfirmClose(true)}
+                  className="mt-2 w-full rounded-full border border-teal/40 bg-teal/10 py-2 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20 disabled:opacity-50"
+                >
+                  Close the vote
+                </button>
+              ))}
           </div>
         </div>
       )}

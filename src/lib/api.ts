@@ -843,6 +843,16 @@ export async function revealSession(sessionId: string) {
   if (error) throw new Error(error.message)
 }
 
+/**
+ * Call off a BLIND round (owner or whoever started it). The round and every
+ * scorecard on it are deleted — there is no undo, and a revealed round can
+ * never be cancelled. Realtime carries the delete to the other members.
+ */
+export async function cancelSession(sessionId: string) {
+  const { error } = await supabase.rpc('cancel_session', { p_session_id: sessionId })
+  if (error) throw new Error(error.message)
+}
+
 // ---- scores -------------------------------------------------------------
 
 export interface MyScore {

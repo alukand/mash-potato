@@ -20,6 +20,14 @@ revoke update on public.user_blocks from authenticated;
 revoke all on public.banned_terms from authenticated, anon;
 revoke update on public.profiles from authenticated;
 grant update (display_name, avatar_key, taste_mode) on public.profiles to authenticated;
+-- messaging: every write is a definer RPC, so no table takes direct writes.
+revoke insert, update, delete on public.conversations             from authenticated;
+revoke insert, update, delete on public.conversation_participants from authenticated;
+revoke insert, update, delete on public.conversation_state        from authenticated;
+revoke insert, update, delete on public.messages                  from authenticated;
+revoke insert, update, delete on public.message_reactions         from authenticated;
+revoke insert, update, delete on public.message_reports           from authenticated;
+revoke insert, update, delete on public.dm_request_declines       from authenticated;
 -- security hardening: trigger-only internals are not an API, even signed in
 -- (mirrors 20260717160000_security_hardening.sql, which the blanket function
 -- grant above would otherwise undo).
@@ -34,7 +42,12 @@ begin
       'reseed_group_rubrics',
       'touch_updated_at', 'prevent_unreveal', 'auto_hide_reported',
       'notify_session_created', 'notify_scores_locked',
-      'notify_group_member_added', 'notify_comment_reply', 'push_notify'])
+      'notify_group_member_added', 'notify_comment_reply', 'push_notify',
+      -- messaging internals (20260726120000): dm_request_declined would be a
+      -- "were you declined?" probe; the rest are trigger-only.
+      'dm_request_declined', 'touch_conversation_activity',
+      'notify_new_message', 'auto_hide_reported_message',
+      'create_group_conversation'])
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);
   end loop;

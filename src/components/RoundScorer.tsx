@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { memberWeightedScore, formatScore } from '../lib/scoring'
 import type { CategoryScores } from '../lib/scoring'
 import {
+  cancelSession,
   fetchGroupRubrics,
   fetchLockStatus,
   fetchMyScore,
@@ -48,6 +49,9 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
   const [myRows, setMyRows] = useState<GroupRubricRow[] | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Two-step guards for the round's two irreversible actions.
+  const [confirmReveal, setConfirmReveal] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -83,14 +87,16 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
     void load()
   }, [load])
 
-  // keep lock flags fresh while waiting on others (realtime covers the reveal)
+  // Keep lock flags fresh (realtime covers the reveal itself, but member_scores
+  // is not published). This used to be gated on `locked`, which froze the
+  // "N/M locked" counter during exactly the window you care about: while you
+  // are still scoring and watching for everyone else.
   useEffect(() => {
-    if (!locked) return
     const id = setInterval(() => {
       fetchLockStatus(session.id).then(setLockStatus).catch(() => {})
     }, 15000)
     return () => clearInterval(id)
-  }, [session.id, locked])
+  }, [session.id])
 
   async function handleLockIn() {
     setBusy(true)
@@ -137,11 +143,27 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
   async function handleReveal() {
     setBusy(true)
     setError(null)
+    setConfirmReveal(false)
     try {
       await revealSession(session.id)
       onChanged() // the panel flips to the Reveal in place
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not reveal')
+      setBusy(false)
+    }
+  }
+
+  // Call off a round started by mistake. Deletes it and every scorecard on
+  // it; realtime carries the delete to everyone else's panel.
+  async function handleCancel() {
+    setBusy(true)
+    setError(null)
+    try {
+      await cancelSession(session.id)
+      setConfirmCancel(false)
+      onChanged() // the panel falls back to "start a round"
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not call off the round')
       setBusy(false)
     }
   }
@@ -163,7 +185,10 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
   const inIds = new Set(showRsvps ? part.inIds : members.map((m) => m.userId))
   const myPart = showRsvps ? (part.status.get(userId) ?? 'invited') : 'in'
   const waiting = members.filter((m) => inIds.has(m.userId) && !lockedIds.has(m.userId))
+  // Owner or whoever started it — the same pair reveal_session authorizes,
+  // and now the same pair that can call the round off.
   const canReveal = group.role === 'owner' || session.createdBy === userId
+  const lockedCount = lockedIds.size
   // One lock must never drop the reveal on everyone: multi-member groups need
   // a second locked card first (also enforced server-side in reveal_session).
   const eligibleCount = showRsvps ? part.inIds.length + part.invitedIds.length : members.length
@@ -416,27 +441,104 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
         )}
 
         {locked && canReveal && revealQuorum && (
-          <>
-            <CtaButton
-              tone="teal"
-              onClick={() => void handleReveal()}
-              disabled={busy}
-              className="mt-3 w-full py-3.5 text-[14px]"
-            >
-              {busy ? 'Revealing…' : 'Reveal the scores'}
-            </CtaButton>
-            {waiting.length > 0 && (
-              <p className="mt-2 text-center font-mono text-[10px] text-muted">
-                {waiting.length} still scoring, revealing now drops without them
+          // The most irreversible action in the app: it ends the blind round
+          // for everyone, permanently. The "still scoring" warning used to
+          // sit BELOW the button, i.e. after the damage.
+          confirmReveal ? (
+            <div className="mt-3 rounded-2xl border border-teal/30 bg-teal/5 p-4">
+              <p className="text-[13px] font-semibold leading-snug text-teal">
+                Drop everyone&apos;s scores now?
               </p>
-            )}
-          </>
+              <p className="mt-1.5 text-[12px] leading-snug text-muted">
+                {waiting.length > 0
+                  ? `${waiting.length} ${waiting.length === 1 ? 'person is' : 'people are'} still scoring. Revealing now goes without them, and the round cannot go back to blind.`
+                  : 'The Reveal cannot be undone: a revealed round is part of the group history.'}
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmReveal(false)}
+                  className="flex-1 rounded-full border border-line py-2 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+                >
+                  Wait
+                </button>
+                <CtaButton
+                  tone="teal"
+                  onClick={() => void handleReveal()}
+                  disabled={busy}
+                  className="flex-1 py-2 text-[12px]"
+                >
+                  {busy ? 'Revealing…' : 'Reveal'}
+                </CtaButton>
+              </div>
+            </div>
+          ) : (
+            <>
+              <CtaButton
+                tone="teal"
+                onClick={() => setConfirmReveal(true)}
+                disabled={busy}
+                className="mt-3 w-full py-3.5 text-[14px]"
+              >
+                Reveal the scores
+              </CtaButton>
+              {waiting.length > 0 && (
+                <p className="mt-2 text-center font-mono text-[10px] text-muted">
+                  {waiting.length} still scoring
+                </p>
+              )}
+            </>
+          )
         )}
         {locked && canReveal && !revealQuorum && (
           <p className="mt-3 text-center text-[13px] leading-snug text-muted">
             The Reveal unlocks once someone else locks in too.
           </p>
         )}
+
+        {/* The way out of a mistaken round. Without this the group is stuck:
+            no other round can start while one is blind, and the only other
+            exit is a reveal, which needs two locked scorecards. */}
+        {canReveal &&
+          (confirmCancel ? (
+            <div className="mt-3 rounded-2xl border border-coral/30 bg-coral/5 p-4">
+              <p className="text-[13px] font-semibold leading-snug text-coral">
+                Call off this round?
+              </p>
+              <p className="mt-1.5 text-[12px] leading-snug text-muted">
+                {lockedCount > 0
+                  ? `${lockedCount} ${lockedCount === 1 ? 'person has' : 'people have'} already scored. Cancelling throws ${lockedCount === 1 ? 'that scorecard' : 'those scorecards'} away.`
+                  : 'The round disappears for everyone and nothing is kept.'}{' '}
+                Then anyone can start a different one.
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmCancel(false)}
+                  className="flex-1 rounded-full border border-line py-2 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+                >
+                  Keep it
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCancel()}
+                  disabled={busy}
+                  className="flex-1 rounded-full bg-coral/90 py-2 text-[12px] font-bold text-bg transition-transform active:scale-[0.98] disabled:opacity-60"
+                >
+                  {busy ? 'Calling it off…' : 'Call it off'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmCancel(true)}
+              disabled={busy}
+              className="mt-3 w-full rounded-full px-4 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-coral disabled:opacity-50"
+            >
+              Wrong title? Call off this round
+            </button>
+          ))}
       </section>
     </>
   )

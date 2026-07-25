@@ -50,6 +50,7 @@ Invoke-Sql "TASTE-MODES TEST" (Join-Path $repo "scripts\verify-rls\96-taste-mode
 Invoke-Sql "GROUP-TASTE-MODES TEST" (Join-Path $repo "scripts\verify-rls\96b-group-taste-modes-test.sql")
 Invoke-Sql "DISCUSSION TEST" (Join-Path $repo "scripts\verify-rls\97-discussion-test.sql")
 Invoke-Sql "ACCOUNT TEST" (Join-Path $repo "scripts\verify-rls\98-account-test.sql")
+Invoke-Sql "MESSAGING TEST" (Join-Path $repo "scripts\verify-rls\98b-messaging-test.sql")
 Invoke-Sql "POLL TEST" (Join-Path $repo "scripts\verify-rls\99-poll-test.sql")
 
 Write-Host ""

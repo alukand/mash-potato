@@ -69,9 +69,15 @@ top highlight, deep ambient shadow). Poster tiles add `.mp-poster-grain`.
 - **Section header** — 11px semibold uppercase `tracking-[0.2em]` muted label,
   optional quiet count as a mono span after the label (space only, no
   separator characters).
-- **List rows** — rows never gain a hover background. Feedback lives on the
-  row's own elements: title brightens to teal on hover, poster/avatar scales
-  on press (`group-active:scale-95`).
+- **List rows** — every tappable row carries `transition-colors
+  active:bg-surface-2`, plus the finer touches: title brightens to teal on
+  hover, poster/avatar scales on press (`group-active:scale-95`), and a
+  trailing chevron where the row opens something.
+  **AMENDED 2026-07-26.** This rule used to read "rows never gain a hover
+  background; feedback lives on the row's own elements" — and that is what
+  produced the bug: hover never fires on iOS, so on the target platform a
+  posterless row gave *zero* feedback on tap. Thirteen rows across the app
+  were affected. A press background is the only cue that works on touch.
 
 ## Copy rules
 
@@ -315,8 +321,138 @@ the base-seven craft rubric at DEFAULT_WEIGHTS.
   member-rubrics and user-rubrics tests pin taste_mode='buff' — they test
   the buff path; the casual path lives in the taste-mode files.
 
+## Messaging (DMs, group chats, custom chats — 2026-07-26)
+
+Three container kinds behind one `conversations` id, and the kind decides
+where membership comes from:
+
+- **`'group'`** — the built-in chat every Mash Potato group gets (created by
+  a trigger, backfilled for existing groups). It has NO roster of its own:
+  membership *is* `group_members`, so nothing syncs and leaving the group
+  leaves the chat on the next statement.
+- **`'dm'`** — the two uuid columns are the roster. `dm_key`, a generated
+  column over the SORTED pair with a unique index, makes a second thread for
+  the same two people structurally impossible.
+- **`'custom'`** — an arbitrary roster in `conversation_participants`.
+
+**One helper, and one line to defend forever.**
+`is_conversation_member(uuid)` takes **no user id** — it reads `auth.uid()`
+itself, exactly like `is_group_member`. Adding a `p_user_id` parameter would
+turn a SECURITY DEFINER function into a membership *oracle* any signed-in
+user could query about any conversation. Never add one.
+
+**The request gate.** Strangers land `pending` and get exactly ONE message
+(plus a cap of 10 pending requests per 24h); groupmates skip the gate via the
+server-side `shares_group_with`. Replying IS accepting. **A decline is
+invisible**: it writes a tombstone the requester cannot read, the thread
+stays visible to them, and their next send fails with *the same string as
+being blocked* — so neither the UI nor the error is an oracle for "they
+declined you". `dm_request_declined` is sealed from `authenticated` for the
+same reason. `create_group_chat`/`add_chat_participants` enforce
+`can_message_directly` per invitee: that predicate is the whole
+anti-harassment story, and loosening it re-opens the gate's back door.
+
+**Blocking stops a DM but can only hide in a group chat** — both people
+legitimately belong in the room. The UI must say "they can't message you"
+for DMs and "you won't see their messages" for group chats, or people will
+believe they are protected when they are not. `unblock_user` + `my_blocks`
+finally exist (the delete policy shipped in 2026-07-14 with no client path).
+
+**REALTIME IS THE PRIVACY BOUNDARY HERE**, not a convenience as it is for
+comments — and two consequences are permanent:
+
+- **DELETE events bypass RLS.** Postgres ships only replica-identity columns
+  on delete and Realtime cannot evaluate a policy against them, so every
+  subscriber to a published table receives every delete. Therefore messages
+  are **soft-deleted only**, `conversation_participants` is **deliberately
+  not published** (leave_chat deletes rows, which would broadcast the
+  roster — roster changes ride a `'system'` message instead), and
+  `REPLICA IDENTITY FULL` must never be set on `messages`.
+- `messages_select_member` is what Realtime evaluates per subscriber, so it
+  must be self-sufficient from the row alone. It is: everything derives from
+  `conversation_id` + `sender_id`.
+
+`search_my_messages` is deliberately **SECURITY INVOKER** so RLS stays the
+single source of truth. `my_inbox` and `conversation_read_receipts` can't be
+(they aggregate), which makes them the highest-risk future bug: **if
+`messages_select_member` changes and their CTEs don't, previews and unread
+counts will leak a blocked or removed message.** Change them together.
+
+Suites: pgTAP 239 (messaging_test 72), twin adds 98b (12 assertions). New
+guard `scripts/check-grants.ps1` lints migration TEXT for the GRANTS LAW —
+neither suite can catch a missing `anon` revoke, because local `anon` has no
+baseline function grant, which is exactly how an open endpoint shipped on
+2026-07-25.
+
 ## Changelog
 
+- 2026-07-26 (a way out, and a defect sweep): **a mistaken round used to be a
+  trap.** `reveal_sessions` has no delete policy (a client delete silently
+  no-ops), both entry points are disabled while a round is blind, and the
+  only exit was `reveal_session` — which needs TWO locked scorecards. So
+  clearing a wrong title required two people to score a film they hadn't
+  watched, or deleting the group. `cancel_session` (definer RPC, blind-only,
+  owner-or-starter, hard delete with member_scores/session_rsvps cascading)
+  plus a "Wrong title? Call off this round" control whose confirm counts the
+  scorecards it will discard. Two limits stated in the copy and here: the
+  round_started push is already sent and cannot be recalled, and cancelling
+  reopens the title's discussion thread (comments_open_for_me reads session
+  state) — correct, since the round never happened, but not obvious.
+  Sweep from a full-app audit: **the reduced-motion guard killed duration but
+  not animation-delay**, and with `fill-mode: backwards` that held the hidden
+  from-state through every delay — one line repaired ~53 staggered sites
+  where reduced-motion users watched blank space then a snap. Thirteen rows
+  got a press background (see the amended List rows rule). **The JSON export
+  could never work on iOS**: the clipboard write happened after an await, so
+  it had lost user activation and threw in WKWebView every time. Confirms
+  added to the two genuinely irreversible actions (Reveal, Rate it again) and
+  to Close the vote; the preset "Delete?" finally got a Keep, and applying a
+  preset now guards unsaved edits like its App-default sibling. Retry buttons
+  on the Home and round errors (both used to blank the screen permanently).
+  Real bugs fixed: the "N/M locked" counter was frozen while you were still
+  scoring, reactions had no busy guard, `handleStartWinner` swallowed its own
+  failure, add-a-friend could double-insert, and switching Discover's Type
+  filter silently wiped every selected genre. Tap targets expanded on the
+  worst offenders (onboarding dots were 6×6px). pgTAP 239 → 246.
+- 2026-07-26 (messaging, phase 1 — the data layer): conversations /
+  conversation_participants / conversation_state / messages /
+  message_reactions / message_reports / dm_request_declines, with
+  SELECT-only policies and ~24 SECURITY DEFINER RPCs carrying the
+  post_comment validation ladder (signed-in → banned → terms → length →
+  wordlist → scope → parent). See the law above. `delete_my_account` was
+  re-issued: without an explicit custom-chat handoff a deleted user's
+  participant row cascades away and leaves a conversation with ZERO
+  participants — invisible to everyone and impossible to open, leave, or
+  delete. Both suites green, plus the new grants lint.
+- 2026-07-25 (findable settings, readable rubric, a tour that points): four
+  discoverability fixes, no schema change.
+  **Settings** got one home: the app header gained a right-hand slot
+  (`HEADER_ACTION_ID` + the `HeaderAction` portal in ui.tsx) and both Rate and
+  Profile render the same LABELLED `SettingsButton` into it. The Rate gear was
+  an unlabelled 14px cog pinned to the end of the scrolling group-chip strip,
+  where it read as one more chip, and it opened a panel ~1000px down the page;
+  the cluster now sits directly under the header (flex `order`, same DOM).
+  Profile had no settings control at all: How you score, Account, Your data,
+  Sign out and Danger zone now live behind its gear, content stays in flow.
+  The Members cog is "Manage", not a second "Settings". New shared recipes:
+  `IconButton`, `GearIcon` (the cog path was duplicated verbatim).
+  **The group log** rows always reopened that night's full Reveal, but nothing
+  said so: hover-only teal never fires on iOS and a 5% poster shrink was the
+  sole touch cue (absent on posterless rows). Added a chevron, a whole-row
+  press state, and a "Tap any night to reopen its Reveal" caption. Sealed rows
+  now read "Score to open" so a tap that lands on the scoring gate is expected.
+  **The rubric editor** stopped hiding its own arithmetic: each row shows
+  "you 30 → 18", the mashed card is badged Preview while your edits are
+  unsaved, the copy names the divide-by-every-member rule and says only ratios
+  matter, sliders got end caps, disabled rows keep their number, "Add
+  categories" became rows with visible blurbs (the definition was a `title=`
+  tooltip no touch device shows) and genre tags, and App-default / preset
+  delete became two-step like every other destructive action here.
+  **The tour** can now point at anything: steps carry a `data-tour` anchor,
+  the scrim became a real spotlight (a transparent box at the measured rect
+  with a 9999px shadow spread), and copy went directive. Profile gained
+  "Replay the walkthrough" — `mp.toured` was write-only, so nobody could ever
+  see it twice.
 - 2026-07-24 (one group, one rubric): the taste mode moved onto the GROUP for
   rounds (`groups.taste_mode`, default buff so nothing changed under existing
   groups) — see the law above for the dilution bug that forced it. Group

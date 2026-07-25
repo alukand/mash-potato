@@ -26,7 +26,7 @@ export function PlaylistCard({
     <button
       type="button"
       onClick={onOpen}
-      className="group flex w-full items-center gap-3 px-4 py-3 text-left"
+      className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2"
     >
       <div className="flex shrink-0 -space-x-4">
         {posters.length > 0 ? (

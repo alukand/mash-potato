@@ -30,7 +30,13 @@ import type {
   ReviewedTitle,
   SavedTitle,
 } from '../lib/api'
-import { GroupMark, VisibilityChip, fieldClassSm } from '../components/ui'
+import {
+  GroupMark,
+  HeaderAction,
+  SettingsButton,
+  VisibilityChip,
+  fieldClassSm,
+} from '../components/ui'
 import { PlaylistCard } from '../components/PlaylistCard'
 import { PosterGrid } from '../components/PosterGrid'
 import { colorForUser } from '../lib/palette'
@@ -52,6 +58,8 @@ interface ProfileScreenProps {
   onNameChanged: () => void
   /** Group visibility flipped; refetch the group list. */
   onGroupsChanged: () => Promise<void>
+  /** Run the first-run walkthrough again (it is otherwise once per device). */
+  onReplayTour: () => void
   /** Present when pushed on the view-stack; absent as the Profile tab. */
   onBack?: () => void
 }
@@ -73,6 +81,7 @@ export function ProfileScreen({
   onOpenPlaylist,
   onNameChanged,
   onGroupsChanged,
+  onReplayTour,
   onBack,
 }: ProfileScreenProps) {
   const [reviewed, setReviewed] = useState<ReviewedTitle[]>([])
@@ -92,6 +101,20 @@ export function ProfileScreen({
   const [avatarKey, setAvatarKey] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [avatarBusy, setAvatarBusy] = useState(false)
+
+  // The header gear gates the account cluster (how you score, account, data,
+  // sign out, danger zone); the default view stays about you and your stuff.
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  function toggleSettings() {
+    setSettingsOpen((open) => {
+      if (open) {
+        setDangerOpen(false)
+        setDangerText('')
+      }
+      return !open
+    })
+    window.scrollTo(0, 0)
+  }
 
   // ---- taste mode (Normie or Cinephile) ----
   const [tasteMode, setTasteMode] = useState<TasteMode | null>(null)
@@ -320,11 +343,25 @@ export function ProfileScreen({
     }
   }
 
+  // Clipboard writes must keep the user-activation gesture. Awaiting the
+  // fetch FIRST and calling writeText after loses it, which throws
+  // NotAllowedError in WKWebView (iOS) every single time — the button read
+  // "Could not copy, try again" forever on the target platform. Handing
+  // ClipboardItem a pending promise keeps the write attached to the tap.
+  // Safari-only API, so fall back to the plain path where it is absent.
   async function handleExport() {
     setExportState('busy')
+    const json = fetchMyExport(userId).then((p) => JSON.stringify(p, null, 2))
     try {
-      const payload = await fetchMyExport(userId)
-      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+      if (typeof ClipboardItem !== 'undefined' && 'write' in navigator.clipboard) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/plain': json.then((t) => new Blob([t], { type: 'text/plain' })),
+          }),
+        ])
+      } else {
+        await navigator.clipboard.writeText(await json)
+      }
       setExportState('copied')
     } catch {
       setExportState('failed')
@@ -333,8 +370,16 @@ export function ProfileScreen({
   }
 
   return (
-    <div className={onBack ? 'px-5 pt-safe' : ''}>
-      <header className="mp-rise mb-6 flex items-center justify-between">
+    // Flex column so the settings cluster can sit directly under the header
+    // (order) while its sections stay in place in the DOM.
+    <div className={`flex flex-col ${onBack ? 'px-5 pt-safe' : ''}`}>
+      {/* Same control, same corner, as the Rate tab. Sign out moved inside
+          the cluster: it is an account action, not a page-level one. */}
+      <HeaderAction>
+        <SettingsButton open={settingsOpen} onClick={toggleSettings} />
+      </HeaderAction>
+
+      <header className="mp-rise order-[-3] mb-6 flex items-center justify-between">
         {onBack ? (
           <button
             type="button"
@@ -348,16 +393,9 @@ export function ProfileScreen({
           </button>
         ) : (
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-            Your profile
+            {settingsOpen ? 'Settings' : 'Your profile'}
           </p>
         )}
-        <button
-          type="button"
-          onClick={() => void signOutWithPushCleanup()}
-          className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-coral"
-        >
-          Sign out
-        </button>
       </header>
 
       {/* ---- identity (editable) ---- */}
@@ -443,8 +481,9 @@ export function ProfileScreen({
         </div>
       </section>
 
-      {/* ---- taste mode ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '60ms' }}>
+      {/* ---- taste mode (settings) ---- */}
+      {settingsOpen && (
+      <section className="mp-rise order-[-2] mt-7" style={{ animationDelay: '60ms' }}>
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           How you score
         </p>
@@ -462,7 +501,8 @@ export function ProfileScreen({
                     : 'border-line text-muted hover:text-text'
                 }`}
               >
-                {TASTE_MODES[m].label}
+                {/* plural everywhere else in the app, incl. the group picker */}
+                {TASTE_MODES[m].plural}
               </button>
             ))}
           </div>
@@ -473,6 +513,7 @@ export function ProfileScreen({
           </p>
         </div>
       </section>
+      )}
 
       {/* ---- groups ---- */}
       <section className="mp-rise mt-7" style={{ animationDelay: '80ms' }}>
@@ -516,7 +557,7 @@ export function ProfileScreen({
           <button
             type="button"
             onClick={onCreateGroup}
-            className="group flex w-full items-center gap-2 px-5 py-3.5 text-left font-semibold text-teal"
+            className="group flex w-full items-center gap-2 px-5 py-3.5 text-left font-semibold text-teal transition-colors active:bg-surface-2"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-active:scale-90" aria-hidden>
               <path d="M12 5v14M5 12h14" />
@@ -616,7 +657,7 @@ export function ProfileScreen({
                 key={f.userId}
                 type="button"
                 onClick={() => onOpenUser(f.userId)}
-                className="group flex w-full items-center gap-3 px-5 py-3 text-left"
+                className="group flex w-full items-center gap-3 px-5 py-3 text-left transition-colors active:bg-surface-2"
               >
                 <Avatar
                   avatarKey={f.avatarKey}
@@ -690,7 +731,9 @@ export function ProfileScreen({
         )}
       </section>
 
-      {/* ---- account: email + password ---- */}
+      {/* ---- account + data + sign out (settings) ---- */}
+      {settingsOpen && (
+      <div className="order-[-1]">
       <section className="mp-rise mt-8" style={{ animationDelay: '340ms' }}>
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           Account
@@ -860,8 +903,42 @@ export function ProfileScreen({
           Copies your solo ratings, saved titles, group scorecards, one-liners, takes,
           playlists, and rubric presets as JSON. Your history is yours.
         </p>
-        {/* ---- avatar picker sheet ---- */}
-        {pickerOpen && (
+
+        {/* published support contact (App Review guideline 1.2) */}
+        <p className="mt-4 px-2 text-center text-[12px] leading-snug text-muted">
+          Questions, reports, or feedback:{' '}
+          <a
+            href="mailto:alexanderlukasland@gmail.com?subject=Mash%20Potato%20support"
+            className="text-teal"
+          >
+            alexanderlukasland@gmail.com
+          </a>
+        </p>
+
+        {/* The tour is once-per-device and had no reset, so nobody could see
+            it twice, on purpose or to test it. */}
+        <button
+          type="button"
+          onClick={onReplayTour}
+          className="mt-5 w-full rounded-full border border-line py-2.5 text-[13px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+        >
+          Replay the walkthrough
+        </button>
+
+        <button
+          type="button"
+          onClick={() => void signOutWithPushCleanup()}
+          className="mt-2 w-full rounded-full border border-line py-2.5 text-[13px] font-semibold text-muted transition-colors hover:border-coral/40 hover:text-coral"
+        >
+          Sign out
+        </button>
+      </section>
+      </div>
+      )}
+
+      {/* The avatar picker is opened from the identity block, so it lives at
+          the root, outside the settings cluster that would otherwise gate it. */}
+      {pickerOpen && (
           <div
             className="fixed inset-0 z-50 flex items-end justify-center bg-bg/70 backdrop-blur-sm"
             onClick={() => setPickerOpen(false)}
@@ -869,7 +946,7 @@ export function ProfileScreen({
             <div
               role="dialog"
               aria-label="Pick your avatar"
-              className="mp-card max-h-[80dvh] w-full max-w-[480px] overflow-y-auto rounded-t-[26px] px-6 pb-safe pt-6"
+              className="mp-card relative max-h-[80dvh] w-full max-w-[480px] overflow-y-auto rounded-t-[26px] px-6 pb-safe pt-6"
               onClick={(e) => e.stopPropagation()}
             >
               <h2 className="font-display text-[22px] font-semibold leading-tight">
@@ -878,6 +955,18 @@ export function ProfileScreen({
               <p className="mt-1 text-[13px] leading-snug text-muted">
                 Original portraits from the movies, not from any movie.
               </p>
+              {/* The only way out used to be a narrow strip of backdrop above
+                  an 80dvh sheet. Every other sheet has a close control. */}
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                aria-label="Close"
+                className="absolute right-5 top-5 grid h-9 w-9 place-items-center rounded-full border border-line text-muted transition-colors hover:text-text active:bg-surface-2"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
+              </button>
               {/* dense grid: every option visible without scrolling the sheet */}
               <div className="mt-4 grid grid-cols-5 gap-1.5">
                 <button
@@ -921,20 +1010,9 @@ export function ProfileScreen({
           </div>
         )}
 
-        {/* published support contact (App Review guideline 1.2) */}
-        <p className="mt-4 px-2 text-center text-[12px] leading-snug text-muted">
-          Questions, reports, or feedback:{' '}
-          <a
-            href="mailto:alexanderlukasland@gmail.com?subject=Mash%20Potato%20support"
-            className="text-teal"
-          >
-            alexanderlukasland@gmail.com
-          </a>
-        </p>
-      </section>
-
       {/* ---- danger zone: account deletion (App Review 5.1.1(v)) ---- */}
-      <section className="mp-rise mt-8" style={{ animationDelay: '400ms' }}>
+      {settingsOpen && (
+      <section className="mp-rise order-[-1] mt-8" style={{ animationDelay: '400ms' }}>
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-coral/80">
           Danger zone
         </p>
@@ -995,6 +1073,7 @@ export function ProfileScreen({
           </button>
         )}
       </section>
+      )}
     </div>
   )
 }

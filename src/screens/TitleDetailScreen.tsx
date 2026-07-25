@@ -593,7 +593,7 @@ export function TitleDetailScreen({
                         type="button"
                         disabled={listBusyId !== null}
                         onClick={() => void handleToggleList(p.id)}
-                        className="group flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left disabled:opacity-60"
+                        className="group flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors active:bg-surface-2 disabled:opacity-60"
                       >
                         <span
                           className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${

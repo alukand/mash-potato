@@ -41,11 +41,15 @@ export function GroupLog({ entries, onOpenSession, animationDelay }: GroupLogPro
 
   return (
     <section className="mp-rise" style={{ animationDelay }}>
-      <div className="mb-3 flex items-baseline justify-between px-1">
+      <div className="mb-1 flex items-baseline justify-between px-1">
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           Group log <span className="tabular ml-1 font-mono text-[10px]">{entries.length}</span>
         </p>
       </div>
+      {/* Say it out loud: the rows are doors, not a read-only history. */}
+      <p className="mb-3 px-1 text-[12px] leading-snug text-muted">
+        Tap any night to reopen its Reveal.
+      </p>
 
       {/* the group's memory, in one quiet line */}
       {showStats && (
@@ -98,7 +102,9 @@ export function GroupLog({ entries, onOpenSession, animationDelay }: GroupLogPro
               key={e.sessionId}
               type="button"
               onClick={() => onOpenSession(e.sessionId)}
-              className="group flex w-full items-center gap-3 px-4 py-3 text-left"
+              // Whole-row press feedback: hover never fires on iOS, and the
+              // poster-only scale left posterless rows with no feedback at all.
+              className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2"
             >
               {e.posterPath ? (
                 <img
@@ -137,8 +143,11 @@ export function GroupLog({ entries, onOpenSession, animationDelay }: GroupLogPro
                       <rect x="4" y="10" width="16" height="11" rx="2.5" />
                       <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                     </svg>
+                    {/* Say what the tap will do: a sealed night opens your
+                        scorecard, not the reveal, which otherwise reads as
+                        the tap having failed. */}
                     <p className="font-mono text-[8px] font-bold uppercase tracking-[0.2em] text-muted">
-                      Sealed
+                      Score to open
                     </p>
                   </>
                 ) : (
@@ -152,6 +161,21 @@ export function GroupLog({ entries, onOpenSession, animationDelay }: GroupLogPro
                   </>
                 )}
               </div>
+              {/* the affordance: rows open that night's full Reveal */}
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="-mr-1 shrink-0 text-muted/60 transition-transform group-active:translate-x-0.5"
+                aria-hidden
+              >
+                <path d="m9 5 7 7-7 7" />
+              </svg>
             </button>
           ))}
         </div>

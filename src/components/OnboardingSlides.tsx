@@ -416,17 +416,25 @@ export function OnboardingSlides({ onDone }: OnboardingSlidesProps) {
       </div>
 
       <footer className="pb-safe mx-auto w-full max-w-[480px] px-8">
-        <div className="mb-5 flex items-center justify-center gap-2">
+        {/* The dot is 6px; the BUTTON is 6px + p-2 of transparent padding, so
+            it clears the 44pt touch minimum without changing the look. */}
+        <div className="mb-3 flex items-center justify-center">
           {SLIDES.map((s, i) => (
             <button
               key={s.key}
               type="button"
               aria-label={`Slide ${i + 1}`}
+              aria-current={i === index}
               onClick={() => goTo(i)}
-              className={`h-1.5 rounded-full transition-all ${
-                i === index ? 'w-6 bg-teal' : 'w-1.5 bg-line'
-              }`}
-            />
+              className="grid place-items-center p-2"
+            >
+              <span
+                aria-hidden
+                className={`block h-1.5 rounded-full transition-all ${
+                  i === index ? 'w-6 bg-teal' : 'w-1.5 bg-line'
+                }`}
+              />
+            </button>
           ))}
         </div>
         {last ? (

@@ -143,10 +143,24 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
   }
 
   if (error) {
+    // Home fans out over every group, so one failure used to replace the
+    // entire screen with a single unactionable line.
     return (
-      <p role="alert" className="mp-rise py-10 text-center text-[13px] text-coral">
-        {error}
-      </p>
+      <div className="mp-rise py-10 text-center">
+        <p role="alert" className="text-[13px] leading-snug text-coral">
+          {error}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setError(null)
+            void load()
+          }}
+          className="mt-3 rounded-full border border-line px-5 py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text active:bg-surface-2"
+        >
+          Try again
+        </button>
+      </div>
     )
   }
   if (pulses === undefined) {
@@ -269,9 +283,11 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
                     <button
                       type="button"
                       onClick={() => onOpenGroup(group.id, 'rate')}
-                      className="mt-3.5 w-full rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+                      className="mt-3.5 w-full rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:text-text active:bg-surface-2"
                     >
-                      You passed. Jump back in →
+                      {/* This only navigates; scoring is what un-passes you,
+                          so it no longer promises an RSVP change. */}
+                      You passed. Open the round →
                     </button>
                   ) : (
                     <CtaButton
@@ -302,7 +318,7 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
                   key={session.id}
                   type="button"
                   onClick={() => onOpenGroup(group.id, 'rate')}
-                  className="group flex w-full items-center gap-3 px-4 py-3 text-left"
+                  className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2"
                 >
                   {session.posterPath ? (
                     <img

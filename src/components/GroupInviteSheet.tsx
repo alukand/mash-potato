@@ -126,9 +126,14 @@ export function GroupInviteSheet({
             <h2 className="font-display text-[20px] font-semibold leading-tight">
               {selected ? `Invite ${selected.name}` : 'Invite a group'}
             </h2>
-            <p className="mt-0.5 truncate text-[13px] leading-snug text-muted">
-              {title.name}
-              {title.year ? ` (${title.year})` : ''}, scored blind until the Reveal
+            {/* Truncate the TITLE, not the sentence: `truncate` on the whole
+                <p> let a long name eat the explanation of what this does. */}
+            <p className="mt-0.5 text-[13px] leading-snug text-muted">
+              <span className="block truncate font-medium">
+                {title.name}
+                {title.year ? ` (${title.year})` : ''}
+              </span>
+              scored blind until the Reveal
             </p>
           </div>
           <button
@@ -161,7 +166,7 @@ export function GroupInviteSheet({
                   <button
                     type="button"
                     onClick={() => void selectGroup(g)}
-                    className="group flex w-full items-center gap-3 py-3 text-left"
+                    className="group flex w-full items-center gap-3 py-3 text-left transition-colors active:bg-surface-2"
                   >
                     <GroupMark
                       groupId={g.id}

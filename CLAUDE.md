@@ -36,8 +36,10 @@ locked score — it also grows the session's rubric snapshot append-only).
 Any schema change touching this needs both test suites updated and passing:
 
 - `npx supabase test db` — pgTAP, `supabase/tests/blind_read_test.sql`
+  (246 assertions across 12 files as of 2026-07-26)
 - `powershell -File scripts\verify-rls.ps1` — portable-Postgres twin
   (see `scripts/verify-rls/README.md`)
+- `powershell -File scripts\check-grants.ps1` — the GRANTS LAW text lint
 
 Never put the TMDB key or service_role key in client code — TMDB goes through
 the `tmdb-search` Edge Function (`supabase/functions/`; local secret in
@@ -176,7 +178,9 @@ the twin's 98 file assert the local posture.
   (incl. one-liners) + takes + playlists + rubric presets.
 - TABS (2026-07-17 restructure): Home, Discover, Rate, Profile. The old
   Group tab MERGED into Rate; stored `mp.activeTab` value 'group' migrates
-  to 'rate' in readStoredTab. The header is brand-only (no avatar button).
+  to 'rate' in readStoredTab. The header is the brand plus ONE top-right slot
+  (`HEADER_ACTION_ID`); screens portal their settings control into it with
+  `HeaderAction` (ui.tsx), so Rate and Profile share one findable corner.
 - `src/screens/` — Auth (password, signup codes, forgot-password codes,
   passwordless "Email me a sign-in code"), CreateGroup, Home (CROSS-GROUP
   overview: stats strip [groups/rated/saved] + live rounds w/ inline RSVP +
@@ -190,9 +194,11 @@ the twin's 98 file assert the local posture.
   Profile — the 4th TAB (identity, groups w/ visibility toggles, playlists,
   friends, poster grids, Account section, export, Danger zone; onBack
   optional — present only when pushed on the stack),
-  Group[Screen] — the RATE tab body: group switcher chips + gear that
-  toggles the gear-gated settings cluster (mashed rubric + per-member
-  editor, members + Manage: rename/remove/leave/delete) → SessionPanel
+  Group[Screen] — the RATE tab body: group switcher chips, with the labelled
+  Settings pill in the HEADER slot toggling the settings cluster (how the
+  group scores + mashed rubric + per-member editor, members + Manage:
+  rename/remove/leave/delete). The cluster renders visually right under the
+  header via flex `order` while staying late in the DOM → SessionPanel
   (the WHOLE round lifecycle: blind → components/RoundScorer.tsx inline
   sliders/one-liner/lock/reveal-in-place; sealed; revealed w/ late score +
   backfill; session===null renders the `startRound` prop; a
@@ -200,6 +206,11 @@ the twin's 98 file assert the local posture.
   sealed/late scoring reaches every old reveal, with an "earlier night"
   banner + Back to the latest; the dot plot is colored per member with a
   name legend, and the reveal hero taps through to TitleDetail; the
+  blind round carries "Wrong title? Call off this round" (`cancel_session`,
+  20260726150000 — blind only, owner-or-starter, HARD delete so member_scores
+  and session_rsvps cascade; the confirm counts the scorecards it discards.
+  Without it a mistaken round was a trap: no delete policy exists, no second
+  round can start while one is blind, and revealing needs two locked cards);
   revealed footer pairs "Rate it again" with "Start the next round" —
   re-rating is a FRESH blind round on the same title [any member, current
   rubric, one-blind-round guard, old night stays in the log; DESIGN.md
@@ -220,13 +231,20 @@ the twin's 98 file assert the local posture.
   live product miniatures per slide), then the app opens GROUP-LESS
   (Home/Discover/Profile work; Rate shows a NoGroupYet card) — no forced
   create-group gate — and the first signed-in landing runs FirstRunTour
-  once (`mp.toured`): dims the app, pulses each tab (BottomNav `highlight`
-  prop), switches to each real screen; group-holders skip slides and go
-  straight to the tour. useTmdbSearch takes
+  once (`mp.toured`, replayable from Profile via `clearToured`): each step
+  names a `data-tour` anchor (nav tabs carry `tab-<id>`, the settings pill
+  carries `settings`), the tour measures that element's rect and cuts a
+  SPOTLIGHT around it (transparent box + 9999px shadow spread, so it
+  survives prefers-reduced-motion, which flattens `mp-tour-pulse`), and
+  switches to each step's real screen; a missing anchor falls back to a
+  plain dim. Group-holders skip slides and go straight to the tour.
+  useTmdbSearch takes
   'movie' | 'tv' | 'both' and returns TaggedResult (per-item mediaType);
   PosterResultGrid consumes tagged results. Shared UI recipes (fieldClass,
   CtaButton, GroupMark, VisibilityChip, ScoreSliderRow — the one
-  score-slider row, "N/10" readout) live in `src/components/ui.tsx`; the
+  score-slider row, "N/10" readout — plus HeaderAction/SettingsButton/
+  IconButton/GearIcon, the one settings affordance) live in
+  `src/components/ui.tsx`; the
   design system is documented in `DESIGN.md`.
 - Push notifications (APNs-direct; FCM slots in when Android ships):
   `device_tokens` (self-only RLS; `register_device_token` RPC handles device
@@ -237,8 +255,35 @@ the twin's 98 file assert the local posture.
   over APNs HTTP/2 (ES256 provider JWT). Payloads are ID-ONLY — score values
   never ride a notification (enforced in both test suites). Client wiring in
   `src/lib/push.ts` (native-only no-ops; sign-out via signOutWithPushCleanup).
+- MESSAGING (20260726120000, DESIGN.md "Messaging" law): `conversations`
+  holds THREE kinds behind one id — `'group'` (the built-in chat every group
+  gets from a trigger; membership IS `group_members`, nothing syncs),
+  `'dm'` (the two uuid columns are the roster; a generated `dm_key` over the
+  SORTED pair + unique index makes a duplicate thread impossible), and
+  `'custom'` (roster in `conversation_participants`). Plus
+  `conversation_state` (self-only read watermark/mute/archive),
+  `messages` (soft-delete ONLY, generated tsvector), `message_reactions`,
+  `message_reports`, `dm_request_declines`.
+  **`is_conversation_member(uuid)` takes NO user id** — it reads
+  `auth.uid()`; a `p_user_id` parameter would make it a membership oracle.
+  SELECT-only policies; every write is a definer RPC (`send_message`,
+  `start_dm`, `accept_/decline_dm_request`, `create_group_chat`,
+  `leave_chat`, `block_user`/`unblock_user`, `mark_conversation_read`, …).
+  Strangers land `pending` with ONE message; groupmates skip via
+  `shares_group_with`; a DECLINE IS INVISIBLE (tombstone + the same error
+  string as a block, so neither is an oracle). Blocking STOPS a DM but only
+  HIDES in group chats — the UI must say the right one.
+  **Realtime is the privacy boundary**: DELETE events bypass RLS, so
+  messages are never hard-deleted, `conversation_participants` is NOT
+  published (roster changes ride a `'system'` message), and `messages` must
+  keep default replica identity. `search_my_messages` is SECURITY INVOKER on
+  purpose; `my_inbox` restates visibility and must change in lockstep with
+  `messages_select_member`.
 - `supabase/migrations/` — schema + RLS as code (grants included — do not
-  rely on platform default privileges).
+  rely on platform default privileges). `powershell -File
+  scripts\check-grants.ps1` lints migration TEXT for the GRANTS LAW (neither
+  test suite can catch a missing `anon` revoke); migrations at or before
+  20260725120000 are grandfathered.
 
 ## Current state (2026-07-08)
 

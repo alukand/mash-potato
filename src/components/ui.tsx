@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import { colorForGroup } from '../lib/palette'
 import { scoreColor, scoreWord } from '../lib/scoreColor'
@@ -346,5 +348,115 @@ export function ExtraCategoryChips({
         its weight drops out of your number.
       </p>
     </div>
+  )
+}
+
+/** The app header's right-hand slot. Screens portal their top-right control here. */
+export const HEADER_ACTION_ID = 'mp-header-action'
+
+/**
+ * Renders its child into the app header's right slot, so a screen owns the
+ * control (and its state) while it appears in one fixed, predictable place.
+ * Nothing renders when there is no header (the pushed view-stack), which is
+ * correct: those screens carry their own Back row.
+ */
+export function HeaderAction({ children }: { children: ReactNode }) {
+  const [host, setHost] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setHost(document.getElementById(HEADER_ACTION_ID))
+  }, [])
+  if (!host) return null
+  return createPortal(children, host)
+}
+
+/** The one circular icon-button recipe (gear, star, remove, back). */
+export function IconButton({
+  label,
+  onClick,
+  active = false,
+  expanded,
+  size = 32,
+  tone = 'teal',
+  disabled,
+  className = '',
+  children,
+}: {
+  /** Accessible name; this button shows an icon only. */
+  label: string
+  onClick: () => void
+  /** On/selected state (teal fill for teal tone, coral for coral). */
+  active?: boolean
+  expanded?: boolean
+  size?: number
+  tone?: 'teal' | 'coral'
+  disabled?: boolean
+  className?: string
+  children: ReactNode
+}) {
+  const on =
+    tone === 'coral'
+      ? 'border-coral/40 bg-coral/10 text-coral'
+      : 'border-teal/40 bg-teal/10 text-teal'
+  const off =
+    tone === 'coral'
+      ? 'border-line text-muted transition-colors hover:border-coral/50 hover:text-coral'
+      : 'border-line text-muted transition-colors hover:border-teal/50 hover:text-text'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      aria-expanded={expanded}
+      style={{ width: size, height: size }}
+      className={`grid shrink-0 place-items-center rounded-full border disabled:opacity-50 ${
+        active ? on : off
+      } ${className}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** The cog. One path, so every settings affordance looks identical. */
+export function GearIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 5 8.9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9.5a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+    </svg>
+  )
+}
+
+/**
+ * The settings entry point, identical on every screen that has one: a
+ * LABELLED pill in the header's top-right slot. A bare cog reads as one more
+ * chip; the word is what makes it findable.
+ */
+export function SettingsButton({
+  open,
+  onClick,
+  label = 'Settings',
+}: {
+  open: boolean
+  onClick: () => void
+  label?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      aria-label={open ? `Close ${label.toLowerCase()}` : label}
+      data-tour="settings"
+      className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] transition-colors ${
+        open
+          ? 'border-teal/40 bg-teal/10 text-teal'
+          : 'border-line bg-surface-2 text-muted hover:border-teal/50 hover:text-text'
+      }`}
+    >
+      <GearIcon size={12} />
+      {open ? 'Done' : label}
+    </button>
   )
 }

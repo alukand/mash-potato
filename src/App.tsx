@@ -5,6 +5,7 @@ import { fetchMyGroups, fetchMembers, updateMyTasteMode } from './lib/api'
 import type { GroupInfo, MemberInfo } from './lib/api'
 import type { TasteMode } from './lib/rubricCatalog'
 import {
+  clearToured,
   pickActiveGroup,
   readOnboarded,
   readStoredGroupId,
@@ -21,7 +22,7 @@ import { Logo } from './components/Logo'
 import { BottomNav } from './components/BottomNav'
 import { FirstRunTour } from './components/FirstRunTour'
 import { OnboardingSlides } from './components/OnboardingSlides'
-import { CtaButton } from './components/ui'
+import { CtaButton, HEADER_ACTION_ID } from './components/ui'
 import type { TabId } from './components/BottomNav'
 import { AuthScreen } from './screens/AuthScreen'
 import { CreateGroupScreen } from './screens/CreateGroupScreen'
@@ -431,12 +432,15 @@ function App() {
         </div>
       ) : (
         <div className="mx-auto w-full max-w-[480px] px-5 pb-32">
-          {/* ---- Header: just the brand; Profile is the fourth tab ---- */}
+          {/* ---- Header: the brand, plus one top-right slot screens fill ---- */}
           <header className="pt-safe flex items-center gap-2.5 pb-5">
             <Logo className="h-9 w-9 shrink-0" />
             <h1 className="truncate font-display text-[24px] font-semibold leading-none tracking-tight">
               Mash Potato
             </h1>
+            {/* Screens portal their settings control here (ui.tsx HeaderAction),
+                so it sits in ONE predictable place on every tab. */}
+            <div id={HEADER_ACTION_ID} className="ml-auto flex shrink-0 items-center gap-2" />
           </header>
 
           {/* key remounts the screen on tab OR group change so entrances replay */}
@@ -495,6 +499,13 @@ function App() {
                 onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
                 onNameChanged={refreshMembers}
                 onGroupsChanged={refreshGroups}
+                onReplayTour={() => {
+                  clearToured()
+                  setStack([])
+                  setTourTab('home')
+                  setTab('home')
+                  setTourActive(true)
+                }}
               />
             )}
           </main>

@@ -529,6 +529,63 @@ begin
   raise notice 'PASS 24: after the invite window an unanswered member no longer holds the reveal';
 end $$;
 
-do $$ begin raise notice '=== ALL 32 ASSERTIONS PASSED — the blind rule holds, reveals open per member, one-liners seal with the scores, RSVP passes never deadlock ==='; end $$;
+-- ---- cancelling a blind round -------------------------------------------
+-- Ben (a plain member) starts one, so both authorization paths are covered.
+set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+insert into public.reveal_sessions (id, group_id, title_id, created_by, rubric)
+values ('5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c',
+        '99999999-9999-9999-9999-999999999999',
+        '77777777-7777-7777-7777-777777777777',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        '[{"key":"story","label":"Story","weight":20}]'::jsonb);
+insert into public.member_scores (session_id, member_id, scores, locked)
+values ('5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '{"story":7}'::jsonb, true);
+
+-- PASS 33: a bystander cannot call off someone else's round
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+do $$
+begin
+  begin
+    perform public.cancel_session('5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c');
+    raise exception 'FAIL 33: a bystander cancelled a round';
+  exception when raise_exception then
+    if sqlerrm = 'only the group owner or whoever started it can call off a round' then
+      raise notice 'PASS 33: only the owner or the starter can call off a round';
+    else raise; end if;
+  end;
+end $$;
+
+-- PASS 34: a revealed round is history, even for the owner
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+do $$
+begin
+  begin
+    perform public.cancel_session('66666666-6666-6666-6666-666666666666');
+    raise exception 'FAIL 34: a revealed round was cancelled';
+  exception when raise_exception then
+    if sqlerrm = 'a revealed round is part of the group history' then
+      raise notice 'PASS 34: a revealed round cannot be cancelled';
+    else raise; end if;
+  end;
+end $$;
+
+-- PASS 35: the starter can cancel, and the scorecards go with it
+set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
+do $$
+declare n int;
+begin
+  perform public.cancel_session('5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c');
+  if exists (select 1 from public.reveal_sessions
+             where id = '5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c') then
+    raise exception 'FAIL 35: the round survived the cancel';
+  end if;
+  select count(*) into n from public.member_scores
+   where session_id = '5c5c5c5c-5c5c-5c5c-5c5c-5c5c5c5c5c5c';
+  if n <> 0 then raise exception 'FAIL 35: % scorecards survived', n; end if;
+  raise notice 'PASS 35: the starter can call it off and the scorecards cascade';
+end $$;
+
+do $$ begin raise notice '=== ALL 35 ASSERTIONS PASSED — the blind rule holds, reveals open per member, one-liners seal with the scores, RSVP passes never deadlock, and a mistaken round can be called off ==='; end $$;
 
 rollback;

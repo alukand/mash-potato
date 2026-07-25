@@ -76,6 +76,8 @@ export function BottomNav({ active, onSelect, highlight = null }: BottomNavProps
             type="button"
             onClick={() => onSelect(tab.id)}
             aria-current={isActive ? 'page' : undefined}
+            // the first-run tour cuts its spotlight around these
+            data-tour={`tab-${tab.id}`}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-[11px] font-semibold transition-colors ${
               isHighlighted ? 'mp-tour-pulse' : ''
             } ${
