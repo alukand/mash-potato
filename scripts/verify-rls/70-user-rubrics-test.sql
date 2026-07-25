@@ -12,6 +12,10 @@ values
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '00000000-0000-0000-0000-000000000000',
    'authenticated', 'authenticated', 'ben@test.dev', '{"display_name":"Ben"}', now(), now());
 
+-- This file tests the BUFF preset path (fresh profiles default casual since
+-- taste modes; the casual path lives in 96-taste-modes-test.sql).
+update public.profiles set taste_mode = 'buff';
+
 -- ---- Ana saves a favorite preset (story-heavy + humor) ----
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';

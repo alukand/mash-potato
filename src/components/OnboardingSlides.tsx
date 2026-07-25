@@ -2,10 +2,13 @@ import { useRef, useState } from 'react'
 import { Logo } from './Logo'
 import { CtaButton } from './ui'
 import { ScoreRing } from './ScoreRing'
+import { TASTE_MODES } from '../lib/rubricCatalog'
+import type { TasteMode } from '../lib/rubricCatalog'
 
 interface OnboardingSlidesProps {
-  /** Done: true = jump into creating a group, false = explore first. */
-  onDone: (createGroup: boolean) => void
+  /** Done: true = jump into creating a group, false = explore first.
+   *  tasteMode is the picker's final state (preselected casual). */
+  onDone: (createGroup: boolean, tasteMode: TasteMode) => void
 }
 
 // Each slide teaches with a LIVE miniature of the real product, built from
@@ -176,6 +179,94 @@ function NightsMock({ active }: { active: boolean }) {
   )
 }
 
+const CASUAL_MOCK_ROWS = [
+  { label: 'Enjoyment', width: 0.86 },
+  { label: 'Acting', width: 0.6 },
+  { label: 'Writing', width: 0.52 },
+]
+
+const BUFF_MOCK_ROWS = [
+  { label: 'Story', width: 0.74 },
+  { label: 'Acting', width: 0.6 },
+  { label: 'Writing', width: 0.55 },
+  { label: 'Cinematography', width: 0.8 },
+  { label: 'Pacing', width: 0.45 },
+  { label: 'Score', width: 0.66 },
+  { label: 'Impact', width: 0.7 },
+]
+
+// The picker slide's miniature IS the choice: two mini scorecards, tap the
+// one that sounds like you. Preselected Normie; switchable forever after.
+function TasteMock({
+  active,
+  selected,
+  onSelect,
+}: {
+  active: boolean
+  selected: TasteMode
+  onSelect: (mode: TasteMode) => void
+}) {
+  return (
+    <div key={active ? 'on' : 'off'} className="flex items-stretch gap-3">
+      {(['casual', 'buff'] as const).map((mode, i) => {
+        const rows = mode === 'casual' ? CASUAL_MOCK_ROWS : BUFF_MOCK_ROWS
+        const picked = selected === mode
+        return (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => onSelect(mode)}
+            aria-pressed={picked}
+            className={`mp-card w-[150px] rounded-2xl px-3.5 pb-3 pt-2.5 text-left transition-all ${
+              active ? 'mp-pop' : ''
+            } ${picked ? 'ring-2 ring-teal/60' : 'opacity-80 hover:opacity-100'}`}
+            style={{ animationDelay: `${i * 160}ms` }}
+          >
+            <span className="flex items-center justify-between">
+              <span
+                className={`font-mono text-[9px] font-bold uppercase tracking-[0.18em] ${
+                  picked ? 'text-teal' : 'text-muted'
+                }`}
+              >
+                {TASTE_MODES[mode].plural}
+              </span>
+              {picked && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-teal" aria-hidden>
+                  <path d="m4.5 12.5 5 5 10-11" />
+                </svg>
+              )}
+            </span>
+            {rows.map((row) => (
+              <span key={row.label} className="mt-1.5 block">
+                <span
+                  className={`block truncate font-medium ${
+                    mode === 'casual' ? 'text-[11px]' : 'text-[9px]'
+                  }`}
+                >
+                  {row.label}
+                </span>
+                <span
+                  className={`mt-0.5 block overflow-hidden rounded-full bg-surface-2 ${
+                    mode === 'casual' ? 'h-1.5' : 'h-1'
+                  }`}
+                >
+                  <span
+                    className={`block h-full rounded-full ${active ? 'mp-grow-x' : ''}`}
+                    style={{
+                      width: `${row.width * 100}%`,
+                      backgroundImage: 'linear-gradient(90deg, #b98a35, #e7b24e)',
+                    }}
+                  />
+                </span>
+              </span>
+            ))}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function StartMock({ active }: { active: boolean }) {
   return (
     <div key={active ? 'on' : 'off'} className="flex flex-col items-center">
@@ -236,6 +327,13 @@ const SLIDES: Slide[] = [
     mock: (active) => <NightsMock active={active} />,
   },
   {
+    key: 'taste',
+    title: 'How do you like to score?',
+    body: 'Normies make three quick calls, and enjoyment counts most. Cinephiles work the full craft rubric. Every title shows both crowds, and you can switch anytime from your profile.',
+    // rendered specially below: the miniature is the picker
+    mock: () => null,
+  },
+  {
     key: 'start',
     title: 'Start with your people',
     body: 'Create a group and add friends by name, or explore solo and get added later. We point out the tabs when you land.',
@@ -251,6 +349,7 @@ const SLIDES: Slide[] = [
 export function OnboardingSlides({ onDone }: OnboardingSlidesProps) {
   const touchX = useRef<number | null>(null)
   const [index, setIndex] = useState(0)
+  const [tasteMode, setTasteMode] = useState<TasteMode>('casual')
   const last = index === SLIDES.length - 1
 
   function goTo(i: number) {
@@ -267,7 +366,7 @@ export function OnboardingSlides({ onDone }: OnboardingSlidesProps) {
         {!last && (
           <button
             type="button"
-            onClick={() => onDone(false)}
+            onClick={() => onDone(false, tasteMode)}
             className="rounded-full border border-line px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
           >
             Skip
@@ -299,7 +398,13 @@ export function OnboardingSlides({ onDone }: OnboardingSlidesProps) {
               className="grid w-full shrink-0 place-items-center px-8"
             >
               <div className="mx-auto flex max-w-[380px] flex-col items-center text-center">
-                <div className="grid min-h-[190px] place-items-center">{slide.mock(i === index)}</div>
+                <div className="grid min-h-[190px] place-items-center">
+                  {slide.key === 'taste' ? (
+                    <TasteMock active={i === index} selected={tasteMode} onSelect={setTasteMode} />
+                  ) : (
+                    slide.mock(i === index)
+                  )}
+                </div>
                 <h2 className="mt-5 font-display text-[30px] font-semibold leading-[1.1] tracking-tight">
                   {slide.title}
                 </h2>
@@ -326,12 +431,12 @@ export function OnboardingSlides({ onDone }: OnboardingSlidesProps) {
         </div>
         {last ? (
           <>
-            <CtaButton onClick={() => onDone(true)} className="w-full py-3.5 text-[15px]">
+            <CtaButton onClick={() => onDone(true, tasteMode)} className="w-full py-3.5 text-[15px]">
               Create your first group
             </CtaButton>
             <button
               type="button"
-              onClick={() => onDone(false)}
+              onClick={() => onDone(false, tasteMode)}
               className="mt-3 w-full rounded-full border border-line py-3 text-[13px] font-semibold text-muted transition-colors hover:text-text"
             >
               Explore first, group up later

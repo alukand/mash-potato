@@ -4,9 +4,10 @@ import {
   backdropUrl,
   createPlaylist,
   deleteGlobalRating,
-  fetchCommunityHistogram,
-  fetchCommunityScore,
+  fetchModeHistogram,
+  fetchModeScores,
   fetchMyGlobalRating,
+  fetchMyTasteMode,
   fetchAddablePlaylists,
   fetchMyPlaylistsContaining,
   fetchSavedTitleId,
@@ -20,8 +21,8 @@ import {
   unsaveTitle,
 } from '../lib/api'
 import type {
-  CommunityScore,
   GroupInfo,
+  ModeScores,
   PlaylistSummary,
   TitleDetail,
   TitleHistoryEntry,
@@ -30,16 +31,17 @@ import type {
 import type { CategoryScores } from '../lib/scoring'
 import { mashedScore, memberWeightedScore, formatScore } from '../lib/scoring'
 import { weightsFromRubric } from '../lib/mapping'
-import { DEFAULT_WEIGHTS, defaultRubricEntries } from '../lib/rubricCatalog'
+import { soloRubricEntriesFor, soloWeightsFor, TASTE_MODES } from '../lib/rubricCatalog'
+import type { TasteMode } from '../lib/rubricCatalog'
 import { CategoryLegend } from '../components/CategoryLegend'
 import { CommunityHistogram } from '../components/CommunityHistogram'
 import { DiscussionSection } from '../components/DiscussionSection'
 import { GroupInviteSheet } from '../components/GroupInviteSheet'
 import { CtaButton, GroupMark, ScoreSliderRow, fieldClassSm } from '../components/ui'
 
-// The default rubric everyone's solo/community rating uses.
-const SOLO_RUBRIC = defaultRubricEntries()
-const SOLO_WEIGHT_TOTAL = SOLO_RUBRIC.reduce((sum, e) => sum + e.weight, 0)
+// Solo ratings follow YOUR taste mode: Normies score the enjoyment-heavy
+// three, Cinephiles the base-seven craft rubric. The community section shows
+// both crowds' numbers side by side.
 
 interface TitleDetailScreenProps {
   tmdbId: number
@@ -93,8 +95,10 @@ export function TitleDetailScreen({
   const [discussionRefresh, setDiscussionRefresh] = useState(0)
   const [history, setHistory] = useState<TitleHistoryEntry[]>([])
   const [watch, setWatch] = useState<WatchProviders | null>(null)
-  const [community, setCommunity] = useState<CommunityScore | null>(null)
+  const [modeScores, setModeScores] = useState<ModeScores | null>(null)
   const [communityBins, setCommunityBins] = useState<number[]>([])
+  const [histFilter, setHistFilter] = useState<TasteMode | 'all'>('all')
+  const [myMode, setMyMode] = useState<TasteMode | null>(null)
   const [myScores, setMyScores] = useState<CategoryScores | null>(null)
   const [rating, setRating] = useState(false)
   const [soloScores, setSoloScores] = useState<CategoryScores>({})
@@ -204,27 +208,30 @@ export function TitleDetailScreen({
     setInviteOpen(false)
     setListsOpen(false)
     setMyLists(null)
+    setHistFilter('all')
     Promise.all([
       fetchTitleDetail(tmdbId, mediaType),
       fetchSavedTitleId(userId, tmdbId, mediaType),
       fetchTitleHistory(tmdbId, mediaType),
-      fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
+      fetchModeScores(tmdbId, mediaType),
       fetchMyGlobalRating(userId, tmdbId, mediaType),
-      fetchCommunityHistogram(tmdbId, mediaType, DEFAULT_WEIGHTS),
+      fetchModeHistogram(tmdbId, mediaType, null),
+      fetchMyTasteMode(userId),
       fetchMyPlaylistsContaining(userId, tmdbId, mediaType).catch(
         () => new Map<string, string>(),
       ),
       fetchWatchProviders(tmdbId, mediaType).catch(() => null),
     ])
-      .then(([d, savedId, hist, comm, mine, histogram, holds, providers]) => {
+      .then(([d, savedId, hist, comm, mine, histogram, mode, holds, providers]) => {
         if (cancelled) return
         setDetail(d)
         setNotFound(d === null)
         setSavedTitleId(savedId)
         setHistory(hist)
-        setCommunity(comm)
+        setModeScores(comm)
         setMyScores(mine)
         setCommunityBins(histogram)
+        setMyMode(mode)
         setContaining(holds)
         setWatch(providers)
       })
@@ -264,11 +271,38 @@ export function TitleDetailScreen({
     }
   }
 
+  // Your mode's card: what the solo sliders show and what your number weighs.
+  const soloRubric = soloRubricEntriesFor(myMode ?? 'buff')
+  const soloWeights = soloWeightsFor(myMode ?? 'buff')
+  const soloWeightTotal = soloRubric.reduce((sum, e) => sum + e.weight, 0)
+
+  // The histogram's mean marker follows the active filter; Everyone is the
+  // count-weighted blend of the two crowds.
+  const histogramMashed = (() => {
+    if (!modeScores) return null
+    if (histFilter !== 'all') return modeScores[histFilter].mashed
+    const parts = [modeScores.casual, modeScores.buff].filter(
+      (p): p is { count: number; mashed: number } => p.mashed !== null && p.count > 0,
+    )
+    const n = parts.reduce((sum, p) => sum + p.count, 0)
+    if (n === 0) return null
+    return parts.reduce((sum, p) => sum + p.mashed * p.count, 0) / n
+  })()
+
   function openRating() {
     setSoloScores(
-      Object.fromEntries(SOLO_RUBRIC.map((e) => [e.key, myScores?.[e.key] ?? 5])),
+      Object.fromEntries(soloRubric.map((e) => [e.key, myScores?.[e.key] ?? 5])),
     )
     setRating(true)
+  }
+
+  async function switchHistFilter(next: TasteMode | 'all') {
+    setHistFilter(next)
+    try {
+      setCommunityBins(await fetchModeHistogram(tmdbId, mediaType, next === 'all' ? null : next))
+    } catch {
+      // leave the previous bins; the chips stay usable
+    }
   }
 
   // From the action row: open the solo sliders and bring them into view.
@@ -297,10 +331,10 @@ export function TitleDetailScreen({
       )
       setMyScores({ ...soloScores })
       const [comm, histogram] = await Promise.all([
-        fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
-        fetchCommunityHistogram(tmdbId, mediaType, DEFAULT_WEIGHTS),
+        fetchModeScores(tmdbId, mediaType),
+        fetchModeHistogram(tmdbId, mediaType, histFilter === 'all' ? null : histFilter),
       ])
-      setCommunity(comm)
+      setModeScores(comm)
       setCommunityBins(histogram)
       setRating(false)
       // the rating gates public discussion; let the section re-check
@@ -321,10 +355,10 @@ export function TitleDetailScreen({
       setConfirmRemove(false)
       setRating(false)
       const [comm, histogram] = await Promise.all([
-        fetchCommunityScore(tmdbId, mediaType, DEFAULT_WEIGHTS),
-        fetchCommunityHistogram(tmdbId, mediaType, DEFAULT_WEIGHTS),
+        fetchModeScores(tmdbId, mediaType),
+        fetchModeHistogram(tmdbId, mediaType, histFilter === 'all' ? null : histFilter),
       ])
-      setCommunity(comm)
+      setModeScores(comm)
       setCommunityBins(histogram)
       setDiscussionRefresh((n) => n + 1)
     } catch (err) {
@@ -503,7 +537,7 @@ export function TitleDetailScreen({
                 <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5Z" />
               </svg>
               {myScores
-                ? `Solo ${formatScore(memberWeightedScore(myScores, DEFAULT_WEIGHTS))} · Edit`
+                ? `Solo ${formatScore(memberWeightedScore(myScores, soloWeights))} · Edit`
                 : 'Rate it solo'}
             </button>
             <button
@@ -717,32 +751,59 @@ export function TitleDetailScreen({
           </section>
         )}
 
-        {/* ---- community rating (solo, default rubric) ---- */}
+        {/* ---- community rating (both crowds, each on their own rubric) ---- */}
         <section ref={communityRef} className="mt-7 scroll-mt-4">
           <div className="mb-2.5 flex items-baseline justify-between px-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
               Community rating
             </p>
-            <p className="font-mono text-[10px] text-muted">everyone, default rubric</p>
+            <p className="font-mono text-[10px] text-muted">two crowds, two rubrics</p>
           </div>
           <div className="mp-card rounded-[22px] p-5">
-            <div className="flex items-end justify-between">
-              <div>
-                <span className="tabular font-display text-[40px] font-semibold leading-none text-teal">
-                  {formatScore(community?.mashed ?? null)}
-                </span>
-                <p className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-teal">
-                  Mashed
-                </p>
-              </div>
-              <p className="pb-1 text-right font-mono text-[11px] text-muted">
-                {community && community.count > 0
-                  ? `${community.count} ${community.count === 1 ? 'rating' : 'ratings'}`
-                  : 'No ratings yet'}
-              </p>
+            <div className="grid grid-cols-2 gap-4">
+              {(['casual', 'buff'] as const).map((m, i) => {
+                const crowd = modeScores?.[m]
+                return (
+                  <div key={m} className={i > 0 ? 'border-l border-line/50 pl-4' : ''}>
+                    <p className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-teal">
+                      {TASTE_MODES[m].plural}
+                      {myMode === m && (
+                        <span className="rounded-full bg-gold/15 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.12em] text-gold">
+                          you
+                        </span>
+                      )}
+                    </p>
+                    <span className="tabular mt-1 block font-display text-[34px] font-semibold leading-none text-teal">
+                      {formatScore(crowd?.mashed ?? null)}
+                    </span>
+                    <p className="mt-1 font-mono text-[10px] text-muted">
+                      {crowd && crowd.count > 0
+                        ? `${crowd.count} ${crowd.count === 1 ? 'rating' : 'ratings'}`
+                        : 'No ratings yet'}
+                    </p>
+                  </div>
+                )
+              })}
             </div>
 
-            <CommunityHistogram bins={communityBins} mashed={community?.mashed ?? null} />
+            <div className="mt-4 flex items-center gap-1.5">
+              {(['all', 'casual', 'buff'] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => void switchHistFilter(f)}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                    histFilter === f
+                      ? 'border-teal/50 bg-teal/10 text-teal'
+                      : 'border-line text-muted hover:text-text'
+                  }`}
+                >
+                  {f === 'all' ? 'Everyone' : TASTE_MODES[f].plural}
+                </button>
+              ))}
+            </div>
+
+            <CommunityHistogram bins={communityBins} mashed={histogramMashed} />
 
             {!rating && (
               <div className="mt-4 flex items-center justify-between gap-3 border-t border-line/60 pt-4">
@@ -750,7 +811,7 @@ export function TitleDetailScreen({
                   <p className="text-[13px] text-muted">
                     You rated it{' '}
                     <span className="font-semibold text-gold">
-                      {formatScore(memberWeightedScore(myScores, DEFAULT_WEIGHTS))}
+                      {formatScore(memberWeightedScore(myScores, soloWeights))}
                     </span>
                   </p>
                 ) : (
@@ -809,15 +870,15 @@ export function TitleDetailScreen({
                 <p className="pt-1.5 text-[13px] leading-snug text-muted">
                   Score each part for what it's trying to be.
                 </p>
-                <CategoryLegend entries={SOLO_RUBRIC} className="mt-2" />
-                {SOLO_RUBRIC.map((entry, i) => (
+                <CategoryLegend entries={soloRubric} className="mt-2" />
+                {soloRubric.map((entry, i) => (
                   <ScoreSliderRow
                     key={entry.key}
                     className={`py-3 ${i > 0 ? 'border-t border-line/40' : ''}`}
                     label={entry.label}
                     sub={
                       <p className="mt-0.5 font-mono text-[10px] text-muted">
-                        weight {Math.round((entry.weight / SOLO_WEIGHT_TOTAL) * 100)}%
+                        weight {Math.round((entry.weight / soloWeightTotal) * 100)}%
                       </p>
                     }
                     value={soloScores[entry.key] ?? 5}
@@ -828,7 +889,7 @@ export function TitleDetailScreen({
                   <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
                     Your score{' '}
                     <span className="tabular text-gold">
-                      {formatScore(memberWeightedScore(soloScores, DEFAULT_WEIGHTS))}
+                      {formatScore(memberWeightedScore(soloScores, soloWeights))}
                     </span>
                   </span>
                   <div className="flex items-center gap-2">

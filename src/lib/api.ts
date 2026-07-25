@@ -8,7 +8,8 @@ import { mashedScore } from './scoring'
 import { rubricFromJson, scorecardFromRow, scoresFromJson, weightsFromRubric } from './mapping'
 import type { SessionRubricEntry } from './mapping'
 // runtime-safe: rubricCatalog only type-imports from this module
-import { presetRowsFromJson } from './rubricCatalog'
+import { CASUAL_WEIGHTS, DEFAULT_WEIGHTS, presetRowsFromJson } from './rubricCatalog'
+import type { TasteMode } from './rubricCatalog'
 
 export type { SessionRubricEntry } from './mapping'
 
@@ -1293,12 +1294,26 @@ export interface CommunityScore {
   mashed: number | null
 }
 
-/** The community score for a title (count + weighted mean across all users). */
-export async function fetchCommunityScore(
+/** Both crowds' numbers for a title, bucketed by each rater's CURRENT mode. */
+export interface ModeScores {
+  casual: CommunityScore
+  buff: CommunityScore
+}
+
+const EMPTY_MODE_SCORES: ModeScores = {
+  casual: { count: 0, mashed: null },
+  buff: { count: 0, mashed: null },
+}
+
+/**
+ * The community scores for a title, one per taste mode. Each rater is scored
+ * under their OWN mode's weights (casuals by the enjoyment-heavy card, buffs
+ * by the craft rubric), so both numbers mean what their crowd means by them.
+ */
+export async function fetchModeScores(
   tmdbId: number,
   mediaType: 'movie' | 'tv',
-  weights: Record<string, number>,
-): Promise<CommunityScore> {
+): Promise<ModeScores> {
   const { data: title, error: titleError } = await supabase
     .from('titles')
     .select('id')
@@ -1306,26 +1321,36 @@ export async function fetchCommunityScore(
     .eq('media_type', mediaType)
     .maybeSingle()
   if (titleError) throw new Error(titleError.message)
-  if (!title) return { count: 0, mashed: null }
+  if (!title) return EMPTY_MODE_SCORES
 
-  const { data, error } = await supabase.rpc('title_community_score', {
+  const { data, error } = await supabase.rpc('title_mode_scores', {
     p_title_id: title.id,
-    p_weights: weights,
+    p_casual_weights: CASUAL_WEIGHTS,
+    p_buff_weights: DEFAULT_WEIGHTS,
   })
   if (error) throw new Error(error.message)
-  const row = data?.[0]
-  return { count: row?.rating_count ?? 0, mashed: row?.mashed ?? null }
+  const result: ModeScores = {
+    casual: { count: 0, mashed: null },
+    buff: { count: 0, mashed: null },
+  }
+  for (const row of data ?? []) {
+    if (row.mode === 'casual' || row.mode === 'buff') {
+      result[row.mode] = { count: row.rating_count, mashed: row.mashed }
+    }
+  }
+  return result
 }
 
 /**
  * The community rating distribution for a title: a 10-slot array where index i
- * is how many users' weighted score rounded to (i + 1). Aggregate-only (the
- * RPC never returns individual rows).
+ * is how many users' weighted score rounded to (i + 1). Each rater is scored
+ * under their own mode's weights; pass a mode to see one crowd, null for
+ * everyone. Aggregate-only (the RPC never returns individual rows).
  */
-export async function fetchCommunityHistogram(
+export async function fetchModeHistogram(
   tmdbId: number,
   mediaType: 'movie' | 'tv',
-  weights: Record<string, number>,
+  mode: TasteMode | null,
 ): Promise<number[]> {
   const empty = Array<number>(10).fill(0)
   const { data: title, error: titleError } = await supabase
@@ -1337,9 +1362,11 @@ export async function fetchCommunityHistogram(
   if (titleError) throw new Error(titleError.message)
   if (!title) return empty
 
-  const { data, error } = await supabase.rpc('title_community_histogram', {
+  const { data, error } = await supabase.rpc('title_mode_histogram', {
     p_title_id: title.id,
-    p_weights: weights,
+    p_casual_weights: CASUAL_WEIGHTS,
+    p_buff_weights: DEFAULT_WEIGHTS,
+    p_mode: mode ?? undefined,
   })
   if (error) throw new Error(error.message)
   const bins = [...empty]
@@ -1773,6 +1800,27 @@ export async function updateMyAvatar(userId: string, avatarKey: string | null): 
   const { error } = await supabase
     .from('profiles')
     .update({ avatar_key: avatarKey })
+    .eq('id', userId)
+  if (error) throw new Error(error.message)
+}
+
+/** Your taste mode: 'casual' scores the Normie card, 'buff' the Cinephile one. */
+export async function fetchMyTasteMode(userId: string): Promise<TasteMode> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('taste_mode')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data?.taste_mode === 'buff' ? 'buff' : 'casual'
+}
+
+/** Switch sides. Changes your solo card and which community number is yours;
+ *  group rubrics stay as they are (weights renegotiate at group boundaries). */
+export async function updateMyTasteMode(userId: string, mode: TasteMode): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ taste_mode: mode })
     .eq('id', userId)
   if (error) throw new Error(error.message)
 }

@@ -19,7 +19,7 @@ revoke update, delete on public.comment_reports from authenticated;
 revoke update on public.user_blocks from authenticated;
 revoke all on public.banned_terms from authenticated, anon;
 revoke update on public.profiles from authenticated;
-grant update (display_name, avatar_key) on public.profiles to authenticated;
+grant update (display_name, avatar_key, taste_mode) on public.profiles to authenticated;
 -- security hardening: trigger-only internals are not an API, even signed in
 -- (mirrors 20260717160000_security_hardening.sql, which the blanket function
 -- grant above would otherwise undo).

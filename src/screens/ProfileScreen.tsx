@@ -4,6 +4,8 @@ import {
   deleteMyAccount,
   fetchMyAvatarKey,
   fetchMyEmail,
+  fetchMyTasteMode,
+  updateMyTasteMode,
   fetchMyExport,
   fetchMyFriends,
   fetchMyGlobalRatings,
@@ -33,6 +35,8 @@ import { PlaylistCard } from '../components/PlaylistCard'
 import { PosterGrid } from '../components/PosterGrid'
 import { colorForUser } from '../lib/palette'
 import { AVATAR_CATALOG, Avatar } from '../components/avatars'
+import { TASTE_MODES } from '../lib/rubricCatalog'
+import type { TasteMode } from '../lib/rubricCatalog'
 
 interface ProfileScreenProps {
   userId: string
@@ -88,6 +92,10 @@ export function ProfileScreen({
   const [avatarKey, setAvatarKey] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [avatarBusy, setAvatarBusy] = useState(false)
+
+  // ---- taste mode (Normie or Cinephile) ----
+  const [tasteMode, setTasteMode] = useState<TasteMode | null>(null)
+  const [modeBusy, setModeBusy] = useState(false)
 
   // ---- account: email + password + deletion ----
   const [myEmail, setMyEmail] = useState<string | null>(null)
@@ -222,8 +230,9 @@ export function ProfileScreen({
       fetchMyPlaylists(userId).catch(() => []),
       fetchMyFriends(userId).catch(() => []),
       fetchMyAvatarKey(userId).catch(() => null),
+      fetchMyTasteMode(userId).catch(() => null),
     ])
-      .then(([r, g, s, p, f, a]) => {
+      .then(([r, g, s, p, f, a, mode]) => {
         if (cancelled) return
         setReviewed(r)
         setRated(g)
@@ -231,6 +240,7 @@ export function ProfileScreen({
         setPlaylists(p)
         setFriends(f)
         setAvatarKey(a)
+        setTasteMode(mode)
       })
       .catch(() => {
         if (cancelled) return
@@ -243,6 +253,20 @@ export function ProfileScreen({
       cancelled = true
     }
   }, [userId])
+
+  async function handleSwitchMode(next: TasteMode) {
+    if (modeBusy || tasteMode === next) return
+    const prev = tasteMode
+    setModeBusy(true)
+    setTasteMode(next)
+    try {
+      await updateMyTasteMode(userId, next)
+    } catch {
+      setTasteMode(prev)
+    } finally {
+      setModeBusy(false)
+    }
+  }
 
   async function handleSaveName() {
     if (nameBusy) return
@@ -416,6 +440,37 @@ export function ProfileScreen({
               {nameError}
             </p>
           )}
+        </div>
+      </section>
+
+      {/* ---- taste mode ---- */}
+      <section className="mp-rise mt-7" style={{ animationDelay: '60ms' }}>
+        <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+          How you score
+        </p>
+        <div className="mp-card rounded-[22px] p-4">
+          <div className="flex items-center gap-1.5">
+            {(['casual', 'buff'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                disabled={modeBusy || tasteMode === null}
+                onClick={() => void handleSwitchMode(m)}
+                className={`flex-1 rounded-full border px-3 py-2 text-[13px] font-semibold transition-colors disabled:opacity-60 ${
+                  tasteMode === m
+                    ? 'border-teal/50 bg-teal/10 text-teal'
+                    : 'border-line text-muted hover:text-text'
+                }`}
+              >
+                {TASTE_MODES[m].label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-[13px] leading-snug text-muted">
+            {tasteMode ? TASTE_MODES[tasteMode].blurb : 'Loading your mode.'} Switching changes
+            your solo rating card and which community number is yours. Group rubrics stay as
+            they are.
+          </p>
         </div>
       </section>
 

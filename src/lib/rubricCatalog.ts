@@ -38,6 +38,7 @@ export const RUBRIC_CATALOG: CatalogCategory[] = [
   { key: 'emotionalImpact', label: 'Emotional Impact', blurb: 'Did it land?', kind: 'base' },
 
   // ---- optional: group toggles --------------------------------------------
+  { key: 'enjoyment', label: 'Enjoyment', blurb: 'Did you have a good time?', kind: 'optional' },
   { key: 'directing', label: 'Directing', blurb: 'Vision, tone, cohesion', kind: 'optional' },
   { key: 'originality', label: 'Originality', blurb: 'Fresh ideas, surprises', kind: 'optional' },
   { key: 'rewatchability', label: 'Rewatchability', blurb: 'Would you watch it again?', kind: 'optional' },
@@ -96,6 +97,58 @@ export function defaultRubricEntries(): SessionRubricEntry[] {
     label: c.label,
     weight: DEFAULT_WEIGHTS[c.key] ?? 20,
   }))
+}
+
+// ---- taste modes -----------------------------------------------------------
+// Two scoring styles, one community. The schema stores the neutral values
+// ('casual' | 'buff'); everything the user reads comes from TASTE_MODES, so a
+// rename never needs a migration. Casuals score three quick calls with
+// Enjoyment carrying half the card; buffs score the base-seven craft rubric.
+
+export type TasteMode = 'casual' | 'buff'
+
+export const TASTE_MODES: Record<
+  TasteMode,
+  { label: string; plural: string; blurb: string }
+> = {
+  casual: {
+    label: 'Normie',
+    plural: 'Normies',
+    blurb: 'Three quick calls, and enjoyment counts most.',
+  },
+  buff: {
+    label: 'Cinephile',
+    plural: 'Cinephiles',
+    blurb: 'The full craft rubric, seven categories deep.',
+  },
+}
+
+/** The casual card: Enjoyment carries half of it. Mirror the seed migration. */
+export const CASUAL_WEIGHTS: Record<string, number> = {
+  enjoyment: 50,
+  acting: 25,
+  writing: 25,
+}
+
+const CASUAL_KEYS = ['enjoyment', 'acting', 'writing'] as const
+
+/** The casual rubric as ordered snapshot entries. */
+export function casualRubricEntries(): SessionRubricEntry[] {
+  return CASUAL_KEYS.map((key) => ({
+    key,
+    label: catalogCategory(key)?.label ?? key,
+    weight: CASUAL_WEIGHTS[key] ?? 20,
+  }))
+}
+
+/** The solo-rating rubric for a taste mode (what the Rate-it card shows). */
+export function soloRubricEntriesFor(mode: TasteMode): SessionRubricEntry[] {
+  return mode === 'casual' ? casualRubricEntries() : defaultRubricEntries()
+}
+
+/** The solo-rating weights for a taste mode (what community math uses). */
+export function soloWeightsFor(mode: TasteMode): Record<string, number> {
+  return mode === 'casual' ? CASUAL_WEIGHTS : DEFAULT_WEIGHTS
 }
 
 /** The default rubric as group-editor rows (for seeding / reset). */

@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import {
   BASE_CATEGORIES,
+  CASUAL_WEIGHTS,
+  casualRubricEntries,
   configuredCategoryKeys,
   DEFAULT_WEIGHTS,
   mashRubrics,
   resolveSessionRubric,
   resolveSessionRubricTagged,
+  soloRubricEntriesFor,
+  soloWeightsFor,
   splitRubricForMember,
   RUBRIC_CATALOG,
+  TASTE_MODES,
 } from './rubricCatalog'
 import type { GroupRubricRow } from './api'
 
@@ -34,6 +39,36 @@ describe('the catalog', () => {
   it('has unique keys throughout', () => {
     const keys = RUBRIC_CATALOG.map((c) => c.key)
     expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  it('keeps enjoyment out of the base set but in the catalog', () => {
+    expect(RUBRIC_CATALOG.find((c) => c.key === 'enjoyment')?.kind).toBe('optional')
+    expect(BASE_CATEGORIES.map((c) => c.key)).not.toContain('enjoyment')
+  })
+})
+
+describe('taste modes', () => {
+  it('weights enjoyment heaviest on the casual card, at half the total', () => {
+    const total = Object.values(CASUAL_WEIGHTS).reduce((a, b) => a + b, 0)
+    expect(CASUAL_WEIGHTS.enjoyment / total).toBe(0.5)
+    expect(Math.max(...Object.values(CASUAL_WEIGHTS))).toBe(CASUAL_WEIGHTS.enjoyment)
+  })
+
+  it('builds the casual rubric in order: enjoyment, acting, writing', () => {
+    expect(casualRubricEntries().map((e) => e.key)).toEqual(['enjoyment', 'acting', 'writing'])
+    expect(casualRubricEntries()[0]).toMatchObject({ label: 'Enjoyment', weight: 50 })
+  })
+
+  it('routes solo rubric and weights by mode', () => {
+    expect(soloRubricEntriesFor('casual')).toHaveLength(3)
+    expect(soloRubricEntriesFor('buff')).toHaveLength(BASE_CATEGORIES.length)
+    expect(soloWeightsFor('casual')).toBe(CASUAL_WEIGHTS)
+    expect(soloWeightsFor('buff')).toBe(DEFAULT_WEIGHTS)
+  })
+
+  it('names both crowds', () => {
+    expect(TASTE_MODES.casual.plural).toBe('Normies')
+    expect(TASTE_MODES.buff.plural).toBe('Cinephiles')
   })
 })
 

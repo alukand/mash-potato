@@ -265,8 +265,44 @@ four beats, skippable, once per device (mp.toured). Group-less users get
 slides first, then the tour; users who arrive with groups skip straight
 to the tour.
 
+## Taste modes (Normies and Cinephiles, 2026-07-24)
+
+Two scoring styles, one community. `profiles.taste_mode` stores neutral
+values ('casual' | 'buff'); every display string lives in TASTE_MODES
+(`rubricCatalog.ts`), so a rename never needs a migration. Casual is the
+Normie card: Enjoyment 50, Acting 25, Writing 25 — enjoyment is deliberately
+HALF the card, that's the mode's whole point. Buff is the Cinephile card:
+the base-seven craft rubric at DEFAULT_WEIGHTS.
+
+- New accounts default casual; the migration backfilled existing accounts to
+  buff so nobody's card changed under them. Onboarding gained a picker slide
+  where the miniature IS the choice (two mini scorecards, preselected
+  Normie); Profile's "How you score" section switches anytime.
+- The mode changes YOUR SOLO CARD and your community bucket, nothing else.
+  Group rubrics stay group law (rubric cadence): a casual member's
+  three-category member rubric mashes in like any other, and the rest of a
+  session's card reaches them as opt-in extras.
+- Every title shows BOTH crowds. `title_mode_scores` /
+  `title_mode_histogram` bucket raters by their CURRENT mode and score each
+  rater under their own mode's weights — your ratings follow you when you
+  switch sides; "what does each crowd think" is asked at read time.
+  Aggregate-only, grants-law compliant (anon executes neither).
+- `seed_member_rubric` follows the mode when no ★ preset exists (casual
+  three / base seven) and the coverage union protects the MODE's core.
+  Suites: pgTAP 155 (taste_modes_test 11), twin +11 (96 file). The
+  member-rubrics and user-rubrics tests pin taste_mode='buff' — they test
+  the buff path; the casual path lives in the taste-mode files.
+
 ## Changelog
 
+- 2026-07-24 (taste modes): Normies and Cinephiles shipped (see the law
+  above). New `enjoyment` catalog category (optional kind). TitleDetail's
+  community card became the two-crowd grid (your crowd wears a gold "you"
+  chip) with an Everyone / Normies / Cinephiles histogram filter; the solo
+  card follows your mode (3 or 7 sliders). Onboarding grew the picker slide
+  (TasteMock: selectable live miniatures); Profile grew "How you score".
+  api.ts: fetchModeScores / fetchModeHistogram / fetchMyTasteMode /
+  updateMyTasteMode replace the single-pool community fetches.
 - 2026-07-18 (changed minds): re-rate rounds + editable solo ratings (see
   the "Re-rate rounds" recipe above). SessionPanel's revealed footer pairs
   "Rate it again" with "Start the next round" (guarded by the one-blind-

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
-import { fetchMyGroups, fetchMembers } from './lib/api'
+import { fetchMyGroups, fetchMembers, updateMyTasteMode } from './lib/api'
 import type { GroupInfo, MemberInfo } from './lib/api'
 import {
   pickActiveGroup,
@@ -333,7 +333,10 @@ function App() {
     if (!onboarded) {
       return (
         <OnboardingSlides
-          onDone={(createGroup) => {
+          onDone={(createGroup, tasteMode) => {
+            // fire and forget: the picker's state (preselected casual) becomes
+            // the profile's mode; a failure just leaves the column default
+            void updateMyTasteMode(session.user.id, tasteMode).catch(() => {})
             storeOnboarded()
             setOnboarded(true)
             setShowCreateGroup(createGroup)

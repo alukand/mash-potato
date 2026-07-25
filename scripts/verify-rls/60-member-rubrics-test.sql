@@ -14,6 +14,10 @@ values
   ('cccccccc-cccc-cccc-cccc-cccccccccccc', '00000000-0000-0000-0000-000000000000',
    'authenticated', 'authenticated', 'cara@test.dev', '{"display_name":"Cara"}', now(), now());
 
+-- This file tests the BUFF seeding path (fresh profiles default casual since
+-- taste modes; the casual path lives in 96-taste-modes-test.sql).
+update public.profiles set taste_mode = 'buff';
+
 -- ---- Ana creates the group; the trigger chain seeds her rubric ----
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';

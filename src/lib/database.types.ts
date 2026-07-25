@@ -581,6 +581,7 @@ export type Database = {
           created_at: string
           display_name: string
           id: string
+          taste_mode: string
         }
         Insert: {
           accepted_terms_at?: string | null
@@ -589,6 +590,7 @@ export type Database = {
           created_at?: string
           display_name: string
           id: string
+          taste_mode?: string
         }
         Update: {
           accepted_terms_at?: string | null
@@ -597,6 +599,7 @@ export type Database = {
           created_at?: string
           display_name?: string
           id?: string
+          taste_mode?: string
         }
         Relationships: []
       }
@@ -1001,6 +1004,30 @@ export type Database = {
         Args: { p_title_id: string; p_weights: Json }
         Returns: {
           mashed: number
+          rating_count: number
+        }[]
+      }
+      title_mode_histogram: {
+        Args: {
+          p_buff_weights: Json
+          p_casual_weights: Json
+          p_mode?: string
+          p_title_id: string
+        }
+        Returns: {
+          bucket: number
+          n: number
+        }[]
+      }
+      title_mode_scores: {
+        Args: {
+          p_buff_weights: Json
+          p_casual_weights: Json
+          p_title_id: string
+        }
+        Returns: {
+          mashed: number
+          mode: string
           rating_count: number
         }[]
       }
