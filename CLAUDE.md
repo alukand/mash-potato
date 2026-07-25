@@ -45,11 +45,26 @@ the `tmdb-search` Edge Function (`supabase/functions/`; local secret in
 fine client-side.
 
 GRANTS LAW (hardening migration 20260717160000): `public` functions get NO
-default execute — every new function migration must grant explicitly
-(client RPCs and RLS helpers → `grant execute ... to authenticated`;
-trigger internals → no grant at all). Anon executes nothing. The twin's
-`20-grants.sql` mirrors the exceptions; `account_test.sql` + the twin's
-98 file assert the posture, so a forgotten grant fails the suites.
+default execute — every new function migration must grant explicitly.
+**Always name `anon` in the revoke; never rely on default privileges.** The
+one true pattern (see 20260717200000_group_polls.sql):
+
+```sql
+revoke all on function public.fn(args) from public, anon;
+grant execute on function public.fn(args) to authenticated;   -- client RPCs + RLS helpers
+-- trigger internals instead: revoke all ... from public, anon, authenticated;  (no grant)
+```
+
+**The suites do NOT catch a missing `anon` revoke (learned the hard way,
+2026-07-25, fixed in 20260725120000).** `revoke execute ... from public`
+alone passed pgTAP AND the twin locally, then shipped two functions that
+answered 200 to the anon key on hosted: default privileges differ between a
+local `db reset` and a hosted `db push`. After deploying any function
+migration, probe hosted directly — an anon-key POST to
+`/rest/v1/rpc/<fn>` with valid params must return 401, and a known-good
+control (e.g. `public_profile`) confirms the probe itself is sound. The
+twin's `20-grants.sql` mirrors the internals list; `account_test.sql` +
+the twin's 98 file assert the local posture.
 
 ## Commands
 

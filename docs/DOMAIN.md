@@ -1,5 +1,34 @@
 # mashpotato.app — domain + hosted auth checklist
 
+## Hosted deploy state (last synced 2026-07-25)
+
+Project `lvmcwvhlfijvegxbqipc`. The repo is **linked** (`supabase link` done
+locally), so `npx supabase db push` works from here.
+
+- Migrations applied through **20260725120000**. Local and hosted histories
+  match — verify with `npx supabase migration list`.
+- **Migration history was repaired on 2026-07-25.** Hosted carried
+  `20260711201441` (no local file) while local's
+  `20260711210000_user_rubrics` showed unapplied: the same migration under
+  two version numbers, because it had been applied through the Supabase MCP
+  with an auto timestamp. Confirmed by probing the live schema
+  (`user_rubrics` already existed), then reconciled with
+  `migration repair --status applied 20260711210000` +
+  `--status reverted 20260711201441`. **If `db push` ever reports "Remote
+  migration versions not found in local migrations directory" again, probe
+  the live schema before running the CLI's suggested `repair --status
+  reverted` — that command discards a migration's bookkeeping, and if its
+  schema is genuinely missing you get silent drift.**
+- Anon-key probe of every SECURITY DEFINER RPC returns 401 as of the
+  20260725120000 grants repair (see the GRANTS LAW in CLAUDE.md).
+- **A client build is useless until its migrations are pushed.** The
+  2026-07-25 TestFlight build white-screened with "column groups_1.taste_mode
+  does not exist" because the code shipped ahead of the schema. Push
+  migrations first, then build.
+- Codemagic already holds `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`
+  (set up separately); `.env.production` stays gitignored.
+
+
 The app's email flows are CODE-based (6-digit `{{ .Token }}` entered
 in-app), so nothing here blocks shipping — hosted works today on
 Supabase's built-in sender. This doc is (1) the dashboard settings that
