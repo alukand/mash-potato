@@ -279,6 +279,41 @@ the twin's 98 file assert the local posture.
   keep default replica identity. `search_my_messages` is SECURITY INVOKER on
   purpose; `my_inbox` restates visibility and must change in lockstep with
   `messages_select_member`.
+  CLIENT (the messaging block in api.ts): `fetchInbox` (one round trip,
+  unread included), `fetchThread` (newest-first, keyset on
+  `(created_at, id)`), send/delete/react/report, mark-read, prefs,
+  start/accept/decline DM, create/rename/leave chat, `fetchGroupmates`,
+  receipts, search, blocks + `unblockUser`, and `onThreadChange` /
+  `onInboxChange`. TWO TRAPS, both hit while building this and both
+  permanent: (1) a `.select()` string must be ONE STRING LITERAL —
+  supabase-js parses it from its literal type at COMPILE time, so
+  `'a' + 'b'` widens to `string` and every column silently degrades to
+  `GenericStringError`; (2) the quoted parent is fetched with a second keyed
+  query instead of a `reply_to:messages!...` embed, because the generated
+  types cannot resolve a SELF-referencing embed and collapse the row the
+  same way. Sending marks your own side read, so unread only ever counts the
+  other person. **Realtime channel topics must be UNIQUE PER SUBSCRIBER**
+  (`onThreadChange`/`onInboxChange` append a counter): supabase-js reuses a
+  channel by topic and throws "cannot add postgres_changes callbacks after
+  subscribe()". App watches the inbox for the envelope badge while
+  MessagesScreen watches it too, which crashed the app until the topics
+  diverged; the older scope-named channels only survive because exactly one
+  component is ever mounted per scope.
+  UI: `{kind:'messages'}` and `{kind:'thread', conversationId}` on the App
+  view-stack (`MessagesScreen` / `ThreadScreen`). The envelope
+  (`MessagesButton`) is App-owned because it is cross-tab, and sits LEFT of
+  the portal slot in the header — React children and portal children in the
+  SAME node fight over unmount order, so they get separate containers.
+  `UnreadBadge` is the app's first real badge primitive.
+  Thread interactions: tapping a BUBBLE opens the action sheet (five
+  reactions + Reply / Delete-or-Report / Cancel) — long-press is not
+  reachable in a webview, so a plain tap carries it. Reply sets a quoted
+  preview above the composer; "Seen" reads from
+  `conversation_read_receipts`; the header kebab holds mute / archive /
+  leave (leave only for custom chats). `ShareToChatSheet` sends a title or
+  playlist as a card from TitleDetail, resolving the titles row only ON SEND
+  so browsing never writes one; its optional note rides INSIDE the card
+  (a share card must render `body` too, or the note vanishes).
 - `supabase/migrations/` — schema + RLS as code (grants included — do not
   rely on platform default privileges). `powershell -File
   scripts\check-grants.ps1` lints migration TEXT for the GRANTS LAW (neither

@@ -15,6 +15,7 @@ import {
   fetchTitleHistory,
   fetchWatchProviders,
   posterUrl,
+  ensureTitleRow,
   removeTitleFromPlaylist,
   saveGlobalRating,
   saveTitle,
@@ -37,6 +38,7 @@ import { CategoryLegend } from '../components/CategoryLegend'
 import { CommunityHistogram } from '../components/CommunityHistogram'
 import { DiscussionSection } from '../components/DiscussionSection'
 import { GroupInviteSheet } from '../components/GroupInviteSheet'
+import { ShareToChatSheet } from '../components/ShareToChatSheet'
 import { CtaButton, GroupMark, ScoreSliderRow, fieldClassSm } from '../components/ui'
 
 // Solo ratings follow YOUR taste mode: Normies score the enjoyment-heavy
@@ -91,6 +93,8 @@ export function TitleDetailScreen({
   const [savedTitleId, setSavedTitleId] = useState<string | null>(null)
   // The invite flow always picks its group (recents + search) in this sheet.
   const [inviteOpen, setInviteOpen] = useState(false)
+  /** "Send to a chat": pick a conversation and share this title as a card. */
+  const [shareOpen, setShareOpen] = useState(false)
   // bumped when a rating changes (it gates the public discussion)
   const [discussionRefresh, setDiscussionRefresh] = useState(0)
   const [history, setHistory] = useState<TitleHistoryEntry[]>([])
@@ -579,6 +583,36 @@ export function TitleDetailScreen({
               <path d="m6 9 6 6 6-6" />
             </svg>
           </button>
+
+          {/* ---- send it to someone ---- */}
+          <button
+            type="button"
+            onClick={() => setShareOpen(true)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-2.5 text-[13px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text active:bg-surface-2"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="3" y="5" width="18" height="14" rx="2.5" />
+              <path d="m3.5 7 8.5 6 8.5-6" />
+            </svg>
+            Send to a chat
+          </button>
+          {shareOpen && detail && (
+            <ShareToChatSheet
+              label={`${detail.name}${detail.year ? ` (${detail.year})` : ''}`}
+              // Resolved on send, so browsing the sheet never writes a row.
+              resolveShare={async () => ({
+                shareTitleId: await ensureTitleRow({
+                  name: detail.name,
+                  year: detail.year,
+                  mediaType: detail.mediaType,
+                  tmdbId: detail.tmdbId,
+                  posterPath: detail.posterPath,
+                }),
+              })}
+              onClose={() => setShareOpen(false)}
+              onSent={() => setShareOpen(false)}
+            />
+          )}
           {listsOpen && (
             <div className="mp-card rounded-2xl p-3">
               {myLists === null ? (

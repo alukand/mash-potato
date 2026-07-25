@@ -418,6 +418,59 @@ export function IconButton({
   )
 }
 
+/**
+ * Unread count pill. The app had no badge primitive at all before messaging
+ * (PosterGrid's "badge" is a static string label). Caps at 99+, because
+ * my_inbox stops counting at 100.
+ */
+export function UnreadBadge({
+  count,
+  className = '',
+}: {
+  count: number
+  className?: string
+}) {
+  if (count <= 0) return null
+  return (
+    <span
+      aria-label={`${count} unread`}
+      className={`grid min-w-[18px] place-items-center rounded-full bg-teal px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-bg ${className}`}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
+
+/** The message-centre entry point: envelope, with a dot when anything waits. */
+export function MessagesButton({
+  unread,
+  onClick,
+}: {
+  unread: number
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={unread > 0 ? `Messages, ${unread} unread` : 'Messages'}
+      data-tour="messages"
+      className="relative grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:border-teal/50 hover:text-text active:bg-surface-2"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <rect x="3" y="5" width="18" height="14" rx="2.5" />
+        <path d="m3.5 7 8.5 6 8.5-6" />
+      </svg>
+      {unread > 0 && (
+        <span
+          aria-hidden
+          className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg bg-teal"
+        />
+      )}
+    </button>
+  )
+}
+
 /** The cog. One path, so every settings affordance looks identical. */
 export function GearIcon({ size = 14 }: { size?: number }) {
   return (

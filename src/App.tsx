@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
-import { fetchMyGroups, fetchMembers, updateMyTasteMode } from './lib/api'
+import {
+  fetchInbox,
+  fetchMyGroups,
+  fetchMembers,
+  onInboxChange,
+  updateMyTasteMode,
+} from './lib/api'
 import type { GroupInfo, MemberInfo } from './lib/api'
 import type { TasteMode } from './lib/rubricCatalog'
 import {
@@ -22,7 +28,9 @@ import { Logo } from './components/Logo'
 import { BottomNav } from './components/BottomNav'
 import { FirstRunTour } from './components/FirstRunTour'
 import { OnboardingSlides } from './components/OnboardingSlides'
-import { CtaButton, HEADER_ACTION_ID } from './components/ui'
+import { CtaButton, HEADER_ACTION_ID, MessagesButton } from './components/ui'
+import { MessagesScreen } from './screens/MessagesScreen'
+import { ThreadScreen } from './screens/ThreadScreen'
 import type { TabId } from './components/BottomNav'
 import { AuthScreen } from './screens/AuthScreen'
 import { CreateGroupScreen } from './screens/CreateGroupScreen'
@@ -52,11 +60,14 @@ type StackView =
   | { kind: 'createGroup' }
   | { kind: 'user'; userId: string }
   | { kind: 'playlist'; playlistId: string }
+  | { kind: 'messages' }
+  | { kind: 'thread'; conversationId: string }
 
 function stackKey(v: StackView): string {
   if (v.kind === 'title') return `title:${v.tmdbId}:${v.mediaType}`
   if (v.kind === 'user') return `user:${v.userId}`
   if (v.kind === 'playlist') return `playlist:${v.playlistId}`
+  if (v.kind === 'thread') return `thread:${v.conversationId}`
   return v.kind
 }
 
@@ -106,6 +117,8 @@ function App() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [members, setMembers] = useState<MemberInfo[]>([])
   const [stack, setStack] = useState<StackView[]>([])
+  /** Unread across every conversation, for the header envelope's dot. */
+  const [unreadTotal, setUnreadTotal] = useState(0)
   // First-run tab walkthrough: dims the app, pulses each tab in turn.
   const [tourActive, setTourActive] = useState(false)
   const [tourTab, setTourTab] = useState<TabId>('home')
@@ -183,6 +196,31 @@ function App() {
   // signed in. Permission prompt fires here on first run.
   useEffect(() => {
     if (uid) void enablePush()
+  }, [uid])
+
+  // Unread total for the header envelope. Realtime keeps it honest without a
+  // poll; a failure just leaves the dot off rather than breaking the shell.
+  useEffect(() => {
+    if (!uid) {
+      setUnreadTotal(0)
+      return
+    }
+    let cancelled = false
+    const refresh = () => {
+      void fetchInbox(false)
+        .then((rows) => {
+          if (!cancelled) {
+            setUnreadTotal(rows.reduce((sum, r) => sum + r.unreadCount, 0))
+          }
+        })
+        .catch(() => {})
+    }
+    refresh()
+    const unsubscribe = onInboxChange(refresh)
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [uid])
 
   // The first signed-in landing gets the tab walkthrough, once per device.
@@ -415,6 +453,21 @@ function App() {
                 onDeleted={popView}
               />
             )}
+            {top.kind === 'messages' && (
+              <MessagesScreen
+                userId={userId}
+                onOpenThread={(conversationId) => pushView({ kind: 'thread', conversationId })}
+                onBack={popView}
+              />
+            )}
+            {top.kind === 'thread' && (
+              <ThreadScreen
+                conversationId={top.conversationId}
+                userId={userId}
+                onOpenTitle={openTitle}
+                onBack={popView}
+              />
+            )}
             {top.kind === 'createGroup' && (
               <CreateGroupScreen
                 userId={userId}
@@ -438,9 +491,17 @@ function App() {
             <h1 className="truncate font-display text-[24px] font-semibold leading-none tracking-tight">
               Mash Potato
             </h1>
-            {/* Screens portal their settings control here (ui.tsx HeaderAction),
-                so it sits in ONE predictable place on every tab. */}
-            <div id={HEADER_ACTION_ID} className="ml-auto flex shrink-0 items-center gap-2" />
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {/* App owns the message centre (it is cross-tab); screens portal
+                  their own settings control into the slot beside it. Keeping
+                  them separate matters: React children and portal children in
+                  the SAME node fight over unmount order. */}
+              <MessagesButton
+                unread={unreadTotal}
+                onClick={() => pushView({ kind: 'messages' })}
+              />
+              <div id={HEADER_ACTION_ID} className="flex items-center gap-2" />
+            </div>
           </header>
 
           {/* key remounts the screen on tab OR group change so entrances replay */}

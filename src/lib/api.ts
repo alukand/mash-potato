@@ -2350,3 +2350,501 @@ export function onDiscussionChange(titleId: string, onChange: () => void): () =>
     void supabase.removeChannel(channel)
   }
 }
+
+// ---- messaging (DMs, group chats, custom chats) -----------------------------
+//
+// Every write is a SECURITY DEFINER RPC (20260726120000_messaging.sql), so the
+// ban switch, terms gate, wordlist, request gate and blocking cannot be
+// skipped from here. Reads go through RLS, and `my_inbox` is ONE round trip
+// for the whole list (no N+1 across conversations).
+
+export type ConversationKind = 'dm' | 'group' | 'custom'
+export type MessageKind = 'text' | 'title' | 'playlist' | 'system'
+export type MessageReactionKind = 'like' | 'funny' | 'fire' | 'love' | 'sad'
+
+export interface InboxEntry {
+  conversationId: string
+  kind: ConversationKind
+  /** Set for the built-in chat of a Mash Potato group. */
+  groupId: string | null
+  /** Group name or custom chat title; null for a DM (use otherUserId). */
+  title: string | null
+  otherUserId: string | null
+  requestState: 'pending' | 'accepted'
+  requestedBy: string | null
+  lastMessageAt: string
+  lastMessageId: string | null
+  lastMessagePreview: string
+  lastMessageKind: MessageKind | null
+  lastSenderId: string | null
+  /** Capped at 100 server-side; render the cap as "99+". */
+  unreadCount: number
+  muted: boolean
+  archived: boolean
+}
+
+/** My conversations, most recently active first, unread counts included. */
+export async function fetchInbox(archived = false): Promise<InboxEntry[]> {
+  const { data, error } = await supabase.rpc('my_inbox', { p_archived: archived })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    conversationId: r.conversation_id,
+    kind: r.kind as ConversationKind,
+    groupId: r.group_id,
+    title: r.title,
+    otherUserId: r.other_user_id,
+    requestState: r.request_state as 'pending' | 'accepted',
+    requestedBy: r.requested_by,
+    lastMessageAt: r.last_message_at,
+    lastMessageId: r.last_message_id,
+    lastMessagePreview: r.last_message_preview ?? '',
+    lastMessageKind: (r.last_message_kind as MessageKind | null) ?? null,
+    lastSenderId: r.last_sender_id,
+    unreadCount: r.unread_count ?? 0,
+    muted: r.muted ?? false,
+    archived: r.archived ?? false,
+  }))
+}
+
+export interface MessageEntry {
+  id: string
+  conversationId: string
+  senderId: string
+  senderName: string
+  senderAvatarKey: string | null
+  kind: MessageKind
+  body: string
+  createdAt: string
+  deleted: boolean
+  shareTitle: {
+    titleId: string
+    tmdbId: number | null
+    mediaType: 'movie' | 'tv'
+    name: string
+    posterPath: string | null
+  } | null
+  sharePlaylist: { playlistId: string; name: string } | null
+  /** Quoted parent, flattened for rendering above the bubble. */
+  replyTo: { id: string; senderId: string; preview: string; deleted: boolean } | null
+  reactions: Record<MessageReactionKind, number>
+  myReaction: MessageReactionKind | null
+}
+
+const emptyMessageReactions = (): Record<MessageReactionKind, number> => ({
+  like: 0,
+  funny: 0,
+  fire: 0,
+  love: 0,
+  sad: 0,
+})
+
+// The profiles embed is FK-HINTED: `messages` reaches `profiles` only through
+// sender_id, but the SELF-reference on reply_to_id makes PostgREST see two
+// candidate paths and refuse the plain form — the same ambiguity that bit
+// discussion (parent_id) and polls (winner_option_id).
+//
+// The quoted parent is deliberately NOT embedded. `reply_to:messages!...` is
+// valid PostgREST, but the generated types cannot resolve a self-referencing
+// embed and collapse the whole row to GenericStringError, which would cost us
+// type safety on every field. One extra keyed query is the cheaper trade.
+// NOTE: ONE string literal, never a concatenation. supabase-js parses the
+// select at COMPILE time from its literal type; `'a' + 'b'` widens to `string`
+// and every column silently degrades to GenericStringError.
+const MESSAGE_SELECT =
+  'id, conversation_id, sender_id, kind, body, created_at, deleted, share_label, reply_to_id, profiles!messages_sender_id_fkey(display_name, avatar_key), titles(id, tmdb_id, media_type, name, poster_path), playlists(id, name), message_reactions(user_id, kind)'
+
+/** PostgREST types a to-one embed as object OR array depending on how it
+ *  resolved the relationship; normalise before reading. */
+function embedOne<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null
+  return value ?? null
+}
+
+/**
+ * One page of a thread, NEWEST FIRST. Pass the oldest createdAt you already
+ * hold as `before` to page backwards. Ordering ties break on id, so two
+ * messages written in the same transaction cannot hide each other.
+ */
+export async function fetchThread(
+  conversationId: string,
+  userId: string,
+  opts: { limit?: number; before?: string } = {},
+): Promise<MessageEntry[]> {
+  let query = supabase
+    .from('messages')
+    .select(MESSAGE_SELECT)
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(opts.limit ?? 40)
+  if (opts.before) query = query.lt('created_at', opts.before)
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  const rows = data ?? []
+
+  // Resolve quoted parents in one keyed query. A parent usually sits in the
+  // same page, but not when someone replies to something far back.
+  const parentIds = [...new Set(rows.map((r) => r.reply_to_id).filter((id): id is string => !!id))]
+  const parents = new Map<
+    string,
+    { id: string; sender_id: string; body: string; share_label: string | null; deleted: boolean }
+  >()
+  if (parentIds.length > 0) {
+    const { data: parentRows, error: parentError } = await supabase
+      .from('messages')
+      .select('id, sender_id, body, share_label, deleted')
+      .in('id', parentIds)
+    if (parentError) throw new Error(parentError.message)
+    for (const p of parentRows ?? []) parents.set(p.id, p)
+  }
+
+  return rows.map((row) => {
+    const reactions = emptyMessageReactions()
+    let myReaction: MessageReactionKind | null = null
+    for (const r of row.message_reactions ?? []) {
+      const kind = r.kind as MessageReactionKind
+      if (kind in reactions) reactions[kind] += 1
+      if (r.user_id === userId) myReaction = kind
+    }
+    const profile = embedOne(row.profiles)
+    const title = embedOne(row.titles)
+    const playlist = embedOne(row.playlists)
+    const parent = row.reply_to_id ? (parents.get(row.reply_to_id) ?? null) : null
+    return {
+      id: row.id,
+      conversationId: row.conversation_id,
+      senderId: row.sender_id,
+      senderName: profile?.display_name ?? 'Member',
+      senderAvatarKey: profile?.avatar_key ?? null,
+      kind: row.kind as MessageKind,
+      body: row.body ?? '',
+      createdAt: row.created_at,
+      deleted: row.deleted,
+      shareTitle: title
+        ? {
+            titleId: title.id,
+            tmdbId: title.tmdb_id,
+            mediaType: title.media_type as 'movie' | 'tv',
+            name: title.name,
+            posterPath: title.poster_path,
+          }
+        : null,
+      sharePlaylist: playlist ? { playlistId: playlist.id, name: playlist.name } : null,
+      replyTo: parent
+        ? {
+            id: parent.id,
+            senderId: parent.sender_id,
+            preview: parent.deleted
+              ? ''
+              : (parent.body || parent.share_label || '').slice(0, 120),
+            deleted: parent.deleted,
+          }
+        : null,
+      reactions,
+      myReaction,
+    }
+  })
+}
+
+export interface SendMessageInput {
+  body?: string
+  replyToId?: string | null
+  /** Share a film/show (the titles row id) or a playlist, never both. */
+  shareTitleId?: string | null
+  sharePlaylistId?: string | null
+}
+
+/** Send into a conversation. Returns the new message id. */
+export async function sendMessage(
+  conversationId: string,
+  input: SendMessageInput,
+): Promise<string> {
+  const kind = input.shareTitleId ? 'title' : input.sharePlaylistId ? 'playlist' : 'text'
+  const { data, error } = await supabase.rpc('send_message', {
+    p_conversation_id: conversationId,
+    p_body: input.body ?? '',
+    p_reply_to_id: input.replyToId ?? undefined,
+    p_kind: kind,
+    p_title_id: input.shareTitleId ?? undefined,
+    p_playlist_id: input.sharePlaylistId ?? undefined,
+  })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+
+/** Soft delete: the row stays so replies keep their anchor. */
+export async function deleteMessage(messageId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_message', { p_message_id: messageId })
+  if (error) throw new Error(error.message)
+}
+
+/** The same kind twice removes it. */
+export async function toggleMessageReaction(
+  messageId: string,
+  kind: MessageReactionKind,
+): Promise<void> {
+  const { error } = await supabase.rpc('toggle_message_reaction', {
+    p_message_id: messageId,
+    p_kind: kind,
+  })
+  if (error) throw new Error(error.message)
+}
+
+export async function reportMessage(messageId: string, reason: string | null): Promise<void> {
+  const { error } = await supabase.rpc('report_message', {
+    p_message_id: messageId,
+    // p_reason has no SQL default, so it is required here. '' is equivalent
+    // to null: the RPC stores nullif(trim(...), '').
+    p_reason: reason ?? '',
+  })
+  if (error) throw new Error(error.message)
+}
+
+export async function markConversationRead(conversationId: string): Promise<void> {
+  const { error } = await supabase.rpc('mark_conversation_read', {
+    p_conversation_id: conversationId,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/** An omitted preference is left alone. */
+export async function setConversationPrefs(
+  conversationId: string,
+  prefs: { muted?: boolean; archived?: boolean },
+): Promise<void> {
+  const { error } = await supabase.rpc('set_conversation_prefs', {
+    p_conversation_id: conversationId,
+    p_muted: prefs.muted ?? undefined,
+    p_archived: prefs.archived ?? undefined,
+  })
+  if (error) throw new Error(error.message)
+}
+
+// ---- opening conversations ---------------------------------------------------
+
+/**
+ * Get-or-create the DM with someone. A groupmate opens straight into an
+ * accepted thread; a stranger's opens 'pending' and allows ONE message until
+ * they answer. Idempotent: the same pair always resolves to the same id.
+ */
+export async function startDm(otherUserId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('start_dm', { p_user_id: otherUserId })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+
+export async function acceptDmRequest(conversationId: string): Promise<void> {
+  const { error } = await supabase.rpc('accept_dm_request', {
+    p_conversation_id: conversationId,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Declining is SILENT by design: the thread disappears for you, the sender
+ * keeps seeing their own unanswered message, and their next send fails with
+ * the same string a block produces. Nothing tells them which happened, so
+ * the UI must not invent a "declined" state either.
+ */
+export async function declineDmRequest(conversationId: string): Promise<void> {
+  const { error } = await supabase.rpc('decline_dm_request', {
+    p_conversation_id: conversationId,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/** The built-in chat for a group you belong to (created on demand). */
+export async function fetchGroupConversation(groupId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('group_conversation', { p_group_id: groupId })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+
+/** Every invitee must be someone you could already DM. */
+export async function createGroupChat(title: string, userIds: string[]): Promise<string> {
+  const { data, error } = await supabase.rpc('create_group_chat', {
+    p_title: title,
+    p_user_ids: userIds,
+  })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+
+export async function addChatParticipants(
+  conversationId: string,
+  userIds: string[],
+): Promise<void> {
+  const { error } = await supabase.rpc('add_chat_participants', {
+    p_conversation_id: conversationId,
+    p_user_ids: userIds,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/** Custom chats only: a group chat follows the group, a DM is blocked or archived. */
+export async function leaveChat(conversationId: string): Promise<void> {
+  const { error } = await supabase.rpc('leave_chat', { p_conversation_id: conversationId })
+  if (error) throw new Error(error.message)
+}
+
+export async function renameChat(conversationId: string, title: string): Promise<void> {
+  const { error } = await supabase.rpc('rename_chat', {
+    p_conversation_id: conversationId,
+    p_title: title,
+  })
+  if (error) throw new Error(error.message)
+}
+
+// ---- people, receipts, search, blocks ----------------------------------------
+
+export interface GroupmateInfo {
+  userId: string
+  displayName: string
+  avatarKey: string | null
+  sharedGroups: string[]
+}
+
+/** The "new message" roster, server-side (blocked people are already gone). */
+export async function fetchGroupmates(): Promise<GroupmateInfo[]> {
+  const { data, error } = await supabase.rpc('my_groupmates')
+  if (error) throw new Error(error.message)
+  return (data ?? [])
+    .map((r) => ({
+      userId: r.user_id,
+      displayName: r.display_name ?? 'Member',
+      avatarKey: r.avatar_key,
+      sharedGroups: r.shared_groups ?? [],
+    }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+}
+
+/** Who has read up to when. Drives "Seen" without exposing anyone's mute. */
+export async function fetchReadReceipts(
+  conversationId: string,
+): Promise<{ userId: string; lastReadAt: string }[]> {
+  const { data, error } = await supabase.rpc('conversation_read_receipts', {
+    p_conversation_id: conversationId,
+  })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({ userId: r.user_id, lastReadAt: r.last_read_at }))
+}
+
+export interface MessageHit {
+  messageId: string
+  conversationId: string
+  senderId: string
+  body: string
+  createdAt: string
+}
+
+/** Full-text over the messages you can see (RLS decides, not the function). */
+export async function searchMessages(query: string, limit = 50): Promise<MessageHit[]> {
+  const { data, error } = await supabase.rpc('search_my_messages', {
+    p_query: query,
+    p_limit: limit,
+  })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    messageId: r.message_id,
+    conversationId: r.conversation_id,
+    senderId: r.sender_id,
+    body: r.body ?? '',
+    createdAt: r.created_at,
+  }))
+}
+
+export interface BlockedUser {
+  userId: string
+  displayName: string
+  avatarKey: string | null
+  createdAt: string
+}
+
+/** The list an unblock screen needs. There was no way to see this before. */
+export async function fetchMyBlocks(): Promise<BlockedUser[]> {
+  const { data, error } = await supabase.rpc('my_blocks')
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    userId: r.user_id,
+    displayName: r.display_name ?? 'Member',
+    avatarKey: r.avatar_key,
+    createdAt: r.created_at,
+  }))
+}
+
+/** Blocking also declines any pending request from them. */
+export async function blockUserRpc(userId: string): Promise<void> {
+  const { error } = await supabase.rpc('block_user', { p_user_id: userId })
+  if (error) throw new Error(error.message)
+}
+
+/** Restores visibility and sending. Does NOT undo a decline: that is consent. */
+export async function unblockUser(userId: string): Promise<void> {
+  const { error } = await supabase.rpc('unblock_user', { p_user_id: userId })
+  if (error) throw new Error(error.message)
+}
+
+// ---- messaging realtime -------------------------------------------------------
+
+// Channel topics must be UNIQUE PER SUBSCRIBER. supabase-js reuses a channel
+// by topic, and adding a postgres_changes callback to one that has already
+// subscribed throws ("cannot add callbacks ... after subscribe()"). The other
+// subscriptions in this file get away with a scope name because only one
+// component is ever mounted for that scope; the inbox is not so lucky, since
+// App watches it for the unread badge while MessagesScreen watches it too.
+let channelSeq = 0
+
+/**
+ * Live updates for ONE open thread: messages and reactions. Reactions carry
+ * conversation_id precisely so both sides can be filtered here.
+ */
+export function onThreadChange(conversationId: string, onChange: () => void): () => void {
+  const channel = supabase
+    .channel(`thread-${conversationId}-${++channelSeq}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      onChange,
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'message_reactions',
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      onChange,
+    )
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
+
+/**
+ * Live updates for the INBOX. There is no per-user column to filter on (a
+ * message belongs to a conversation, not to you), so this listens unfiltered
+ * and leans on RLS to trim events, the same reasoning as poll_votes above.
+ * For DMs that is a PRIVACY BOUNDARY rather than a convenience: a non-member
+ * fails messages_select_member, so no event is delivered to them at all.
+ */
+export function onInboxChange(onChange: () => void): () => void {
+  const channel = supabase
+    .channel(`inbox-${++channelSeq}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, onChange)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'conversations' },
+      onChange,
+    )
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
