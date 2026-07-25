@@ -141,11 +141,12 @@ begin
   raise notice 'PASS 9: anon cannot execute title_mode_histogram';
 end $$;
 
--- 10: a casual member with no preset seeds the enjoyment-heavy three
+-- 10: a casual GROUP with no preset seeds the enjoyment-heavy three
+-- (since 20260724120000 seeding follows the GROUP's mode — see 96b)
 set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
-insert into public.groups (id, name, owner_id)
+insert into public.groups (id, name, owner_id, taste_mode)
 values ('11111111-1111-1111-1111-111111111111', 'Casual Crew',
-        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'casual');
 
 do $$
 declare n int; top_key text; top_weight int;

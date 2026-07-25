@@ -113,12 +113,15 @@ select ok(not pg_temp.can_exec('anon', 'title_mode_scores'),
 select ok(not pg_temp.can_exec('anon', 'title_mode_histogram'),
   'anon cannot execute title_mode_histogram');
 
--- ---- seeding follows the mode when there is no preset ----
--- 10: Ben (casual, no ★ preset) creates a group -> the three-part casual core
+-- ---- seeding follows the GROUP's mode when there is no preset ----
+-- (Since 20260724120000 the group carries the mode; the profile's mode drives
+-- solo ratings and only preselects this at creation time. See
+-- group_taste_modes_test.sql for the full group-mode contract.)
+-- 10: a casual GROUP -> the three-part casual core
 set local request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","role":"authenticated"}';
-insert into public.groups (id, name, owner_id)
+insert into public.groups (id, name, owner_id, taste_mode)
 values ('11111111-1111-1111-1111-111111111111', 'Casual Crew',
-        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'casual');
 select results_eq(
   $$select category_key, weight from public.member_rubrics
       where group_id = '11111111-1111-1111-1111-111111111111'

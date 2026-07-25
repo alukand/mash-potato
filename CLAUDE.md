@@ -96,14 +96,25 @@ trigger internals → no grant at all). Anon executes nothing. The twin's
   count-only — the app uses the mode-bucketed `title_mode_scores` /
   `title_mode_histogram`; `title_community_score` / `title_community_histogram`
   remain as the legacy single-pool pair). TASTE MODES (2026-07-24, DESIGN.md
-  law): `profiles.taste_mode` 'casual' ("Normies": Enjoyment 50 / Acting 25 /
-  Writing 25, `CASUAL_WEIGHTS`) | 'buff' ("Cinephiles": base seven); display
-  names ONLY via `TASTE_MODES` in rubricCatalog.ts; new accounts default
-  casual (existing backfilled buff); the mode drives the solo card, the
-  community bucket (read-time: ratings follow a switch), and
-  seed_member_rubric's no-preset fallback; group rubrics are untouched by a
-  switch. Member/user-rubrics suites pin taste_mode='buff'. Per-round
-  participation in `session_rsvps`
+  law) live in TWO places and the split matters: 'casual' ("Normies":
+  Enjoyment 50 / Acting 25 / Writing 25, `CASUAL_WEIGHTS`) | 'buff'
+  ("Cinephiles": base seven), display names ONLY via `TASTE_MODES` in
+  rubricCatalog.ts.
+  **`profiles.taste_mode` is PERSONAL** — it drives your solo card, your
+  community bucket (read-time: ratings follow a switch), and preselects the
+  picker when you CREATE a group. New accounts default casual.
+  **`groups.taste_mode` is AUTHORITATIVE for rounds** (20260724120000,
+  default 'buff' so existing groups are unchanged): `seed_member_rubric`
+  reads the GROUP's mode, not the joiner's profile, so one group always has
+  one rubric. Casual groups are a NO-CONFIGURATION surface: the ★ preset and
+  base-coverage union are skipped, GroupScreen hides the rubric editor and
+  presets, and `splitRubricForMember(..., allCore=true)` makes genre add-ons
+  plain sliders instead of opt-in extras. Switching a group's mode re-seeds
+  every member via the `on_group_taste_mode_changed` trigger (`reseed_group_
+  rubrics`, a trigger internal — sealed from anon AND authenticated; note
+  `revoke ... from public` alone does NOT cover authenticated). Past sessions
+  keep their rubric snapshots. Member/user-rubrics suites pin taste_mode='buff'.
+  Per-round participation in `session_rsvps`
   (in/pass; unanswered expires 24h → pass, computed at read time in
   `src/lib/rsvp.ts` — scoring always counts as in; groups of 3+ only). The
   reveal quorum mirrors it server-side: `reveal_session` needs

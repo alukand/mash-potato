@@ -90,6 +90,8 @@ export function SessionPanel({
   onDiscuss,
   onOpenTitle,
 }: SessionPanelProps) {
+  // Normie groups share one rubric, so nothing is an opt-in extra there.
+  const isCasual = group.tasteMode === 'casual'
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
   // undefined = cards not fetched yet. Distinct from []: an empty visible set
   // means "sealed for you" (RLS), and treating "still loading" as sealed
@@ -279,7 +281,7 @@ export function SessionPanel({
     // Revealed, but SEALED for you: RLS hides everyone's scores until your
     // own card is locked, so scoring here is still genuinely blind.
     const sealedRubric = session.rubric ?? []
-    const sealedSplit = splitRubricForMember(sealedRubric, myLateRows)
+    const sealedSplit = splitRubricForMember(sealedRubric, myLateRows, isCasual)
     const sealedEntries = [
       ...sealedSplit.core,
       ...sealedSplit.extras.filter((e) => lateScores[e.key] !== undefined),
@@ -384,7 +386,7 @@ export function SessionPanel({
   const weights = weightsFromRubric(rubric)
   const categoryKeys = rubric.map((e) => e.key)
   const labelFor = (key: string) => rubric.find((e) => e.key === key)?.label ?? key
-  const lateSplit = splitRubricForMember(rubric, myLateRows)
+  const lateSplit = splitRubricForMember(rubric, myLateRows, isCasual)
 
   // The reveal stays open: a member with no locked card can add scores, and a
   // locked member fills in categories the rubric gained since (snapshot keys

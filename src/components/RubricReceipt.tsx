@@ -4,17 +4,23 @@ interface RubricReceiptProps {
   /** Resolved categories with provenance (group rows vs genre auto-adds). */
   entries: ResolvedRubricEntry[]
   title?: string
+  /**
+   * Normie groups score the whole card, so a genre add-on is just another
+   * slider there rather than something each member opts into.
+   */
+  extrasAreOptIn?: boolean
   className?: string
 }
 
 // The rubric "receipt": what tonight's round will be scored on, shown before
 // anyone scores. Pure receipt, never a form: weights live on the group and
-// never change per movie. Genre add-ons are marked teal; whether to rate one
-// is each member's own call on their scorecard (skip it and it simply isn't
-// on their card).
+// never change per movie. Genre add-ons are marked teal; in Cinephile groups
+// whether to rate one is each member's own call on their scorecard (skip it
+// and it simply isn't on their card).
 export function RubricReceipt({
   entries,
   title = "Tonight's rubric",
+  extrasAreOptIn = true,
   className = '',
 }: RubricReceiptProps) {
   if (entries.length === 0) return null
@@ -51,8 +57,10 @@ export function RubricReceipt({
       </div>
       {genreCount > 0 && (
         <p className="mt-2 px-1 text-[12px] leading-snug text-muted">
-          Teal categories were added for this title’s genres. Everyone picks their own
-          extras to rate or skip while scoring.
+          Teal categories were added for this title’s genres.{' '}
+          {extrasAreOptIn
+            ? 'Everyone picks their own extras to rate or skip while scoring.'
+            : 'Everyone scores them along with the rest.'}
         </p>
       )}
     </div>

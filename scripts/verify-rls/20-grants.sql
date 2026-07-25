@@ -31,6 +31,7 @@ begin
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = any (array[
       'handle_new_user', 'handle_new_group', 'seed_member_rubric',
+      'reseed_group_rubrics',
       'touch_updated_at', 'prevent_unreveal', 'auto_hide_reported',
       'notify_session_created', 'notify_scores_locked',
       'notify_group_member_added', 'notify_comment_reply', 'push_notify'])

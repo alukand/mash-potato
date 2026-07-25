@@ -283,18 +283,21 @@ export type Database = {
           id: string
           name: string
           owner_id: string
+          taste_mode: string
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
           owner_id: string
+          taste_mode?: string
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
           owner_id?: string
+          taste_mode?: string
         }
         Relationships: [
           {

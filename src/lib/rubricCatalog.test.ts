@@ -3,11 +3,13 @@ import {
   BASE_CATEGORIES,
   CASUAL_WEIGHTS,
   casualRubricEntries,
+  casualRubricRows,
   configuredCategoryKeys,
   DEFAULT_WEIGHTS,
   mashRubrics,
   resolveSessionRubric,
   resolveSessionRubricTagged,
+  rubricRowsForMode,
   soloRubricEntriesFor,
   soloWeightsFor,
   splitRubricForMember,
@@ -69,6 +71,49 @@ describe('taste modes', () => {
   it('names both crowds', () => {
     expect(TASTE_MODES.casual.plural).toBe('Normies')
     expect(TASTE_MODES.buff.plural).toBe('Cinephiles')
+  })
+
+  it('builds seedable group rows per mode', () => {
+    expect(casualRubricRows().map((r) => r.key)).toEqual(['enjoyment', 'acting', 'writing'])
+    expect(casualRubricRows().every((r) => r.enabled)).toBe(true)
+    expect(rubricRowsForMode('casual')).toHaveLength(3)
+    expect(rubricRowsForMode('buff')).toHaveLength(BASE_CATEGORIES.length)
+  })
+})
+
+describe('a casual group scores its own way', () => {
+  // The bug that moved the mode onto the group: when a casual member's rubric
+  // was mashed with buff members', Enjoyment (their heaviest) was averaged
+  // down to the LIGHTEST thing on their card. A casual GROUP can't drift.
+  const casualMembers = ['a', 'b', 'c'].map((userId) => ({
+    userId,
+    rows: casualRubricRows(),
+  }))
+
+  it('keeps enjoyment heaviest no matter how many members', () => {
+    const effective = mashRubrics(casualMembers)
+    expect(effective.map((r) => r.key)).toEqual(['enjoyment', 'acting', 'writing'])
+    const enjoyment = effective.find((r) => r.key === 'enjoyment')!
+    expect(enjoyment.weight).toBe(50)
+    expect(Math.max(...effective.map((r) => r.weight))).toBe(enjoyment.weight)
+  })
+
+  it('lets a genre night add its category without displacing enjoyment', () => {
+    const resolved = resolveSessionRubric(mashRubrics(casualMembers), [35]) // comedy
+    expect(resolved.map((e) => e.key)).toContain('humor')
+    const enjoyment = resolved.find((e) => e.key === 'enjoyment')!
+    const humor = resolved.find((e) => e.key === 'humor')!
+    expect(enjoyment.weight).toBeGreaterThan(humor.weight)
+  })
+
+  it('treats the whole session rubric as core when allCore is set', () => {
+    const resolved = resolveSessionRubric(mashRubrics(casualMembers), [35])
+    const myRows = casualRubricRows()
+    // without the flag, the genre add-on would be an opt-in extra
+    expect(splitRubricForMember(resolved, myRows).extras.map((e) => e.key)).toEqual(['humor'])
+    const split = splitRubricForMember(resolved, myRows, true)
+    expect(split.extras).toEqual([])
+    expect(split.core).toHaveLength(resolved.length)
   })
 })
 

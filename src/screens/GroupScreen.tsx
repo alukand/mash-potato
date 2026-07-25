@@ -17,6 +17,7 @@ import {
   saveRubricPreset,
   searchProfiles,
   setFavoriteRubricPreset,
+  setGroupTasteMode,
 } from '../lib/api'
 import type {
   GroupInfo,
@@ -28,12 +29,18 @@ import type {
   UserRubricPreset,
   UserSearchResult,
 } from '../lib/api'
-import { DEFAULT_WEIGHTS, RUBRIC_CATALOG, defaultRubricRows, mashRubrics } from '../lib/rubricCatalog'
+import {
+  DEFAULT_WEIGHTS,
+  RUBRIC_CATALOG,
+  TASTE_MODES,
+  defaultRubricRows,
+  mashRubrics,
+} from '../lib/rubricCatalog'
 import { credFlair } from '../lib/cred'
 import { Avatar } from '../components/avatars'
-import type { MemberRubric } from '../lib/rubricCatalog'
+import type { MemberRubric, TasteMode } from '../lib/rubricCatalog'
 import { AVATAR_PALETTE } from '../lib/palette'
-import { CtaButton, GroupMark, fieldClass, fieldClassSm } from '../components/ui'
+import { CtaButton, GroupMark, TasteModePicker, fieldClass, fieldClassSm } from '../components/ui'
 import { CategoryLegend } from '../components/CategoryLegend'
 import { GroupLog } from '../components/GroupLog'
 import { GroupPoll } from '../components/GroupPoll'
@@ -72,9 +79,13 @@ interface GroupScreenProps {
 // the identity (rubric), and only then the admin (members + manage). Account
 // actions live on the Profile, not here.
 //
-// Rubrics are PER MEMBER: everyone edits their own, and the group's effective
-// rubric is the mash — each category's weight is the mean across members,
-// counting 0 for anyone who doesn't carry it (see rubricCatalog.mashRubrics).
+// How a group scores is the GROUP's mode (group.tasteMode), not each member's
+// personal one. Cinephile groups keep per-member rubrics: everyone edits their
+// own and the group's effective rubric is the mash — each category's weight is
+// the mean across members, counting 0 for anyone who doesn't carry it (see
+// rubricCatalog.mashRubrics). Normie groups are a no-configuration surface:
+// everyone carries the same three rows, so there is nothing to edit and the
+// editor is hidden entirely.
 
 export function GroupScreen({
   group,
@@ -91,6 +102,13 @@ export function GroupScreen({
   onStartedInGroup,
 }: GroupScreenProps) {
   const isOwner = group.role === 'owner'
+  // Normie groups: one shared three-part rubric, no per-member editing.
+  const isCasual = group.tasteMode === 'casual'
+
+  // ---- switching how the group scores (owner-only; resets rubrics) ----
+  const [modeDraft, setModeDraft] = useState<TasteMode | null>(null)
+  const [modeBusy, setModeBusy] = useState(false)
+  const [modeError, setModeError] = useState<string | null>(null)
 
   // The gear gates the group's settings cluster (rubric, members, manage);
   // the default view stays about the round: score, log, watchlists.
@@ -416,6 +434,29 @@ export function GroupScreen({
     })
   }
 
+  // Confirmed switch: the DB trigger re-seeds every member's rubric for this
+  // group, so tuned weights go. Past rounds keep their own snapshots.
+  async function handleSwitchMode() {
+    if (modeDraft === null || modeDraft === group.tasteMode) return
+    setModeBusy(true)
+    setModeError(null)
+    try {
+      await setGroupTasteMode(group.id, modeDraft)
+      setModeDraft(null)
+      await onGroupsChanged()
+      // rubrics were rewritten server-side; pull the new rows
+      const all = await fetchGroupRubrics(group.id)
+      setOthers(all.filter((m) => m.userId !== userId))
+      const mine = all.find((m) => m.userId === userId)?.rows ?? defaultRubricRows()
+      setSaved(mine)
+      setRows(mine.map((r) => ({ ...r })))
+    } catch (err) {
+      setModeError(err instanceof Error ? err.message : 'Could not switch modes')
+    } finally {
+      setModeBusy(false)
+    }
+  }
+
   async function handleSave() {
     if (rows === null) return
     setBusy(true)
@@ -629,8 +670,75 @@ export function GroupScreen({
       {/* ---- the settings cluster: rubric + members + manage (gear-gated) ---- */}
       {settingsOpen && (
       <div ref={settingsRef} className="scroll-mt-4">
+      {/* ---- How this group scores (the mode) ---- */}
+      <section className="mp-rise" style={{ animationDelay: '100ms' }}>
+        <div className="mb-3 flex items-baseline justify-between px-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            How this group scores
+          </p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">
+            {TASTE_MODES[group.tasteMode].plural}
+          </p>
+        </div>
+        <div className="mp-card rounded-[26px] p-5">
+          <p className="text-[13px] leading-snug text-muted">
+            {TASTE_MODES[group.tasteMode].blurb}{' '}
+            {isCasual
+              ? 'Everyone scores the same three categories, so there is nothing to set up.'
+              : 'Everyone tunes their own rubric and the group scores with the mash.'}
+          </p>
+          {isOwner &&
+            (modeDraft === null ? (
+              <button
+                type="button"
+                onClick={() => setModeDraft(isCasual ? 'buff' : 'casual')}
+                className="mt-3 w-full rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+              >
+                Change how the group scores
+              </button>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-coral/30 bg-coral/5 p-3.5">
+                <TasteModePicker
+                  value={modeDraft}
+                  onChange={setModeDraft}
+                  disabled={modeBusy}
+                />
+                <p className="mt-3 text-[13px] leading-snug text-muted">
+                  Switching resets everyone&apos;s rubric for this group to the new set. Past
+                  rounds keep the rubric they were scored under.
+                </p>
+                {modeError && (
+                  <p role="alert" className="mt-2 text-[13px] leading-snug text-coral">
+                    {modeError}
+                  </p>
+                )}
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModeDraft(null)
+                      setModeError(null)
+                    }}
+                    className="rounded-full px-3 py-2 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-text"
+                  >
+                    Keep {TASTE_MODES[group.tasteMode].plural}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={modeBusy || modeDraft === group.tasteMode}
+                    onClick={() => void handleSwitchMode()}
+                    className="rounded-full bg-coral/90 px-3.5 py-2 text-[12px] font-bold text-bg transition-transform active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {modeBusy ? 'Switching…' : `Switch to ${TASTE_MODES[modeDraft].plural}`}
+                  </button>
+                </div>
+              </div>
+            ))}
+        </div>
+      </section>
+
       {/* ---- The group's mashed rubric (compact) + editor toggle ---- */}
-      <section className="mp-rise" style={{ animationDelay: '120ms' }}>
+      <section className="mp-rise mt-7" style={{ animationDelay: '120ms' }}>
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
             Group rubric
@@ -663,26 +771,29 @@ export function GroupScreen({
           )}
         </div>
         <p className="mt-3 px-2 text-[13px] leading-snug text-muted">
-          The average of {others.length + 1} rubric{others.length === 0 ? '' : 's'}: a category
-          someone doesn't carry counts as 0 for them, so lone picks weigh less.
+          {isCasual
+            ? 'Every member scores these three, and a genre night adds its own category on top.'
+            : `The average of ${others.length + 1} rubric${others.length === 0 ? '' : 's'}: a category someone doesn't carry counts as 0 for them, so lone picks weigh less.`}
         </p>
         <CategoryLegend entries={effective} className="mt-3 px-2" />
-        <button
-          type="button"
-          onClick={() => setEditOpen((o) => !o)}
-          aria-expanded={editOpen}
-          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
-        >
-          {editOpen ? 'Close the editor' : 'Edit your rubric'}
-          {!editOpen && dirty && <span className="text-gold">unsaved</span>}
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 transition-transform ${editOpen ? 'rotate-180' : ''}`} aria-hidden>
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
+        {!isCasual && (
+          <button
+            type="button"
+            onClick={() => setEditOpen((o) => !o)}
+            aria-expanded={editOpen}
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+          >
+            {editOpen ? 'Close the editor' : 'Edit your rubric'}
+            {!editOpen && dirty && <span className="text-gold">unsaved</span>}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 transition-transform ${editOpen ? 'rotate-180' : ''}`} aria-hidden>
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        )}
       </section>
 
-      {/* ---- Your rubric (everyone edits their own; collapsed by default) ---- */}
-      {editOpen && (
+      {/* ---- Your rubric (Cinephile groups only; collapsed by default) ---- */}
+      {editOpen && !isCasual && (
       <section className="mp-rise mt-5">
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">

@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import { fetchMyGroups, fetchMembers, updateMyTasteMode } from './lib/api'
 import type { GroupInfo, MemberInfo } from './lib/api'
+import type { TasteMode } from './lib/rubricCatalog'
 import {
   pickActiveGroup,
   readOnboarded,
@@ -117,6 +118,8 @@ function App() {
   // First run: the slides show once per device, then the app opens group-less.
   const [onboarded, setOnboarded] = useState(() => readOnboarded())
   const [showCreateGroup, setShowCreateGroup] = useState(false)
+  // What the onboarding picker chose, handed straight to CreateGroupScreen.
+  const [pickedTasteMode, setPickedTasteMode] = useState<TasteMode | null>(null)
 
   // The active group: the stored/selected one, else the oldest, else null.
   const group =
@@ -335,8 +338,12 @@ function App() {
         <OnboardingSlides
           onDone={(createGroup, tasteMode) => {
             // fire and forget: the picker's state (preselected casual) becomes
-            // the profile's mode; a failure just leaves the column default
+            // the profile's mode; a failure just leaves the column default.
+            // The pick is ALSO held in state and handed to the create-group
+            // screen, which would otherwise race this write and preselect the
+            // stale mode.
             void updateMyTasteMode(session.user.id, tasteMode).catch(() => {})
+            setPickedTasteMode(tasteMode)
             storeOnboarded()
             setOnboarded(true)
             setShowCreateGroup(createGroup)
@@ -348,6 +355,7 @@ function App() {
       return (
         <CreateGroupScreen
           userId={session.user.id}
+          initialTasteMode={pickedTasteMode}
           onBack={() => setShowCreateGroup(false)}
           onCreated={(g) => {
             setGroups([g])

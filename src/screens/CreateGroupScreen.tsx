@@ -1,14 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { createGroup } from '../lib/api'
+import { createGroup, fetchMyTasteMode } from '../lib/api'
 import type { GroupInfo } from '../lib/api'
+import type { TasteMode } from '../lib/rubricCatalog'
 import { signOutWithPushCleanup } from '../lib/push'
 import { Logo } from '../components/Logo'
-import { CtaButton, fieldClass } from '../components/ui'
+import { CtaButton, TasteModePicker, fieldClass } from '../components/ui'
 
 interface CreateGroupScreenProps {
   userId: string
   onCreated: (group: GroupInfo) => void
+  /**
+   * The mode to preselect. Passed straight from the onboarding picker so the
+   * choice you just made is the one you see (fetching it here would race the
+   * profile write). Omitted elsewhere: we read your saved mode instead.
+   */
+  initialTasteMode?: TasteMode | null
   /** When present, this screen was pushed from within the app (Profile →
    *  "create another group") rather than shown as the first-run gate. */
   onBack?: () => void
@@ -18,17 +25,37 @@ interface CreateGroupScreenProps {
 // an equal-weight rubric via DB triggers. Joining someone else's group needs
 // an invite mechanism — a later milestone.
 
-export function CreateGroupScreen({ userId, onCreated, onBack }: CreateGroupScreenProps) {
+export function CreateGroupScreen({
+  userId,
+  onCreated,
+  initialTasteMode = null,
+  onBack,
+}: CreateGroupScreenProps) {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // null until your personal mode loads, so the picker never shows a guess
+  // and then visibly flips under you.
+  const [mode, setMode] = useState<TasteMode | null>(initialTasteMode)
+
+  useEffect(() => {
+    if (initialTasteMode !== null) return
+    let cancelled = false
+    fetchMyTasteMode(userId)
+      .then((m) => !cancelled && setMode(m))
+      .catch(() => !cancelled && setMode('casual'))
+    return () => {
+      cancelled = true
+    }
+  }, [userId, initialTasteMode])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (mode === null) return
     setBusy(true)
     setError(null)
     try {
-      onCreated(await createGroup(userId, name.trim()))
+      onCreated(await createGroup(userId, name.trim(), mode))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
       setBusy(false)
@@ -64,6 +91,14 @@ export function CreateGroupScreen({ userId, onCreated, onBack }: CreateGroupScre
             className={fieldClass}
           />
 
+          <p className="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            How this group scores
+          </p>
+          <TasteModePicker value={mode} onChange={setMode} disabled={busy} />
+          <p className="mt-2.5 text-[12px] leading-snug text-muted">
+            Everyone in the group scores the same way. The owner can change it later.
+          </p>
+
           {error && (
             <p role="alert" className="mt-3 text-[13px] leading-snug text-coral">
               {error}
@@ -72,7 +107,7 @@ export function CreateGroupScreen({ userId, onCreated, onBack }: CreateGroupScre
 
           <CtaButton
             type="submit"
-            disabled={busy || name.trim().length === 0}
+            disabled={busy || mode === null || name.trim().length === 0}
             className="mt-4 w-full py-3.5 text-[14px]"
           >
             {busy ? 'Creating…' : 'Create the group'}

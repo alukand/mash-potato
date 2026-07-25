@@ -19,6 +19,12 @@ export interface GroupInfo {
   role: 'owner' | 'member'
   /** Whether YOUR membership in this group shows on your public profile. */
   isPublic: boolean
+  /**
+   * How this GROUP scores: 'casual' (Normies — three sliders, no rubric
+   * editing) or 'buff' (Cinephiles — the full per-member rubric machinery).
+   * Distinct from profiles.taste_mode, which governs solo/community ratings.
+   */
+  tasteMode: TasteMode
 }
 
 export interface MemberInfo {
@@ -189,7 +195,7 @@ export async function removeDeviceToken(token: string): Promise<void> {
 export async function fetchMyGroups(userId: string): Promise<GroupInfo[]> {
   const { data, error } = await supabase
     .from('group_members')
-    .select('role, is_public, groups(id, name)')
+    .select('role, is_public, groups(id, name, taste_mode)')
     .eq('user_id', userId)
     .order('joined_at', { ascending: true })
   if (error) throw new Error(error.message)
@@ -200,18 +206,47 @@ export async function fetchMyGroups(userId: string): Promise<GroupInfo[]> {
       name: row.groups!.name,
       role: row.role,
       isPublic: row.is_public,
+      tasteMode: row.groups!.taste_mode === 'casual' ? 'casual' : 'buff',
     }))
 }
 
-/** Create a group; triggers add the owner membership + seed the rubric. */
-export async function createGroup(userId: string, name: string): Promise<GroupInfo> {
+/**
+ * Create a group; triggers add the owner membership + seed every member's
+ * rubric from the group's mode. The mode rides the INSERT so the seed trigger
+ * sees it — setting it afterwards would fire the re-seed trigger instead.
+ */
+export async function createGroup(
+  userId: string,
+  name: string,
+  tasteMode: TasteMode,
+): Promise<GroupInfo> {
   const { data, error } = await supabase
     .from('groups')
-    .insert({ name, owner_id: userId })
-    .select('id, name')
+    .insert({ name, owner_id: userId, taste_mode: tasteMode })
+    .select('id, name, taste_mode')
     .single()
   if (error) throw new Error(error.message)
-  return { id: data.id, name: data.name, role: 'owner', isPublic: false }
+  return {
+    id: data.id,
+    name: data.name,
+    role: 'owner',
+    isPublic: false,
+    tasteMode: data.taste_mode === 'casual' ? 'casual' : 'buff',
+  }
+}
+
+/**
+ * Switch how a group scores (owner-only by RLS `groups_update_owner`). The
+ * `on_group_taste_mode_changed` trigger re-seeds every member's rubric, so
+ * tuned weights for this group are discarded — the caller confirms first.
+ * Past rounds keep their own rubric snapshots.
+ */
+export async function setGroupTasteMode(groupId: string, mode: TasteMode): Promise<void> {
+  const { error } = await supabase
+    .from('groups')
+    .update({ taste_mode: mode })
+    .eq('id', groupId)
+  if (error) throw new Error(error.message)
 }
 
 export async function fetchMembers(groupId: string): Promise<MemberInfo[]> {

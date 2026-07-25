@@ -162,6 +162,22 @@ export function defaultRubricRows(): GroupRubricRow[] {
   }))
 }
 
+/** The casual rubric as group-editor rows. Mirrors the seed migration. */
+export function casualRubricRows(): GroupRubricRow[] {
+  return CASUAL_KEYS.map((key, i) => ({
+    key,
+    label: catalogCategory(key)?.label ?? key,
+    weight: CASUAL_WEIGHTS[key] ?? 20,
+    enabled: true,
+    sort: i,
+  }))
+}
+
+/** The seeded rubric rows for a group in this mode. */
+export function rubricRowsForMode(mode: TasteMode): GroupRubricRow[] {
+  return mode === 'casual' ? casualRubricRows() : defaultRubricRows()
+}
+
 const BY_KEY = new Map(RUBRIC_CATALOG.map((c) => [c.key, c]))
 const BY_LABEL = new Map(RUBRIC_CATALOG.map((c) => [c.label, c]))
 
@@ -194,12 +210,17 @@ export interface MemberRubric {
  *
  * Members without a personal rubric (or whose rubric shares nothing with
  * the snapshot) treat everything as core: a card needs at least one slider.
+ *
+ * `allCore` is how Normie groups opt out of the whole mechanism: everyone
+ * carries the same rubric there, so a genre night's add-on should land as a
+ * plain slider rather than something to opt into.
  */
 export function splitRubricForMember<T extends { key: string }>(
   sessionRubric: T[],
   myRows: { key: string; enabled: boolean }[] | null | undefined,
+  allCore = false,
 ): { core: T[]; extras: T[] } {
-  if (!myRows || myRows.length === 0) return { core: sessionRubric, extras: [] }
+  if (allCore || !myRows || myRows.length === 0) return { core: sessionRubric, extras: [] }
   const mine = new Set(myRows.filter((r) => r.enabled).map((r) => r.key))
   const core = sessionRubric.filter((e) => mine.has(e.key))
   if (core.length === 0) return { core: sessionRubric, extras: [] }

@@ -8,6 +8,7 @@ import {
 import type { GroupInfo, NewTitle } from '../lib/api'
 import type { MemberRubric } from '../lib/rubricCatalog'
 import {
+  TASTE_MODES,
   configuredCategoryKeys,
   defaultRubricRows,
   mashRubrics,
@@ -202,7 +203,14 @@ export function GroupInviteSheet({
               <p className="py-6 text-center text-[13px] text-muted">Loading the rubric…</p>
             ) : (
               <>
-                <RubricReceipt className="mt-4" entries={receiptEntries} />
+                <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-teal">
+                  {TASTE_MODES[selected.tasteMode].plural}
+                </p>
+                <RubricReceipt
+                  className="mt-2"
+                  entries={receiptEntries}
+                  extrasAreOptIn={selected.tasteMode !== 'casual'}
+                />
                 <CtaButton
                   onClick={() => void handleStart()}
                   disabled={starting || blindLive}

@@ -278,22 +278,57 @@ the base-seven craft rubric at DEFAULT_WEIGHTS.
   buff so nobody's card changed under them. Onboarding gained a picker slide
   where the miniature IS the choice (two mini scorecards, preselected
   Normie); Profile's "How you score" section switches anytime.
-- The mode changes YOUR SOLO CARD and your community bucket, nothing else.
-  Group rubrics stay group law (rubric cadence): a casual member's
-  three-category member rubric mashes in like any other, and the rest of a
-  session's card reaches them as opt-in extras.
+- **The mode lives in two places, and the split is the law (2026-07-24).**
+  `profiles.taste_mode` is PERSONAL: your solo card, your community bucket,
+  and the preselected choice when you CREATE a group. `groups.taste_mode` is
+  AUTHORITATIVE for rounds. One group, one rubric.
+
+  Why it moved: personal modes mashing inside one group INVERTED the mode
+  they were supposed to express. With 1 Normie among 3 Cinephiles,
+  mashRubrics averaged Enjoyment (50, counted 0 for the three) down to 12.5,
+  making the Normie's heaviest category the LIGHTEST slider on their own
+  card, while every Cinephile grew an `enjoyment` extras chip nobody asked
+  for. Note what was NOT the problem: a Normie rating generously and pulling
+  the Mashed up is DISAGREEMENT, which is the product — the Reveal exists to
+  headline exactly that. The bug was rubric coherence, and a group running
+  two rubrics is two definitions of "a good movie", which contradicts the
+  moat.
+
+- **Normie groups are a no-configuration surface.** Everyone carries the same
+  three rows; the ★ preset and base-coverage union are skipped at seed time;
+  GroupScreen hides the rubric editor and presets entirely; and the whole
+  resolved rubric is core (`splitRubricForMember(..., allCore)`), so a genre
+  night's Humor is a plain slider rather than something to opt into. Cinephile
+  groups keep the full per-member machinery, untouched. A Cinephile in a
+  Normie group scores that group's three: the group's call, and the point.
+  Switching a group's mode is owner-only and re-seeds every member (a DB
+  trigger on the column, so no path can change the mode without re-seeding);
+  the two-step coral confirm names the cost. Past rounds keep their snapshots.
 - Every title shows BOTH crowds. `title_mode_scores` /
   `title_mode_histogram` bucket raters by their CURRENT mode and score each
   rater under their own mode's weights — your ratings follow you when you
   switch sides; "what does each crowd think" is asked at read time.
   Aggregate-only, grants-law compliant (anon executes neither).
-- `seed_member_rubric` follows the mode when no ★ preset exists (casual
-  three / base seven) and the coverage union protects the MODE's core.
-  Suites: pgTAP 155 (taste_modes_test 11), twin +11 (96 file). The
+- `seed_member_rubric` follows the GROUP's mode (casual three / base seven,
+  with the ★ preset honoured in buff groups only). Suites: pgTAP 167
+  (taste_modes_test 11 + group_taste_modes_test 12), twin 96 + 96b. The
   member-rubrics and user-rubrics tests pin taste_mode='buff' — they test
   the buff path; the casual path lives in the taste-mode files.
 
 ## Changelog
+
+- 2026-07-24 (one group, one rubric): the taste mode moved onto the GROUP for
+  rounds (`groups.taste_mode`, default buff so nothing changed under existing
+  groups) — see the law above for the dilution bug that forced it. Group
+  creation grew a mode picker (`TasteModePicker` in ui.tsx, one recipe shared
+  with the group settings switcher); GroupScreen leads its settings cluster
+  with "How this group scores" and hides the rubric editor in Normie groups;
+  the invite sheet badges the mode. `splitRubricForMember` gained an `allCore`
+  flag. Onboarding's pick is now HANDED to CreateGroupScreen rather than
+  re-fetched (the profile write raced the fetch and preselected the stale
+  mode). GRANTS LAW gotcha found by the twin: a new trigger internal needs
+  `revoke ... from public, anon, authenticated` — `from public` alone leaves
+  authenticated able to execute it.
 
 - 2026-07-24 (taste modes): Normies and Cinephiles shipped (see the law
   above). New `enjoyment` catalog category (optional kind). TitleDetail's

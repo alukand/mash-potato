@@ -1,6 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { colorForGroup } from '../lib/palette'
 import { scoreColor, scoreWord } from '../lib/scoreColor'
+import { rubricRowsForMode, TASTE_MODES } from '../lib/rubricCatalog'
+import type { TasteMode } from '../lib/rubricCatalog'
 
 // Shared UI recipes. One exported source for the controls every screen uses,
 // so a fix in one place fixes all of them (field, CTA, group mark).
@@ -181,6 +183,77 @@ export function VisibilityChip({ isPublic, onToggle, disabled, ariaLabel }: Visi
     >
       {content}
     </button>
+  )
+}
+
+interface TasteModePickerProps {
+  /** null while the default is still loading: nothing reads as chosen. */
+  value: TasteMode | null
+  onChange: (mode: TasteMode) => void
+  disabled?: boolean
+  className?: string
+}
+
+/**
+ * The one recipe for choosing how a group scores: two cards, each showing its
+ * own rubric at a glance so the difference is visible rather than described.
+ * Used on group creation and in the group's settings cluster.
+ */
+export function TasteModePicker({
+  value,
+  onChange,
+  disabled = false,
+  className = '',
+}: TasteModePickerProps) {
+  return (
+    <div className={`flex items-stretch gap-2.5 ${className}`}>
+      {(['casual', 'buff'] as const).map((mode) => {
+        const picked = value === mode
+        const rows = rubricRowsForMode(mode)
+        return (
+          <button
+            key={mode}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(mode)}
+            aria-pressed={picked}
+            className={`flex-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-60 ${
+              picked
+                ? 'border-teal/50 bg-teal/10'
+                : 'border-line bg-surface-2 hover:border-line'
+            }`}
+          >
+            <span className="flex items-center justify-between gap-2">
+              <span
+                className={`font-mono text-[10px] font-bold uppercase tracking-[0.16em] ${
+                  picked ? 'text-teal' : 'text-muted'
+                }`}
+              >
+                {TASTE_MODES[mode].plural}
+              </span>
+              {picked && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-teal" aria-hidden>
+                  <path d="m4.5 12.5 5 5 10-11" />
+                </svg>
+              )}
+            </span>
+            <span className="mt-1.5 block text-[12px] leading-snug text-muted">
+              {TASTE_MODES[mode].blurb}
+            </span>
+            <span className="mt-2 flex flex-wrap gap-1">
+              {rows.map((r) => (
+                <span
+                  key={r.key}
+                  className="rounded-full border border-line/70 px-1.5 py-0.5 font-mono text-[9px] text-muted"
+                >
+                  {r.label}
+                </span>
+              ))}
+            </span>
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

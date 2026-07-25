@@ -467,9 +467,9 @@ export function ProfileScreen({
             ))}
           </div>
           <p className="mt-3 text-[13px] leading-snug text-muted">
-            {tasteMode ? TASTE_MODES[tasteMode].blurb : 'Loading your mode.'} Switching changes
-            your solo rating card and which community number is yours. Group rubrics stay as
-            they are.
+            {tasteMode ? TASTE_MODES[tasteMode].blurb : 'Loading your mode.'} This sets your solo
+            rating card, which community number is yours, and the default for groups you create.
+            Each group scores by its own mode.
           </p>
         </div>
       </section>

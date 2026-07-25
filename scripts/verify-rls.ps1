@@ -47,6 +47,7 @@ Invoke-Sql "SESSION-RSVPS TEST" (Join-Path $repo "scripts\verify-rls\80-session-
 Invoke-Sql "PUSH-TRIGGERS TEST" (Join-Path $repo "scripts\verify-rls\90-push-test.sql")
 Invoke-Sql "FRIENDS-PLAYLISTS TEST" (Join-Path $repo "scripts\verify-rls\95-friends-playlists-test.sql")
 Invoke-Sql "TASTE-MODES TEST" (Join-Path $repo "scripts\verify-rls\96-taste-modes-test.sql")
+Invoke-Sql "GROUP-TASTE-MODES TEST" (Join-Path $repo "scripts\verify-rls\96b-group-taste-modes-test.sql")
 Invoke-Sql "DISCUSSION TEST" (Join-Path $repo "scripts\verify-rls\97-discussion-test.sql")
 Invoke-Sql "ACCOUNT TEST" (Join-Path $repo "scripts\verify-rls\98-account-test.sql")
 Invoke-Sql "POLL TEST" (Join-Path $repo "scripts\verify-rls\99-poll-test.sql")

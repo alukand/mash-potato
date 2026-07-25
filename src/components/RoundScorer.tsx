@@ -37,6 +37,8 @@ const defaultScores = (rubric: SessionRubricEntry[]): CategoryScores =>
 // Scores are real member_scores rows written through RLS; lock STATUS of
 // others comes from the session_lock_status helper (flags only).
 export function RoundScorer({ session, group, members, userId, onChanged }: RoundScorerProps) {
+  // Normie groups share one rubric, so nothing is an opt-in extra there.
+  const isCasual = group.tasteMode === 'casual'
   const [scores, setScores] = useState<CategoryScores>({})
   const [locked, setLocked] = useState(false)
   const [oneLiner, setOneLiner] = useState('')
@@ -59,7 +61,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
       setMyRows(rows)
       // Only YOUR core categories pre-seed at the midpoint; extras join the
       // card when you add them (a drafted extra counts as added).
-      const { core } = splitRubricForMember(session.rubric ?? [], rows)
+      const { core } = splitRubricForMember(session.rubric ?? [], rows, isCasual)
       const base = defaultScores(core)
       if (mine) {
         setScores({ ...base, ...mine.scores })
@@ -75,7 +77,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
     }
-  }, [session, group.id, userId])
+  }, [session, group.id, isCasual, userId])
 
   useEffect(() => {
     void load()
@@ -296,7 +298,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
           <p className="px-2 py-4 text-[13px] text-muted">Loading your rubric…</p>
         ) : (
           (() => {
-            const { core, extras } = splitRubricForMember(rubric, myRows)
+            const { core, extras } = splitRubricForMember(rubric, myRows, isCasual)
             const sliderEntries = [
               ...core,
               ...extras.filter((e) => scores[e.key] !== undefined),
