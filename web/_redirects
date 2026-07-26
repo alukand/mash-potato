@@ -1,8 +1,11 @@
-# Clean URLs for the landing site. 200 (rewrite), not 301: the page is served
-# at the pretty path rather than bouncing the browser to the .html one.
-/support   /support.html   200
-/privacy   /privacy.html   200
+# Cloudflare Pages already serves clean URLs: /privacy.html is reachable at
+# /privacy, and Pages 308s the .html form to the clean one automatically.
+#
+# DO NOT add `/privacy /privacy.html 200` style rewrites. That was here and it
+# caused an INFINITE REDIRECT LOOP: the rewrite pointed at /privacy.html,
+# Pages redirected that back to /privacy, and round it went. The page 308'd to
+# itself forever. Clean URLs need no rule at all.
 
 # og.html is the SOURCE for the social card, not a page anyone should land on.
-/og        /               301
-/og.html   /               301
+/og        /   301
+/og.html   /   301
