@@ -75,7 +75,7 @@ exactly what makes a Pages custom domain refuse to attach later, and the error
 does not say so clearly.
 
 An empty-looking zone at this point is correct — nothing should serve
-`mashpotato.app` until the Pages projects claim it in steps 2 and 3.
+`mashpotato.app` until the Pages projects claim it in steps 3 and 4.
 
 > **On the orange cloud.** Records Cloudflare proxies get its CDN and
 > certificate, which is what you want for both Pages projects. But a proxied
@@ -94,7 +94,62 @@ An empty-looking zone at this point is correct — nothing should serve
 > landing page. If you would rather keep DNS elsewhere, your registrar must
 > support `ALIAS` or `ANAME` records.
 
-## 2. The app → `app.mashpotato.app`
+## 2. Supabase auth: email templates and URLs
+
+**Do this before you try to sign in anywhere.** `supabase/config.toml` wires
+these templates up automatically for the *local* stack, so everything works on
+your machine and then fails the first time you use the deployed app. Hosted has
+no equivalent — the dashboard is the only place these live.
+
+### The email templates (the part that actually breaks)
+
+Every email flow in this app is a **6-digit code you type into the app**, not a
+link you click. Supabase's stock templates send `{{ .ConfirmationURL }}` — a
+link — so out of the box you get an email with no code in it, an app asking for
+a code that will never arrive, and a link that lands on `localhost:3000`.
+
+Supabase dashboard → project `lvmcwvhlfijvegxbqipc` → **Authentication** →
+**Emails** (older UI: **Templates**). Paste subject *and* body for **all four**
+from `supabase/templates/`:
+
+| Template | Subject | File |
+| --- | --- | --- |
+| Confirm signup | `Your Mash Potato code` | `confirmation.html` |
+| Reset password | `Reset your Mash Potato password` | `recovery.html` |
+| Magic Link | `Your Mash Potato sign-in code` | `magic_link.html` |
+| Change email address | `Confirm your new Mash Potato email` | `email_change.html` |
+
+**Magic Link is easy to skip and you will regret it** — it is the template
+behind "Email me a sign-in code", so leaving it stock produces exactly the same
+symptom as above in a different flow, days later.
+
+The one thing that matters in each body is `{{ .Token }}`, which renders the
+6-digit code. If a template still contains `{{ .ConfirmationURL }}`, it has not
+been replaced.
+
+### URL configuration
+
+**Authentication → URL Configuration**:
+
+- **Site URL:** `https://mashpotato.app`
+- **Redirect URLs:** add `https://app.mashpotato.app` and
+  `https://mash-potato.pages.dev` (the preview domain).
+
+Left at its default this is `localhost:3000`, which is where those stock
+password-reset links were sending you.
+
+### While you are in here
+
+Two things from `docs/SECURITY.md`:
+
+- **Authentication → Providers → Email → Leaked password protection: ON.**
+  One toggle, and it clears the last actionable security advisor.
+- Confirm **Minimum password length is 8**, matching the app.
+
+**Done when:** you trigger a password reset from the app and the email contains
+a six-digit code rather than a link.
+
+## 3. The app → `app.mashpotato.app`
 
 > **Make sure you are in the PAGES flow, not Workers.** Cloudflare now steers
 > new projects toward Workers, and its screens look nearly identical. Two
@@ -148,7 +203,7 @@ An empty-looking zone at this point is correct — nothing should serve
 
 **Done when:** `https://app.mashpotato.app` loads and you can sign in.
 
-## 3. The landing page → `mashpotato.app`
+## 4. The landing page → `mashpotato.app`
 
 A **second** Pages project, from the **same repository**.
 
@@ -171,26 +226,6 @@ A **second** Pages project, from the **same repository**.
 
 **Done when:** `https://mashpotato.app` shows the landing page, and the
 Privacy, Support and "Open the app" footer links all work.
-
-## 4. Point Supabase at the new origins
-
-Supabase dashboard → project `lvmcwvhlfijvegxbqipc` → **Authentication** →
-**URL Configuration**:
-
-- **Site URL:** `https://mashpotato.app`
-- **Redirect URLs:** add `https://app.mashpotato.app` and
-  `https://mash-potato.pages.dev` (the preview domain).
-
-Nothing depends on this today — every email flow in the app is a 6-digit code
-you type in, not a link you click — but it has to be right before any
-link-based flow ships.
-
-While you are in the dashboard, two things from `docs/SECURITY.md` worth
-doing now:
-
-- **Authentication → Providers → Email → Leaked password protection: ON.**
-  One toggle, and it clears the last actionable security advisor.
-- Confirm **Minimum password length is 8**, matching the app.
 
 ## 5. Make support@mashpotato.app real
 
@@ -265,9 +300,10 @@ are to catch something.
 | Domain simply will not load at all, right after setup | `.app` is an HSTS-preloaded TLD, so browsers refuse plain HTTP entirely. Until the certificate is issued the site is unreachable rather than "insecure". Wait ten minutes. |
 | Deep links 404 on refresh, but the home page works | `public/_redirects` missing from the build output. Confirm the app project's output directory is `dist`. |
 | App loads, no data, Console full of CSP errors | `connect-src` in `public/_headers` does not match your Supabase URL. |
+| Password-reset email has a **link**, not a code — and the link lands on `localhost:3000` | The hosted email templates are still Supabase's stock ones. Step 2. `config.toml` only wires these for the *local* stack; hosted needs them pasted in by hand. |
 | Custom domain will not attach, or says a record already exists | A leftover `A` or `CNAME` still sits at that name — most likely one of the Squarespace records from step 1. Delete it in the DNS tab and retry; Pages writes its own. |
 | Landing page shows the app, or vice versa | The two Pages projects have their output directories swapped: app is `dist`, landing is `web`. |
-| Link preview shows nothing | `web/og.png` missing, or a scraper cached an earlier failure. Re-scrape from the debugger in step 4. |
+| Link preview shows nothing | `web/og.png` missing, or a scraper cached an earlier failure. Re-scrape from the debugger in the "Verify the deploy" list. |
 
 ## Still outstanding after this
 

@@ -90,7 +90,15 @@ mobile app can't use):
 | --- | --- | --- |
 | Confirm sign up | Your Mash Potato code | `confirmation.html` |
 | Reset password | Reset your Mash Potato password | `recovery.html` |
+| Magic Link | Your Mash Potato sign-in code | `magic_link.html` |
 | Change email address | Confirm your new Mash Potato email | `email_change.html` |
+
+**All FOUR, not three.** This table omitted Magic Link until 2026-07-27, which
+is the template behind "Email me a sign-in code". A missed template does not
+fail loudly — the stock one sends a LINK, so the app sits waiting for a code
+that never arrives and the link lands on `localhost:3000`. Verify by checking
+each body contains `{{ .Token }}` and none still contains
+`{{ .ConfirmationURL }}`.
 
 **Auth → Providers → Email**
 - Confirm email: **ON** (already on; the app now handles the code step)
