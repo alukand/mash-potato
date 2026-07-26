@@ -539,7 +539,9 @@ the twin's 98 file assert the local posture.
   `send-push` deployed + `notification_config` seeded on hosted; APNs secrets
   (PUSH_SHARED_SECRET / APNS_AUTH_KEY / APNS_KEY_ID / APPLE_TEAM_ID) still
   need setting in the dashboard before pushes deliver, and the App ID needs
-  the Push Notifications capability (see the push setup checklist).
+  the Push Notifications capability. Step-by-step in `docs/PUSH.md`
+  (the DB half is already seeded — only the Apple key and four function
+  secrets are missing).
 - Dynamic rubric (M8) shipped: `rubric_categories` + jsonb `member_scores.
   scores` + `reveal_sessions.rubric` snapshots; blind-rule suites re-proven.
 

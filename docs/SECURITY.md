@@ -242,7 +242,11 @@ Ordered by what blocks a submission.
    up"). Not a missed toggle — it is gated until the project is upgraded.
 3. **APNs secrets** (`PUSH_SHARED_SECRET`, `APNS_AUTH_KEY`, `APNS_KEY_ID`,
    `APPLE_TEAM_ID`) are still unset, so pushes do not deliver, and the App ID
-   needs the Push Notifications capability.
+   needs the Push Notifications capability. **`docs/PUSH.md` walks it through**
+   — roughly 20 minutes, no code. Note `notification_config` on hosted is
+   already seeded, so `PUSH_SHARED_SECRET` must be *copied from the database*,
+   not invented: if the two drift the function 401s its own database and
+   nothing is ever delivered.
 4. **`pg_net` in `public`** — a persistent advisor WARN. Low risk (it is
    service-role reachable only), but moving it to `extensions` clears it.
 5. **Backups and restore.** Supabase takes daily backups on paid plans; nobody
