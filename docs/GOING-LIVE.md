@@ -20,17 +20,61 @@ about 30 minutes of clicking plus some DNS waiting.
 
 ## 1. Cloudflare account and nameservers
 
+The domain is registered at **Squarespace** (it inherited Google Domains
+registrations). That is where the nameserver change happens.
+
 1. Sign up at <https://dash.cloudflare.com> — the free plan is all this needs.
 2. **Add a site** → type `mashpotato.app` → choose **Free**.
-3. Cloudflare will show you **two nameservers**, e.g.
+3. Cloudflare scans the current DNS and shows you what it found. **Clean it up
+   here**, before continuing — see the table below.
+4. **Continue to activation.** Cloudflare shows **two nameservers**, e.g.
    `xxx.ns.cloudflare.com`. Copy them.
-4. Log in to the registrar you bought the domain from, find the domain's
-   **nameserver** setting (sometimes "DNS" or "Custom DNS"), and replace what
-   is there with Cloudflare's two.
-5. Back in Cloudflare, click **Check nameservers**.
+5. In Squarespace: **Domains → mashpotato.app → DNS → Nameservers**, switch to
+   custom/third-party nameservers and paste Cloudflare's two, replacing what
+   is there. (Squarespace moves this around between UI revisions; it is under
+   the domain's DNS settings.)
+6. Back in Cloudflare, click **Check nameservers**.
 
 **Done when:** Cloudflare shows the domain as **Active**. Usually minutes,
 sometimes a few hours. You can carry on with steps 2 and 3 while you wait.
+
+### Which scanned records to keep
+
+Cloudflare imports whatever the domain has today. Most of it is Squarespace
+parking that would fight the Pages setup later:
+
+| Record | Action | Why |
+| --- | --- | --- |
+| `A` → `13.248.243.5` | **Delete** | Squarespace parking. The landing project takes over the apex. |
+| `A` → `76.223.105.230` | **Delete** | The other half of the same pair. |
+| `CNAME www` → `mashpotato.app` | **Delete** | Pages writes its own when you attach `www`. |
+| `CNAME pay` → `paylinks.commerce.squarespace.com` | **Delete** if unused | Squarespace payment links. |
+| `CNAME _domainconnect` | Keep | Registrar one-click DNS helper. Harmless, and vestigial once DNS is here. |
+| `TXT _dmarc` | **Keep** | Email policy. Matters the moment step 5 gives you a mailbox. |
+
+**Delete the leftovers now.** A stale `A` or `CNAME` sitting at a name is
+exactly what makes a Pages custom domain refuse to attach later, and the error
+does not say so clearly.
+
+An empty-looking zone at this point is correct — nothing should serve
+`mashpotato.app` until the Pages projects claim it in steps 2 and 3.
+
+> **On the orange cloud.** Records Cloudflare proxies get its CDN and
+> certificate, which is what you want for both Pages projects. But a proxied
+> `CNAME` pointing at a *third-party* host (the `pay` record's original state)
+> commonly breaks that host's certificate, because it no longer sees the
+> request directly. Any third-party subdomain you add later should be **DNS
+> only** — click the orange cloud until it turns grey.
+
+> **No MX records were found**, which means no mail is delivered for
+> `@mashpotato.app` today. Nothing breaks by moving nameservers — and it is
+> why step 5 exists.
+
+> **Why move nameservers at all?** A bare domain (`mashpotato.app`, no `www`)
+> cannot legally point at another hostname with a plain CNAME. Cloudflare
+> fakes it with CNAME flattening, which is what lets the apex serve the
+> landing page. If you would rather keep DNS elsewhere, your registrar must
+> support `ALIAS` or `ANAME` records.
 
 > **Why move nameservers at all?** A bare domain (`mashpotato.app`, no `www`)
 > cannot legally point at another hostname with a plain CNAME. Cloudflare
@@ -123,9 +167,18 @@ Both `support.html` and the privacy policy publish this address, and Apple
 checks the support URL during review. A published address that bounces is
 worse than a different address that works.
 
-Most registrars offer **free email forwarding**: point `support@mashpotato.app`
-at an inbox you already read. If yours does not, Cloudflare has **Email
-Routing** (Email → Email Routing) which does the same thing free.
+The domain has **no MX records** today, so there is nothing to preserve and
+nothing to break — you are creating this address from scratch.
+
+Use **Cloudflare Email Routing**, since DNS is already here: **Email → Email
+Routing → Get started**. Add `support@mashpotato.app` as a custom address,
+forward it to an inbox you actually read, and confirm the verification mail
+Cloudflare sends to that inbox. **Cloudflare writes the MX and SPF records
+itself**, which is the whole reason to prefer it over registrar forwarding —
+one less set of records to hand-copy and get subtly wrong.
+
+Squarespace's own email forwarding is the fallback if you would rather not use
+Cloudflare for mail, but then the MX records are yours to add.
 
 **Done when:** you send a mail to `support@mashpotato.app` from your phone and
 it arrives.
@@ -181,6 +234,7 @@ are to catch something.
 | Domain simply will not load at all, right after setup | `.app` is an HSTS-preloaded TLD, so browsers refuse plain HTTP entirely. Until the certificate is issued the site is unreachable rather than "insecure". Wait ten minutes. |
 | Deep links 404 on refresh, but the home page works | `public/_redirects` missing from the build output. Confirm the app project's output directory is `dist`. |
 | App loads, no data, Console full of CSP errors | `connect-src` in `public/_headers` does not match your Supabase URL. |
+| Custom domain will not attach, or says a record already exists | A leftover `A` or `CNAME` still sits at that name — most likely one of the Squarespace records from step 1. Delete it in the DNS tab and retry; Pages writes its own. |
 | Landing page shows the app, or vice versa | The two Pages projects have their output directories swapped: app is `dist`, landing is `web`. |
 | Link preview shows nothing | `web/og.png` missing, or a scraper cached an earlier failure. Re-scrape from the debugger in step 4. |
 
