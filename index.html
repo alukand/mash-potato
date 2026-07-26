@@ -18,9 +18,10 @@
       content="Mash Potato — your group's shared definition of a good movie. Rate blind, reveal together, get one Mashed score."
     />
     <title>Mash Potato</title>
-    <!-- No apple-touch-icon yet: it must be a PNG (iOS ignores SVG), and
-         pointing at a file that 404s is worse than letting iOS fall back.
-         Android and desktop take the SVG from the manifest. -->
+    <!-- iOS ignores SVG for home-screen icons, so this one is a real PNG,
+         rendered from favicon.svg onto the brand background (a transparent
+         icon gets composited onto whatever tile iOS feels like). -->
+    <link rel="apple-touch-icon" href="/icon-180.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
     <!-- Link previews. Without these a shared mashpotato.app link unfurls as

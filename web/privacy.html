@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy — Mash Potato</title>
+    <meta name="description" content="What Mash Potato collects, why, who can see it, and how to get it back or delete it." />
+    <meta name="theme-color" content="#15121B" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400..700&family=Azeret+Mono:wght@400..700&display=swap"
+      rel="stylesheet"
+    />
+    <!--
+      PLACEHOLDERS TO FILL BEFORE PUBLISHING — search for [ :
+        [LEGAL ENTITY]   your trading or company name
+        [JURISDICTION]   the country/state whose law governs
+        [EFFECTIVE DATE] the date you publish this
+      The address support@mashpotato.app appears here and in support.html; it
+      must actually receive mail before submission (registrar forwarding is
+      enough).
+
+      This describes what the app genuinely does, traced to the tables that
+      hold each item. It is NOT legal advice — have someone qualified read it
+      before you submit to the App Store.
+    -->
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: #15121b;
+        color: #f3eee5;
+        font-family: 'Hanken Grotesk', system-ui, sans-serif;
+        line-height: 1.65;
+      }
+      main { max-width: 700px; margin: 0 auto; padding: 64px 24px 96px; }
+      .eyebrow {
+        font-family: 'Azeret Mono', monospace;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        color: #9c93ab;
+      }
+      h1 {
+        font-family: 'Bricolage Grotesque', sans-serif;
+        font-size: clamp(30px, 6vw, 44px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin: 14px 0 10px;
+      }
+      .meta { font-family: 'Azeret Mono', monospace; font-size: 11px; color: #9c93ab; margin-bottom: 34px; }
+      h2 {
+        font-family: 'Bricolage Grotesque', sans-serif;
+        font-size: 21px;
+        font-weight: 600;
+        margin: 40px 0 10px;
+      }
+      p, li { color: #9c93ab; }
+      p + p { margin-top: 12px; }
+      ul { padding-left: 20px; margin-top: 10px; }
+      li { margin: 8px 0; }
+      strong { color: #f3eee5; font-weight: 600; }
+      a { color: #51c5be; }
+      .callout {
+        border: 1px solid #352b42;
+        border-radius: 18px;
+        padding: 20px 22px;
+        margin-top: 18px;
+        background: #1e1926;
+      }
+      footer { margin-top: 60px; border-top: 1px solid #352b42; padding-top: 22px; font-size: 13px; }
+      footer a { color: #9c93ab; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Mash Potato</p>
+      <h1>Privacy</h1>
+      <p class="meta">Effective [EFFECTIVE DATE] · [LEGAL ENTITY]</p>
+
+      <p>
+        Mash Potato is a place where a group of friends rates films together.
+        That means the app holds opinions people gave in confidence, so this
+        page is specific about what is stored, who can see it, and how to take
+        it back.
+      </p>
+
+      <h2>What we collect</h2>
+      <ul>
+        <li>
+          <strong>Your account.</strong> Email address (for sign-in and the
+          6-digit codes we send), display name, chosen avatar, and whether you
+          rate as a Normie or a Cinephile.
+        </li>
+        <li>
+          <strong>What you rate.</strong> Your scores per category, the
+          optional one-sentence take you attach, your solo ratings, saved
+          titles and playlists, and the rubrics you build.
+        </li>
+        <li>
+          <strong>Your groups.</strong> Which groups you belong to, who else is
+          in them, and the rounds those groups run.
+        </li>
+        <li>
+          <strong>What you write.</strong> Comments on titles and messages you
+          send in group chats and direct messages, plus reactions and reports.
+        </li>
+        <li>
+          <strong>Notification tokens.</strong> If you allow push
+          notifications, a device token so we can deliver them.
+        </li>
+      </ul>
+      <p>
+        We do <strong>not</strong> collect location, contacts, photos, or
+        advertising identifiers, and there is no third-party analytics or
+        advertising SDK in the app.
+      </p>
+
+      <h2>Who can see your scores</h2>
+      <div class="callout">
+        <p>
+          <strong>Scores stay hidden until the Reveal, and that is enforced on
+          the server, not in the interface.</strong> Until a round is revealed
+          and you have locked your own card, the database itself will not
+          return anyone else's scores to you. Hiding them in the app is not the
+          boundary; the boundary is the boundary.
+        </p>
+      </div>
+      <p>
+        Inside a group, members see each other's scores once a round is
+        revealed. Outside it, your ratings are never made public
+        automatically — a public profile shows only your display name, avatar,
+        the groups you chose to show, and personal playlists you chose to make
+        public.
+      </p>
+      <p>
+        When you share a Reveal as an image, the card carries the group's name,
+        the title, the combined score and how split the group was. It never
+        carries member names or anyone's individual score.
+      </p>
+
+      <h2>Who we share it with</h2>
+      <p>
+        We do not sell personal data. We use a small number of providers to run
+        the service:
+      </p>
+      <ul>
+        <li><strong>Supabase</strong> — database, authentication and hosting for your data.</li>
+        <li><strong>Cloudflare</strong> — serves the website and the app.</li>
+        <li><strong>TMDB</strong> — film and show information. Your searches reach TMDB through our own server, so TMDB does not receive your account identity.</li>
+        <li><strong>Apple / Google</strong> — deliver push notifications to your device. Notifications carry identifiers only, never score values.</li>
+        <li><strong>[EMAIL PROVIDER]</strong> — sends sign-in and password-reset codes.</li>
+      </ul>
+
+      <h2>How long we keep it</h2>
+      <p>
+        Your content stays until you remove it or delete your account. A
+        deleted message is hidden immediately and removed from the interface;
+        rounds your group has already revealed remain part of that group's
+        history.
+      </p>
+
+      <h2>Getting your data out, and deleting it</h2>
+      <p>
+        Both already work in the app, without emailing anyone:
+      </p>
+      <ul>
+        <li>
+          <strong>Export</strong> — Profile → Account → Export gives you a JSON
+          file with your ratings, scorecards and one-liners, comments,
+          playlists and saved rubrics.
+        </li>
+        <li>
+          <strong>Delete</strong> — Profile → Account → Danger zone → Delete my
+          account. This removes your personal data. Groups you own are handed
+          to the longest-standing member; a group with only you in it is
+          deleted with the account. It cannot be undone.
+        </li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>
+        Mash Potato is not intended for children under 13, and we do not
+        knowingly collect their data. If you believe a child has created an
+        account, write to us and we will remove it.
+      </p>
+
+      <h2>Security</h2>
+      <p>
+        Data is encrypted in transit. Access is enforced per-row in the
+        database rather than only in the app, so a request for data you are not
+        entitled to is refused at the source. If you find a security problem,
+        please tell us at
+        <a href="mailto:support@mashpotato.app">support@mashpotato.app</a>.
+      </p>
+
+      <h2>Changes</h2>
+      <p>
+        If this policy changes in a way that materially affects you, we will
+        say so in the app rather than quietly editing this page.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        [LEGAL ENTITY], [JURISDICTION] —
+        <a href="mailto:support@mashpotato.app">support@mashpotato.app</a>.
+      </p>
+
+      <footer>
+        <a href="/">← Mash Potato</a>
+      </footer>
+    </main>
+  </body>
+</html>

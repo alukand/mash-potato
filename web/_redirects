@@ -1,9 +1,7 @@
 # Clean URLs for the landing site. 200 (rewrite), not 301: the page is served
 # at the pretty path rather than bouncing the browser to the .html one.
 /support   /support.html   200
-
-# /privacy goes here alongside it when the policy exists. Until then there is
-# deliberately no rule and no footer link — a link to a 404 is worse than none.
+/privacy   /privacy.html   200
 
 # og.html is the SOURCE for the social card, not a page anyone should land on.
 /og        /               301
