@@ -154,3 +154,31 @@ Ordered by what blocks a submission.
 Email the address published on the App Store listing. Please include the
 project ref, the request you sent, and what came back. There is no bounty
 programme.
+
+## Local vs hosted: the divergence that keeps biting
+
+`supabase/config.toml` configures the **local stack only**. Hosted keeps its
+own settings with its own defaults, so anything auth-shaped can work perfectly
+on your machine and behave differently in production — silently, looking like
+an app bug.
+
+It has happened three times:
+
+| Setting | Local | Hosted was | Symptom |
+| --- | --- | --- | --- |
+| email templates | wired from `supabase/templates/` | Supabase's stock link-based ones | every code-based flow broken, for everyone |
+| `site_url` | `127.0.0.1:3000` | `localhost:3000` | reset links landed on a dead port |
+| `otp_length` | 6 | **8** | the app's 6-digit input could never accept the emailed code |
+
+Run this before trusting hosted auth, and after any change to `config.toml`:
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_... node scripts/check-hosted-auth.mjs
+```
+
+It diffs the settings that must match, asserts every template renders
+`{{ .Token }}` rather than a link, and prints the ones that differ on purpose
+(`site_url`, redirect list, SMTP host).
+
+**Templates are locked on free tier without custom SMTP** — the Management API
+refuses them outright. Resend is configured, which is what unlocked them.
