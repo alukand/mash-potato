@@ -11,7 +11,7 @@
 create extension if not exists pgtap with schema extensions;
 
 begin;
-select plan(32);
+select plan(34);
 
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
 values
@@ -223,6 +223,22 @@ select is(
   (select action from public.moderation_log(1)),
   'unban',
   'moderation_log: lifting a ban is recorded too');
+
+-- A ban taken from the QUEUE records the CONTENT as target_id, so
+-- target_user_id is the only field that can address the unban. Without it in
+-- the projection the app could ban and never unban — the screen keyed its
+-- "Lift ban" control on target_kind='user', which that path never produces.
+select lives_ok(
+  $$ select public.resolve_report('comment', 'c0000000-0000-4000-8000-000000000001',
+                                  'ban', 'the queue path') $$,
+  'resolve_report: a moderator can ban from the queue');
+
+select results_eq(
+  $$ select target_kind, (target_id = 'c0000000-0000-4000-8000-000000000001'),
+            (target_user_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+       from public.moderation_log(1) $$,
+  $$ values ('comment'::text, true, true) $$,
+  'moderation_log: a ban from the queue names the CONTENT and the PERSON separately');
 
 reset role;
 select * from finish();

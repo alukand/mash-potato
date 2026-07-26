@@ -2985,7 +2985,14 @@ export type ModerationItem = {
 export type ModerationAction = {
   action: 'dismiss' | 'remove' | 'ban' | 'unban'
   targetKind: 'comment' | 'message' | 'user'
+  /** What was acted on: a content id for comment/message, a person for user. */
   targetId: string
+  /**
+   * WHO was affected, which is not the same thing. Banning from the report
+   * queue records the CONTENT as target_id and the author here — so this is
+   * the only field that can address an unban for a ban taken that way.
+   */
+  targetUserId: string | null
   moderatorName: string
   targetName: string | null
   note: string | null
@@ -3060,6 +3067,7 @@ export async function fetchModerationLog(limit = 50): Promise<ModerationAction[]
     action: r.action as ModerationAction['action'],
     targetKind: r.target_kind as ModerationAction['targetKind'],
     targetId: r.target_id,
+    targetUserId: r.target_user_id,
     moderatorName: r.moderator_name ?? 'A moderator',
     targetName: r.target_name,
     note: r.note,

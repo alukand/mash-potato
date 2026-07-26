@@ -185,8 +185,11 @@ function LogRow({ entry, onUnban }: { entry: ModerationAction; onUnban: () => vo
         <span className="font-mono text-[10px] text-muted">
           {new Date(entry.createdAt).toLocaleString()}
         </span>
-        {/* A ban with no visible way back is a ban nobody reviews. */}
-        {entry.action === 'ban' && entry.targetKind === 'user' && (
+        {/* A ban with no visible way back is a ban nobody reviews — and
+            banning from the QUEUE records the content as target_kind, so
+            keying this on 'user' hid it from the common path entirely. Key
+            it on the affected PERSON instead. */}
+        {entry.action === 'ban' && entry.targetUserId && (
           <button type="button" onClick={onUnban} className="text-[12px] text-teal">
             Lift ban
           </button>
@@ -346,7 +349,7 @@ export default function ModerationScreen({ onBack }: { onBack: () => void }) {
                     <LogRow
                       key={`${entry.createdAt}:${i}`}
                       entry={entry}
-                      onUnban={() => void unban(entry.targetId)}
+                      onUnban={() => entry.targetUserId && void unban(entry.targetUserId)}
                     />
                   ))}
                 </ul>

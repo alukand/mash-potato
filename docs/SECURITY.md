@@ -117,6 +117,64 @@ goes stale the moment someone adds a table; a class assertion cannot.
 
 ---
 
+## Running moderation
+
+The queue lives at **Profile → gear → Reports** (or `/moderation` directly).
+It only appears for moderators, and every RPC behind it re-checks the role, so
+the hidden link is a courtesy rather than the control.
+
+**Promoting or demoting a moderator is deliberately not possible from inside
+the app.** There is no RPC for it, `is_moderator` is neither readable nor
+writable by any client, and that is the point: an app that can promote its own
+moderators has no privilege boundary. Do it in the Supabase SQL editor:
+
+```sql
+update public.profiles set is_moderator = true
+ where id = (select id from auth.users where email = 'them@example.com');
+```
+
+Swap `true` for `false` to demote. To see who currently holds it:
+
+```sql
+select p.display_name, u.email from public.profiles p
+  join auth.users u on u.id = p.id where p.is_moderator;
+```
+
+Current moderators: **Alex** (`alexanderlukasland@gmail.com`), set 2026-07-27.
+
+What the three actions do:
+
+| Action | Content | Author | Reversible from the app? |
+|---|---|---|---|
+| **Dismiss** | stays; an auto-hidden comment is **un-hidden** | untouched | n/a |
+| **Remove** | soft-deleted, invisible to everyone | untouched | no — needs SQL |
+| **Ban author** | removed | `profiles.banned = true` | yes — **Lift ban** in Recent actions |
+
+Writing that table is what caught a dead end worth recording. Banning happens
+two ways and they record differently: from the queue, `resolve_report` stores
+the CONTENT as `target_id` with `target_kind` `'comment'`/`'message'`; from the
+log, `set_user_banned` stores the PERSON with `target_kind` `'user'`. The
+screen's "Lift ban" was keyed on `'user'`, so it never appeared for the common
+path — and since that button was the only caller of `set_user_banned`, the app
+could ban but never unban. Fixed in `20260727200000` by returning
+`target_user_id` from `moderation_log` (it was always recorded, just never
+projected) and keying the control on the affected person instead.
+
+Three distinct reporters auto-hide a comment before anyone looks at it, which
+is why **Dismiss un-hides**: without that, a brigade of three bad-faith reports
+would be a permanent mute no moderator could undo.
+
+The queue is ordered **oldest first** and marks anything past 24 hours as
+overdue, because that is the window App Store guideline 1.2 asks you to attest
+to. Everything you do is written to `moderation_actions`, which grants no
+UPDATE or DELETE to anyone — including you.
+
+A moderator cannot ban themselves (`set_user_banned` refuses it), and nothing
+stops a second moderator from acting on the first. There is no super-admin
+tier; if that is ever needed, it is a schema change, not a setting.
+
+---
+
 ## Traps worth remembering
 
 - **A column revoke is a no-op while a table-level grant stands.** Revoking

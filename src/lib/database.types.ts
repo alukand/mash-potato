@@ -802,7 +802,7 @@ export type Database = {
           action: string
           created_at: string
           id: string
-          moderator_id: string
+          moderator_id: string | null
           note: string | null
           target_id: string
           target_kind: string
@@ -812,7 +812,7 @@ export type Database = {
           action: string
           created_at?: string
           id?: string
-          moderator_id: string
+          moderator_id?: string | null
           note?: string | null
           target_id: string
           target_kind: string
@@ -822,7 +822,7 @@ export type Database = {
           action?: string
           created_at?: string
           id?: string
-          moderator_id?: string
+          moderator_id?: string | null
           note?: string | null
           target_id?: string
           target_kind?: string
@@ -1491,6 +1491,7 @@ export type Database = {
           target_id: string
           target_kind: string
           target_name: string
+          target_user_id: string
         }[]
       }
       moderation_queue: {
