@@ -20,8 +20,15 @@ about 30 minutes of clicking plus some DNS waiting.
 
 ## 1. Cloudflare account and nameservers
 
-The domain is registered at **Squarespace** (it inherited Google Domains
-registrations). That is where the nameserver change happens.
+The domain is registered at **GoDaddy** — its nameservers are
+`ns53.domaincontrol.com` / `ns54.domaincontrol.com`, and `domaincontrol.com`
+is GoDaddy's. That is where the nameserver change happens.
+
+Do not be misled by the DNS records: some of them point at **Squarespace**
+services (a `pay` CNAME to `paylinks.commerce.squarespace.com`, and a
+Squarespace-flavoured apex `A` pair). Those are just a site and a payment
+widget that were pointed at the domain. **Read the nameservers to find the
+registrar, not the records.**
 
 1. Sign up at <https://dash.cloudflare.com> — the free plan is all this needs.
 2. **Add a site** → type `mashpotato.app` → choose **Free**.
@@ -29,11 +36,22 @@ registrations). That is where the nameserver change happens.
    here**, before continuing — see the table below.
 4. **Continue to activation.** Cloudflare shows **two nameservers**, e.g.
    `xxx.ns.cloudflare.com`. Copy them.
-5. In Squarespace: **Domains → mashpotato.app → DNS → Nameservers**, switch to
-   custom/third-party nameservers and paste Cloudflare's two, replacing what
-   is there. (Squarespace moves this around between UI revisions; it is under
-   the domain's DNS settings.)
-6. Back in Cloudflare, click **Check nameservers**.
+5. **Turn DNSSEC off at GoDaddy first**, if it is on. Domain settings →
+   **DNSSEC** (sometimes under "Additional Settings"). Changing nameservers
+   while DNSSEC is enabled with the old provider's keys makes the domain fail
+   to resolve *entirely* — not a broken page, a domain that does not exist —
+   and it is a miserable thing to debug. Cloudflare can re-enable it later.
+6. In GoDaddy: **My Products → Domains → mashpotato.app → DNS**, scroll to
+   **Nameservers → Change → I'll use my own nameservers**. Replace
+   `ns53.domaincontrol.com` and `ns54.domaincontrol.com` with the two
+   Cloudflare gave you, and save. GoDaddy will warn that its own DNS
+   management stops applying — that is exactly the point.
+7. Back in Cloudflare, click **I updated my nameservers**.
+
+> **Do not use GoDaddy's "Connect My Site" / "Connect Your Domain" panel.**
+> That is domain *forwarding* — it points the domain at someone else's site
+> and would fight the nameserver change. You want the DNS/Nameservers section,
+> not the marketing module.
 
 **Done when:** Cloudflare shows the domain as **Active**. Usually minutes,
 sometimes a few hours. You can carry on with steps 2 and 3 while you wait.
