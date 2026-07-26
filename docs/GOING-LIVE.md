@@ -108,6 +108,21 @@ link you click. Supabase's stock templates send `{{ .ConfirmationURL }}` — a
 link — so out of the box you get an email with no code in it, an app asking for
 a code that will never arrive, and a link that lands on `localhost:3000`.
 
+> **This needs custom SMTP first — it is not optional.** A free-tier project
+> using Supabase's built-in email sender **cannot change its templates at
+> all**, by dashboard or by API. The API says so outright: *"Email template
+> modification is not available for free tier projects using the default email
+> provider."*
+>
+> That matters more than it sounds, because this app's flows are code-based.
+> Without editable templates the stock ones send a LINK, so signup, password
+> reset and "email me a sign-in code" **cannot work on hosted, for anyone**.
+>
+> The built-in sender is unusable for launch regardless: it is heavily
+> rate-limited and intended for development. Set up **Resend** (10 minutes,
+> free tier, already written up in `docs/DOMAIN.md` §2), point Supabase's SMTP
+> settings at it, and then the four templates below can be applied.
+
 Supabase dashboard → project `lvmcwvhlfijvegxbqipc` → **Authentication** →
 **Emails** (older UI: **Templates**). Paste subject *and* body for **all four**
 from `supabase/templates/`:
@@ -142,9 +157,10 @@ password-reset links were sending you.
 
 Two things from `docs/SECURITY.md`:
 
-- **Authentication → Providers → Email → Leaked password protection: ON.**
-  One toggle, and it clears the last actionable security advisor.
-- Confirm **Minimum password length is 8**, matching the app.
+- **Minimum password length 8** — already applied via the Management API.
+- **Leaked password protection (HaveIBeenPwned)** is **Pro-plan only**. The
+  API refuses it on free with a 402. It stays on the security advisor list
+  until the project is upgraded; it is not a toggle you are missing.
 
 **Done when:** you trigger a password reset from the app and the email contains
 a six-digit code rather than a link.

@@ -138,9 +138,9 @@ Ordered by what blocks a submission.
    fields; the App Privacy questionnaire needs every collected data type mapped
    to the table that holds it. Account deletion (`delete_my_account`) and the
    `ITSAppUsesNonExemptEncryption` declaration already ship.
-3. **Leaked-password protection** — one toggle, Dashboard → Authentication →
-   Providers → Email. Supabase checks new passwords against HaveIBeenPwned.
-   Not settable from the CLI or MCP.
+3. **Leaked-password protection** — Dashboard → Authentication. **Pro plan
+   only**: the Management API returns 402 on free ("available on Pro Plans and
+   up"). Not a missed toggle — it is gated until the project is upgraded.
 4. **APNs secrets** (`PUSH_SHARED_SECRET`, `APNS_AUTH_KEY`, `APNS_KEY_ID`,
    `APPLE_TEAM_ID`) are still unset, so pushes do not deliver, and the App ID
    needs the Push Notifications capability.
