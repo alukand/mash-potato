@@ -328,8 +328,9 @@ Tracked in `docs/SECURITY.md`:
 - **Moderation tooling** — the real App Store blocker. Reports currently pile
   up in tables and banning means hand-written SQL, which cannot honour the
   24-hour commitment Apple asks you to make.
-- **APNs secrets** are unset, so push notifications do not deliver. See
-  `docs/PUSH.md`.
+- ~~**APNs secrets**~~ — push **is live and delivering** (verified 2026-07-27
+  end-to-end against APNs). This line said the opposite for a fortnight
+  because it was never re-tested. `docs/PUSH.md` has the checks.
 - **Universal links** (`/.well-known/apple-app-site-association` on the
   landing site) so a tapped web link opens the native app. Worth doing once
   the App Store listing exists.

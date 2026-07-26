@@ -550,12 +550,15 @@ the twin's 98 file assert the local posture.
   now_playing/upcoming, discover filters also yearFrom/To, sortBy,
   min/maxVotes, minRating; v13 adds language — Anime = 16 + 'ja'). Auth email-confirmation is OFF (no
   deep-link handling yet).
-  `send-push` deployed + `notification_config` seeded on hosted; APNs secrets
-  (PUSH_SHARED_SECRET / APNS_AUTH_KEY / APNS_KEY_ID / APPLE_TEAM_ID) still
-  need setting in the dashboard before pushes deliver, and the App ID needs
-  the Push Notifications capability. Step-by-step in `docs/PUSH.md`
-  (the DB half is already seeded — only the Apple key and four function
-  secrets are missing).
+  `send-push` deployed + `notification_config` seeded on hosted. **PUSH IS
+  LIVE** (verified 2026-07-27): all four APNs secrets hold real values,
+  `PUSH_SHARED_SECRET` matches `notification_config.secret` (compared as
+  sha256 digests — the Management API returns secrets hashed, which is what
+  makes that check possible without printing one), and a probe got a 2xx from
+  APNs for a real device while a junk token beside it was pruned. It had been
+  listed as outstanding since 2026-07-12 purely because the TODO was copied
+  between three files and never re-tested. `docs/PUSH.md` has the three
+  no-phone checks; run them before believing push is broken.
 - Dynamic rubric (M8) shipped: `rubric_categories` + jsonb `member_scores.
   scores` + `reveal_sessions.rubric` snapshots; blind-rule suites re-proven.
 

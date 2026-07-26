@@ -1,16 +1,79 @@
-# Turning push notifications on
+# Push notifications
 
-Everything in this repo and in the database is already done. What is missing is
-an **APNs signing key from Apple** and **four secrets on the Supabase Edge
-Function**. Until those exist the function refuses to run, on purpose — it
-returns `push not configured` rather than half-sending.
+**Push is configured and delivering.** Verified 2026-07-27 by an end-to-end
+probe against hosted: APNs returned 2xx for a real registered device, and a
+deliberately invalid token alongside it was rejected and auto-pruned. Three
+iOS devices are registered.
 
-Budget about 20 minutes. You need an Apple Developer account and access to the
-Supabase dashboard. Nothing here touches code.
+This document was originally written as a setup runbook, on the strength of a
+TODO that had been copied between three files since 2026-07-12. **The TODO was
+stale.** The Apple key, the Key ID, the Team ID and the shared secret were all
+already set; nobody had checked. Read "How it was verified" below before
+believing any claim that push is unconfigured — including one from me.
+
+The lesson is worth more than the runbook: *an outstanding item that nobody
+re-tests becomes folklore.* A note saying "X is not done" is a claim with an
+expiry date, and this one had expired.
 
 ---
 
-## What is already in place — do not redo these
+## What it delivers
+
+| Event | Who gets it |
+|---|---|
+| `group_added` | the person added |
+| `round_started` | every member except the starter |
+| `member_locked` | every member except the locker |
+| `comment_reply` | the parent comment's author |
+| `new_message` | conversation members, minus the sender, mutes and blocks |
+
+Payloads are **ID-only** — score values never ride a notification, and both
+test suites assert it. The Edge Function resolves names and message text with
+the service key *after* deciding who may receive it. Keep that rule if you add
+an event: it is why a mis-delivered notification cannot leak a blind score.
+
+---
+
+## How it was verified
+
+Nothing here needs a phone in hand, and it is repeatable whenever push is
+doubted.
+
+**1. Are the four secrets real?** The Management API returns each secret's
+value as a **SHA-256 digest**, not plaintext — so you can classify one without
+ever seeing it. `sha256("")` is the constant
+`e3b0c442…`, so any secret matching it is an empty placeholder:
+
+```bash
+curl -s "https://api.supabase.com/v1/projects/lvmcwvhlfijvegxbqipc/secrets" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
+```
+
+**2. Does `PUSH_SHARED_SECRET` match the database?** Same trick, no secret
+printed: hash the database's copy and compare the two digests. They must be
+identical or the function 401s its own database and nothing is ever delivered.
+
+```sql
+select encode(digest(secret, 'sha256'), 'hex') from public.notification_config;
+```
+
+**3. Does APNs actually accept a send?** Insert a junk device token, fire one
+event, read the counts, delete the token. The reply distinguishes every
+failure mode at once:
+
+| Reply | Meaning |
+|---|---|
+| `{"skipped":"apns not configured"}` | one of the three Apple secrets is empty |
+| `{"sent":N,...}` | **APNs returned 2xx — the key, Key ID, Team ID, topic and host are all correct** |
+| `{"pruned":N}` | that token was rejected as unknown/bad and deleted — the prune path works |
+| `{"failed":N}` | APNs refused; the reason is in the function logs |
+| HTTP 403 | `PUSH_SHARED_SECRET` does not match |
+
+**Fire it at a user with no real device**, or you will send a genuine
+notification to somebody's phone. That happened during this verification.
+
+---
+
+## The full picture
 
 | Piece | State |
 |---|---|
@@ -19,16 +82,20 @@ Supabase dashboard. Nothing here touches code.
 | `push_notify` → pg_net → the Edge Function | shipped |
 | `send-push` Edge Function (APNs HTTP/2, ES256 provider JWT) | deployed |
 | `notification_config` row on hosted | **seeded** — endpoint, secret and bearer all set |
+| `PUSH_SHARED_SECRET` | **set, and matches the database** (digests compared) |
+| `APNS_AUTH_KEY` / `APNS_KEY_ID` / `APPLE_TEAM_ID` | **set and working** — APNs returns 2xx |
+| App ID Push capability + provisioning | **done** — devices are receiving tokens |
 | iOS entitlement `aps-environment = production` | in the repo |
 | `AppDelegate` token registration, `src/lib/push.ts`, tap routing | shipped |
 | Codemagic signing via the App Store Connect integration | configured |
 
-The one to notice is `notification_config`: the **database half of the shared
-secret already has a value**. Step 2.1 is copying that value, not inventing one.
+In other words: **all of it**. The sections below are kept as reference for
+rotating a key, adding a second app, or debugging a delivery that stops — not
+as work to do.
 
 ---
 
-## Part 1 — Apple Developer portal
+## Reference — Apple Developer portal (already done)
 
 Everything here is at <https://developer.apple.com/account/resources>.
 
@@ -74,7 +141,7 @@ do not make a fresh one per project.
 
 ---
 
-## Part 2 — Supabase secrets
+## Reference — Supabase secrets (already set)
 
 Dashboard → your project → **Edge Functions** → **Secrets**
 (<https://supabase.com/dashboard/project/lvmcwvhlfijvegxbqipc/settings/functions>).
@@ -117,7 +184,7 @@ the topic defaults to `com.mashpotato.app` (the bundle id) and the host to
 
 ---
 
-## Part 3 — Build and verify
+## Getting it onto your own phone
 
 ### 3.1 Ship a build
 

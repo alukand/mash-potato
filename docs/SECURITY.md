@@ -240,13 +240,14 @@ Ordered by what blocks a submission.
 2. **Leaked-password protection** — Dashboard → Authentication. **Pro plan
    only**: the Management API returns 402 on free ("available on Pro Plans and
    up"). Not a missed toggle — it is gated until the project is upgraded.
-3. **APNs secrets** (`PUSH_SHARED_SECRET`, `APNS_AUTH_KEY`, `APNS_KEY_ID`,
-   `APPLE_TEAM_ID`) are still unset, so pushes do not deliver, and the App ID
-   needs the Push Notifications capability. **`docs/PUSH.md` walks it through**
-   — roughly 20 minutes, no code. Note `notification_config` on hosted is
-   already seeded, so `PUSH_SHARED_SECRET` must be *copied from the database*,
-   not invented: if the two drift the function 401s its own database and
-   nothing is ever delivered.
+3. ~~**APNs secrets**~~ — **done, and it always was.** Verified 2026-07-27:
+   all four secrets hold real values, `PUSH_SHARED_SECRET` matches the
+   database (digests compared), and an end-to-end probe got a 2xx from APNs
+   for a registered device while a junk token beside it was pruned. This item
+   sat on the outstanding list for a fortnight because it was copied forward,
+   never re-tested. **An untested "not done" is worth as little as an untested
+   backup.** See `docs/PUSH.md` for the three checks, all runnable without a
+   phone.
 4. **`pg_net` in `public`** — a persistent advisor WARN. Low risk (it is
    service-role reachable only), but moving it to `extensions` clears it.
 5. **Backups and restore.** Supabase takes daily backups on paid plans; nobody
