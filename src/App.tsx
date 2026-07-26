@@ -41,6 +41,8 @@ import { DiscoverScreen } from './screens/DiscoverScreen'
 import { GroupScreen } from './screens/GroupScreen'
 import { GroupHistoryScreen } from './screens/GroupHistoryScreen'
 import ModerationScreen from './screens/ModerationScreen'
+import { MoreSheet } from './components/MoreSheet'
+import type { ProfileSection } from './screens/ProfileScreen'
 import { PlaylistScreen } from './screens/PlaylistScreen'
 import { ProfileScreen } from './screens/ProfileScreen'
 import { PublicProfileScreen } from './screens/PublicProfileScreen'
@@ -127,6 +129,10 @@ function App() {
   const [openSessionId, setOpenSessionId] = useState<string | null>(null)
   /** Unread across every conversation, for the header envelope's dot. */
   const [unreadTotal, setUnreadTotal] = useState(0)
+  /** The More menu is a sheet over the current screen, not a fifth tab. */
+  const [moreOpen, setMoreOpen] = useState(false)
+  /** Which Profile list a Home stat tile asked for; cleared once scrolled. */
+  const [profileFocus, setProfileFocus] = useState<ProfileSection | null>(null)
   // First-run tab walkthrough: dims the app, pulses each tab in turn.
   const [tourActive, setTourActive] = useState(false)
   const [tourTab, setTourTab] = useState<TabId>('home')
@@ -622,6 +628,14 @@ function App() {
                 }}
                 onOpenTitle={openTitle}
                 onExplore={() => setTab('discover')}
+                onOpenList={(section) => {
+                  setStack([])
+                  setTab('profile')
+                  storeTab('profile')
+                  // Profile scrolls itself once its lists have loaded — from
+                  // here we only say which one.
+                  setProfileFocus(section)
+                }}
               />
             )}
             {tab === 'discover' && <DiscoverScreen userId={userId} onOpenTitle={openTitle} />}
@@ -677,6 +691,8 @@ function App() {
                   setTourActive(true)
                 }}
                 onOpenModeration={() => pushView({ kind: 'moderation' })}
+                focusSection={profileFocus}
+                onFocusHandled={() => setProfileFocus(null)}
               />
             )}
           </main>
@@ -684,7 +700,32 @@ function App() {
         </div>
       )}
 
-      <BottomNav active={tab} onSelect={selectTab} highlight={tourActive ? tourTab : null} />
+      <BottomNav
+        active={tab}
+        onSelect={selectTab}
+        onMore={() => setMoreOpen(true)}
+        unread={unreadTotal}
+        highlight={tourActive ? tourTab : null}
+      />
+
+      {moreOpen && (
+        <MoreSheet
+          unread={unreadTotal}
+          onMessages={() => {
+            setMoreOpen(false)
+            pushView({ kind: 'messages' })
+          }}
+          onNewGroup={() => {
+            setMoreOpen(false)
+            pushView({ kind: 'createGroup' })
+          }}
+          onModeration={() => {
+            setMoreOpen(false)
+            pushView({ kind: 'moderation' })
+          }}
+          onClose={() => setMoreOpen(false)}
+        />
+      )}
 
       {tourActive && (
         <FirstRunTour

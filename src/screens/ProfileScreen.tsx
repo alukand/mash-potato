@@ -48,6 +48,12 @@ import { AVATAR_CATALOG, Avatar } from '../components/avatars'
 import { TASTE_MODES } from '../lib/rubricCatalog'
 import type { TasteMode } from '../lib/rubricCatalog'
 
+/**
+ * Sections Home's stat tiles can point at. Each one counts a list that already
+ * lives here, so the count and the list are the same fact.
+ */
+export type ProfileSection = 'groups' | 'rated' | 'saved'
+
 interface ProfileScreenProps {
   userId: string
   displayName: string
@@ -66,6 +72,10 @@ interface ProfileScreenProps {
   onReplayTour: () => void
   /** Open the report queue. Only ever shown to moderators. */
   onOpenModeration: () => void
+  /** Scroll to this section on arrival (a Home stat tile sent you here). */
+  focusSection?: ProfileSection | null
+  /** Cleared once scrolled, so tapping the same tile twice works again. */
+  onFocusHandled?: () => void
   /** Present when pushed on the view-stack; absent as the Profile tab. */
   onBack?: () => void
 }
@@ -89,6 +99,8 @@ export function ProfileScreen({
   onGroupsChanged,
   onReplayTour,
   onOpenModeration,
+  focusSection = null,
+  onFocusHandled,
   onBack,
 }: ProfileScreenProps) {
   const [reviewed, setReviewed] = useState<ReviewedTitle[]>([])
@@ -186,6 +198,22 @@ export function ProfileScreen({
       cancelled = true
     }
   }, [])
+
+  /**
+   * A Home stat tile sent us here, so land ON the list it counted rather than
+   * at the top of a long page. Waits for `loading`: the lists are empty until
+   * then, so an early scroll targets a section with no height yet and stops
+   * short of it.
+   */
+  useEffect(() => {
+    if (!focusSection || loading) return
+    const el = document.getElementById(`profile-${focusSection}`)
+    if (el) {
+      const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      el.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' })
+    }
+    onFocusHandled?.()
+  }, [focusSection, loading, onFocusHandled])
 
   async function handleSendEmailCode() {
     setEmailBusy(true)
@@ -556,7 +584,7 @@ export function ProfileScreen({
       )}
 
       {/* ---- groups ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '80ms' }}>
+      <section id="profile-groups" className="mp-rise mt-7 scroll-mt-5" style={{ animationDelay: '80ms' }}>
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           Your groups
         </p>
@@ -740,7 +768,7 @@ export function ProfileScreen({
       </section>
 
       {/* ---- rated solo (community) ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '220ms' }}>
+      <section id="profile-rated" className="mp-rise mt-7 scroll-mt-5" style={{ animationDelay: '220ms' }}>
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           Rated
         </p>
@@ -756,7 +784,7 @@ export function ProfileScreen({
       </section>
 
       {/* ---- saved list ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '300ms' }}>
+      <section id="profile-saved" className="mp-rise mt-7 scroll-mt-5" style={{ animationDelay: '300ms' }}>
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           Saved
         </p>

@@ -296,9 +296,23 @@ the twin's 98 file assert the local posture.
   to 'rate' in readStoredTab. The header is the brand plus ONE top-right slot
   (`HEADER_ACTION_ID`); screens portal their settings control into it with
   `HeaderAction` (ui.tsx), so Rate and Profile share one findable corner.
+  BOTTOM NAV (2026-07-27): labels sit UNDER the icons — five destinations do
+  not fit beside their text at a tap target worth hitting — icons are 22px,
+  and **Rate is the centre of five and the only FILLED icon**, a 29px GOLD
+  star with a gold active skin instead of teal (DESIGN.md: personal numbers
+  are gold; rating is what the app is for). The fifth item, **More**, is NOT a
+  tab: `TabId` stays four values and `MoreSheet` opens over the current screen,
+  so it costs no URL, no `mp.activeTab` migration and no base tab. It holds
+  destinations that already existed somewhere cramped — Messages (a single
+  header icon), Start a new group, and Reports for moderators — plus
+  Privacy/Support. It carries a coral dot when messages are unread.
 - `src/screens/` — Auth (password, signup codes, forgot-password codes,
   passwordless "Email me a sign-in code"), CreateGroup, Home (CROSS-GROUP
-  overview: stats strip [groups/rated/saved] + live rounds w/ inline RSVP +
+  overview: stats strip [groups/rated/saved] — each tile is a BUTTON that
+  lands on the Profile section it counts (`ProfileSection`, anchors
+  `#profile-groups|rated|saved`; App holds `profileFocus`, ProfileScreen
+  scrolls once `loading` clears and calls `onFocusHandled` so a repeat tap
+  works) + live rounds w/ inline RSVP +
   latest reveals + "From your list" saved shelf + trending/popular tail),
   Discover (streaming-style shelf stack: ONE combined film+TV lineup of
   TMDB lists + genre/era/acclaim recipes + per-side "Because you rated"

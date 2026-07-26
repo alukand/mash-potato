@@ -20,6 +20,7 @@ import { participation, formatWindow } from '../lib/rsvp'
 import { PosterShelf } from '../components/PosterShelf'
 import { Logo } from '../components/Logo'
 import { CtaButton, GroupMark } from '../components/ui'
+import type { ProfileSection } from './ProfileScreen'
 
 interface HomeScreenProps {
   groups: GroupInfo[]
@@ -30,6 +31,8 @@ interface HomeScreenProps {
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
   /** Jump to Discover. */
   onExplore: () => void
+  /** Open the Profile list a stat tile counts. */
+  onOpenList: (section: ProfileSection) => void
 }
 
 /** One group's latest activity, hydrated for the dashboard. */
@@ -46,7 +49,14 @@ interface GroupPulse {
 // Home is the cross-group dashboard: every live round (with the RSVP right
 // here), the freshest reveals, then somewhere to explore. Group-specific
 // depth — the full Reveal, log, rubric — lives on the Group tab.
-export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore }: HomeScreenProps) {
+export function HomeScreen({
+  groups,
+  userId,
+  onOpenGroup,
+  onOpenTitle,
+  onExplore,
+  onOpenList,
+}: HomeScreenProps) {
   const [pulses, setPulses] = useState<GroupPulse[] | undefined>(undefined)
   const [trending, setTrending] = useState<TmdbResult[]>([])
   const [popular, setPopular] = useState<TmdbResult[]>([])
@@ -184,17 +194,26 @@ export function HomeScreen({ groups, userId, onOpenGroup, onOpenTitle, onExplore
         <section className="mp-rise grid grid-cols-3 gap-2">
           {(
             [
-              [groups.length, groups.length === 1 ? 'Group' : 'Groups'],
-              [ratedCount ?? 0, 'Rated'],
-              [saved.length, 'Saved'],
+              ['groups', groups.length, groups.length === 1 ? 'Group' : 'Groups'],
+              ['rated', ratedCount ?? 0, 'Rated'],
+              ['saved', saved.length, 'Saved'],
             ] as const
-          ).map(([n, label]) => (
-            <div key={label} className="mp-card rounded-2xl px-3 py-3 text-center">
+          ).map(([section, n, label]) => (
+            // Each number is a count of a list that already exists on Profile,
+            // so the number leads to the list. A stat you cannot open is a
+            // dead end wearing a badge.
+            <button
+              key={label}
+              type="button"
+              onClick={() => onOpenList(section)}
+              aria-label={`${n} ${label.toLowerCase()} — open the list`}
+              className="mp-card rounded-2xl px-3 py-3 text-center transition-colors hover:border-teal/40 active:bg-surface-2"
+            >
               <p className="tabular font-display text-[24px] font-semibold leading-none">{n}</p>
               <p className="mt-1 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
                 {label}
               </p>
-            </div>
+            </button>
           ))}
         </section>
       )}
