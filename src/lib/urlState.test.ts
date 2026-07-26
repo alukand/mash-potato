@@ -12,6 +12,7 @@ const VIEWS: StackView[] = [
   { kind: 'messages' },
   { kind: 'thread', conversationId: 'eb3762e3-9653-4238-ba7d-fdd26737f2f6' },
   { kind: 'createGroup' },
+  { kind: 'moderation' },
 ]
 
 describe('tabs', () => {
@@ -65,6 +66,13 @@ describe('stack views', () => {
     // rows already send you.
     expect(pathToState('/group/g1/history').tab).toBe('rate')
     expect(pathToState('/film/27205').tab).toBe('home')
+  })
+
+  it('the report queue sits under Profile, where its door is', () => {
+    expect(pathToState('/moderation').tab).toBe('profile')
+    // Reachable by anyone who types it — the screen and every RPC behind it
+    // refuse a non-moderator, so the route needs no gate of its own.
+    expect(pathToState('/moderation').stack).toEqual([{ kind: 'moderation' }])
   })
 
   it('leaves the discussion seed out of the URL', () => {

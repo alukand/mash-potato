@@ -32,6 +32,7 @@ export type StackView =
   | { kind: 'messages' }
   | { kind: 'thread'; conversationId: string }
   | { kind: 'groupHistory'; groupId: string }
+  | { kind: 'moderation' }
 
 /** Identity for React keys and for "is this the same view?" comparisons. */
 export function stackKey(v: StackView): string {
@@ -71,7 +72,11 @@ const PATH_TABS: Record<string, TabId> = {
  * when you open one of its nights.
  */
 function baseTabFor(view: StackView): TabId {
-  return view.kind === 'groupHistory' ? 'rate' : 'home'
+  if (view.kind === 'groupHistory') return 'rate'
+  // The moderation queue is reached from Profile's settings cluster, so that
+  // is where closing it belongs.
+  if (view.kind === 'moderation') return 'profile'
+  return 'home'
 }
 
 /**
@@ -105,6 +110,8 @@ export function stateToPath(tab: TabId, stack: StackView[]): string {
       return `/messages/${encodeURIComponent(top.conversationId)}`
     case 'createGroup':
       return '/new-group'
+    case 'moderation':
+      return '/moderation'
   }
 }
 
@@ -141,6 +148,9 @@ export function pathToState(pathname: string): AppLocation {
       return { kind: 'groupHistory', groupId: second }
     }
     if (head === 'new-group' && parts.length === 1) return { kind: 'createGroup' }
+    // Reachable by anyone who types it; the screen and the server both refuse
+    // a non-moderator, so the route needs no gate of its own.
+    if (head === 'moderation' && parts.length === 1) return { kind: 'moderation' }
     if (head === 'messages') {
       if (parts.length === 1) return { kind: 'messages' }
       if (second) return { kind: 'thread', conversationId: second }

@@ -52,6 +52,7 @@ Invoke-Sql "DISCUSSION TEST" (Join-Path $repo "scripts\verify-rls\97-discussion-
 Invoke-Sql "ACCOUNT TEST" (Join-Path $repo "scripts\verify-rls\98-account-test.sql")
 Invoke-Sql "MESSAGING TEST" (Join-Path $repo "scripts\verify-rls\98b-messaging-test.sql")
 Invoke-Sql "HARDENING TEST" (Join-Path $repo "scripts\verify-rls\98c-hardening-test.sql")
+Invoke-Sql "MODERATION TEST" (Join-Path $repo "scripts\verify-rls\98d-moderation-test.sql")
 Invoke-Sql "POLL TEST" (Join-Path $repo "scripts\verify-rls\99-poll-test.sql")
 
 Write-Host ""

@@ -6,6 +6,11 @@
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant execute on all functions in schema public to authenticated;
+-- HOSTED grants anon these too, and this file did not — which is why anon
+-- held INSERT/UPDATE/DELETE/TRUNCATE on all 21 tables in production while the
+-- twin showed a clean posture (found 2026-07-27, closed by 20260727190000).
+-- Simulating them here is what makes that migration's revoke testable.
+grant select, insert, update, delete on all tables in schema public to anon;
 
 -- Re-apply the deliberate exceptions (the blanket grant above would otherwise
 -- undo migrations' explicit revokes; on real Supabase no such re-grant runs).
@@ -37,6 +42,34 @@ revoke insert, update, delete on public.messages                  from authentic
 revoke insert, update, delete on public.message_reactions         from authenticated;
 revoke insert, update, delete on public.message_reports           from authenticated;
 revoke insert, update, delete on public.dm_request_declines       from authenticated;
+-- ...and anon gets nothing at all on them (20260726120000 lines 391-397).
+-- Mirroring these is what keeps 98b's "anon has no read on any messaging
+-- table" a real assertion now that the blanket grant above includes anon.
+revoke all on public.conversations             from anon;
+revoke all on public.conversation_participants from anon;
+revoke all on public.conversation_state        from anon;
+revoke all on public.messages                  from anon;
+revoke all on public.message_reactions         from anon;
+revoke all on public.message_reports           from anon;
+revoke all on public.dm_request_declines       from anon;
+-- moderation (20260727180000): the audit trail is append-only for EVERYONE,
+-- including moderators — only the definer RPCs write it.
+-- `profiles.is_moderator` needs no line here: the column grants above list
+-- their columns explicitly, so a new column is excluded by omission. That is
+-- the reason those grants enumerate columns instead of revoking the ones they
+-- want to hide.
+revoke all on public.moderation_actions from authenticated, anon;
+-- anon write revoke (20260727190000), re-applied after the blanket grant above.
+do $$
+declare t record;
+begin
+  for t in select tablename from pg_tables where schemaname = 'public'
+  loop
+    execute format(
+      'revoke insert, update, delete, truncate, references, trigger on public.%I from anon',
+      t.tablename);
+  end loop;
+end $$;
 -- security hardening: trigger-only internals are not an API, even signed in
 -- (mirrors 20260717160000_security_hardening.sql, which the blanket function
 -- grant above would otherwise undo).

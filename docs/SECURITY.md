@@ -15,7 +15,7 @@ The client only ever holds the **anon key** plus the signed-in user's JWT.
 Every table has RLS on, and policies are **SELECT-only**: with a handful of
 self-scoped exceptions, no client role can INSERT, UPDATE or DELETE directly.
 Writes go through `SECURITY DEFINER` RPCs that check authorisation themselves.
-That is why the hosted advisor reports ~56 "signed-in users can execute a
+That is why the hosted advisor reports ~61 "signed-in users can execute a
 SECURITY DEFINER function" warnings — that is the architecture working, not a
 finding.
 
@@ -80,6 +80,43 @@ Found by enumerating actual privileges on hosted (`has_table_privilege`,
 
 ---
 
+## Second pass, same day — moderation, and a class the first pass missed
+
+Fixed in `20260727180000_moderation.sql` and `20260727190000_anon_write_revoke.
+sql`, pinned by `supabase/tests/moderation_test.sql` (32 assertions) and
+`scripts/verify-rls/98d-moderation-test.sql` (10).
+
+**Moderation tooling** (the blocker that used to head the list below) now
+ships: a `is_moderator` role that no client can read or write, resolution state
+on both report tables, an append-only `moderation_actions` trail with no UPDATE
+or DELETE granted to anyone, four role-checked definer RPCs, and a screen. See
+CLAUDE.md for the design. The relevant security property: `moderation_queue`
+reads other people's private messages, so it is scoped to content that has
+ACTUALLY been reported — that scope is the entire justification for the
+function existing, and it must never become a way to browse conversations.
+
+| # | Surface | What was possible | Severity |
+|---|---|---|---|
+| 5 | `anon` held INSERT/UPDATE/DELETE/TRUNCATE on **all 21 public tables** — including `profiles.banned` and the new `profiles.is_moderator` | Nothing, today. Not one policy on any of those tables names `anon`, so RLS denied every row; an anon-key PATCH setting `is_moderator` and an anon-key profile INSERT both returned 401. This is finding #2's shape at 21× the scale: the grant already said yes, and only an absence said no. One permissive policy added later opens it with no other warning. | Medium (latent) |
+
+Closed by revoking every write privilege from `anon` on every public table,
+plus `alter default privileges ... revoke ... from anon` so new tables inherit
+the posture instead of relying on someone remembering. SELECT is deliberately
+untouched: anon reads nothing today, but revoking reads is a behavioural change
+and revoking writes it never used is not.
+
+**Why the first pass missed it, which is the part worth keeping.**
+`hardening_test.sql` asserts `not has_table_privilege('anon','public.titles',
+'INSERT')` and it PASSED — because a local `db reset` never issues anon those
+grants in the first place. The suite was describing a posture that only existed
+on this machine. `20-grants.sql` now simulates the anon grants (and re-applies
+messaging's own anon revokes, which is what kept its "anon has no read"
+assertion honest), and **both suites assert the class** — "no public table
+grants anon a write" — rather than one table at a time. A per-table assertion
+goes stale the moment someone adds a table; a class assertion cannot.
+
+---
+
 ## Traps worth remembering
 
 - **A column revoke is a no-op while a table-level grant stands.** Revoking
@@ -93,6 +130,13 @@ Found by enumerating actual privileges on hosted (`has_table_privilege`,
   simulates the platform's blanket grants and then re-applies every deliberate
   revoke. A new revoke that is not mirrored there means the twin tests an
   ungated schema and passes anyway.
+- **A green assertion about `anon` may be describing your laptop.** The twin
+  granted `anon` nothing at all until 2026-07-27, so every "anon cannot X"
+  check passed vacuously while hosted said otherwise. If a suite asserts an
+  absence, make sure something first creates the presence — and prove the
+  assertion can fail before trusting it.
+- **Assert the class, not the instance.** "No public table grants anon a write"
+  survives a new table; "anon cannot INSERT into `titles`" does not.
 - **`SET LOCAL` outside a transaction is a no-op**, so a privilege probe
   written without `begin; … rollback;` silently runs as superuser and proves
   nothing.
@@ -118,9 +162,12 @@ cannot catch a missing `anon` revoke. An anon-key `POST /rest/v1/rpc/<fn>` must
 return 401, with `GET /rest/v1/titles` → 200 and a nonexistent RPC → 404 to
 prove the probe distinguishes outcomes.
 
-Current hosted advisor state: **0 ERROR**, 58 WARN — 56 are the definer-RPC
-architecture, plus `pg_net` living in `public` and the leaked-password toggle
-below.
+Current hosted advisor state: **0 ERROR**, 63 WARN, 4 INFO — 61 WARNs are the
+definer-RPC architecture (the moderation pass added five), plus `pg_net` living
+in `public` and the leaked-password toggle below. The 4 INFO
+`rls_enabled_no_policy` notices are the definer-only tables
+(`moderation_actions`, `rate_limits`, `banned_terms`, `notification_config`):
+no policy is the intent there, not an oversight.
 
 ---
 
@@ -128,25 +175,19 @@ below.
 
 Ordered by what blocks a submission.
 
-1. **Moderation tooling — the real blocker.** Guideline 1.2 asks you to attest
-   that you act on reports within 24 hours. Filtering (`banned_terms`),
-   reporting and blocking all ship, but reports accumulate in tables and
-   `profiles.banned` is dashboard-only, so triage means hand-writing SQL. You
-   cannot honour a 24-hour SLA that way. Needs a report queue plus action RPCs
-   with an audit trail.
-2. **Compliance artifacts.** Privacy policy URL and support URL are required
+1. **Compliance artifacts.** Privacy policy URL and support URL are required
    fields; the App Privacy questionnaire needs every collected data type mapped
    to the table that holds it. Account deletion (`delete_my_account`) and the
    `ITSAppUsesNonExemptEncryption` declaration already ship.
-3. **Leaked-password protection** — Dashboard → Authentication. **Pro plan
+2. **Leaked-password protection** — Dashboard → Authentication. **Pro plan
    only**: the Management API returns 402 on free ("available on Pro Plans and
    up"). Not a missed toggle — it is gated until the project is upgraded.
-4. **APNs secrets** (`PUSH_SHARED_SECRET`, `APNS_AUTH_KEY`, `APNS_KEY_ID`,
+3. **APNs secrets** (`PUSH_SHARED_SECRET`, `APNS_AUTH_KEY`, `APNS_KEY_ID`,
    `APPLE_TEAM_ID`) are still unset, so pushes do not deliver, and the App ID
    needs the Push Notifications capability.
-5. **`pg_net` in `public`** — a persistent advisor WARN. Low risk (it is
+4. **`pg_net` in `public`** — a persistent advisor WARN. Low risk (it is
    service-role reachable only), but moving it to `extensions` clears it.
-6. **Backups and restore.** Supabase takes daily backups on paid plans; nobody
+5. **Backups and restore.** Supabase takes daily backups on paid plans; nobody
    has yet tested a restore. An untested backup is a hope, not a control.
 
 ## Reporting a vulnerability

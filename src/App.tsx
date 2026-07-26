@@ -40,6 +40,7 @@ import { HomeScreen } from './screens/HomeScreen'
 import { DiscoverScreen } from './screens/DiscoverScreen'
 import { GroupScreen } from './screens/GroupScreen'
 import { GroupHistoryScreen } from './screens/GroupHistoryScreen'
+import ModerationScreen from './screens/ModerationScreen'
 import { PlaylistScreen } from './screens/PlaylistScreen'
 import { ProfileScreen } from './screens/ProfileScreen'
 import { PublicProfileScreen } from './screens/PublicProfileScreen'
@@ -572,6 +573,7 @@ function App() {
                 onBack={popView}
               />
             )}
+            {top.kind === 'moderation' && <ModerationScreen onBack={popView} />}
             {top.kind === 'createGroup' && (
               <CreateGroupScreen
                 userId={userId}
@@ -674,6 +676,7 @@ function App() {
                   setTab('home')
                   setTourActive(true)
                 }}
+                onOpenModeration={() => pushView({ kind: 'moderation' })}
               />
             )}
           </main>

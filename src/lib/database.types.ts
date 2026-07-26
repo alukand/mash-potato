@@ -88,18 +88,27 @@ export type Database = {
           created_at: string
           reason: string | null
           reporter_id: string
+          resolution: string | null
+          resolved_at: string | null
+          resolved_by: string | null
         }
         Insert: {
           comment_id: string
           created_at?: string
           reason?: string | null
           reporter_id: string
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
         }
         Update: {
           comment_id?: string
           created_at?: string
           reason?: string | null
           reporter_id?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
         }
         Relationships: [
           {
@@ -112,6 +121,13 @@ export type Database = {
           {
             foreignKeyName: "comment_reports_reporter_id_fkey"
             columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_reports_resolved_by_fkey"
+            columns: ["resolved_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -646,6 +662,9 @@ export type Database = {
           message_id: string
           reason: string | null
           reporter_id: string
+          resolution: string | null
+          resolved_at: string | null
+          resolved_by: string | null
         }
         Insert: {
           conversation_id: string
@@ -653,6 +672,9 @@ export type Database = {
           message_id: string
           reason?: string | null
           reporter_id: string
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
         }
         Update: {
           conversation_id?: string
@@ -660,6 +682,9 @@ export type Database = {
           message_id?: string
           reason?: string | null
           reporter_id?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
         }
         Relationships: [
           {
@@ -672,6 +697,13 @@ export type Database = {
           {
             foreignKeyName: "message_reports_reporter_id_fkey"
             columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_reports_resolved_by_fkey"
+            columns: ["resolved_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -761,6 +793,54 @@ export type Database = {
             columns: ["share_title_id"]
             isOneToOne: false
             referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      moderation_actions: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          moderator_id: string
+          note: string | null
+          target_id: string
+          target_kind: string
+          target_user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          moderator_id: string
+          note?: string | null
+          target_id: string
+          target_kind: string
+          target_user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          moderator_id?: string
+          note?: string | null
+          target_id?: string
+          target_kind?: string
+          target_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "moderation_actions_moderator_id_fkey"
+            columns: ["moderator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "moderation_actions_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -954,6 +1034,7 @@ export type Database = {
           created_at: string
           display_name: string
           id: string
+          is_moderator: boolean
           taste_mode: string
         }
         Insert: {
@@ -963,6 +1044,7 @@ export type Database = {
           created_at?: string
           display_name: string
           id: string
+          is_moderator?: boolean
           taste_mode?: string
         }
         Update: {
@@ -972,6 +1054,7 @@ export type Database = {
           created_at?: string
           display_name?: string
           id?: string
+          is_moderator?: boolean
           taste_mode?: string
         }
         Relationships: []
@@ -1388,6 +1471,7 @@ export type Database = {
       }
       is_group_member: { Args: { p_group_id: string }; Returns: boolean }
       is_group_owner: { Args: { p_group_id: string }; Returns: boolean }
+      is_moderator: { Args: never; Returns: boolean }
       late_score_session: {
         Args: { p_one_liner?: string; p_scores: Json; p_session_id: string }
         Returns: undefined
@@ -1396,6 +1480,33 @@ export type Database = {
       mark_conversation_read: {
         Args: { p_conversation_id: string }
         Returns: undefined
+      }
+      moderation_log: {
+        Args: { p_limit?: number }
+        Returns: {
+          action: string
+          created_at: string
+          moderator_name: string
+          note: string
+          target_id: string
+          target_kind: string
+          target_name: string
+        }[]
+      }
+      moderation_queue: {
+        Args: never
+        Returns: {
+          already_hidden: boolean
+          author_banned: boolean
+          author_id: string
+          author_name: string
+          body: string
+          content_id: string
+          first_reported: string
+          kind: string
+          reasons: string[]
+          report_count: number
+        }[]
       }
       my_blocks: {
         Args: never
@@ -1460,6 +1571,15 @@ export type Database = {
         Args: { p_message_id: string; p_reason: string }
         Returns: undefined
       }
+      resolve_report: {
+        Args: {
+          p_action: string
+          p_content_id: string
+          p_kind: string
+          p_note?: string
+        }
+        Returns: undefined
+      }
       reveal_session: {
         Args: { p_session_id: string }
         Returns: {
@@ -1520,6 +1640,10 @@ export type Database = {
       }
       set_group_visibility: {
         Args: { p_group_id: string; p_public: boolean }
+        Returns: undefined
+      }
+      set_user_banned: {
+        Args: { p_banned: boolean; p_note?: string; p_user_id: string }
         Returns: undefined
       }
       shares_group_with: { Args: { p_user_id: string }; Returns: boolean }

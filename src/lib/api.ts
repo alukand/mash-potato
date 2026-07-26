@@ -2961,3 +2961,108 @@ export function onInboxChange(onChange: () => void): () => void {
     void supabase.removeChannel(channel)
   }
 }
+
+// ---- moderation ---------------------------------------------------------------
+//
+// These are the only RPCs in the app that read other people's private content,
+// so the server checks `is_moderator()` inside every one of them. Nothing here
+// is a UI gate: hiding the screen from a non-moderator is a courtesy, and the
+// four calls below would still be refused if it were bypassed.
+
+export type ModerationItem = {
+  kind: 'comment' | 'message'
+  contentId: string
+  body: string
+  authorId: string
+  authorName: string
+  authorBanned: boolean
+  reportCount: number
+  reasons: string[]
+  firstReported: string
+  alreadyHidden: boolean
+}
+
+export type ModerationAction = {
+  action: 'dismiss' | 'remove' | 'ban' | 'unban'
+  targetKind: 'comment' | 'message' | 'user'
+  targetId: string
+  moderatorName: string
+  targetName: string | null
+  note: string | null
+  createdAt: string
+}
+
+/** Whether the signed-in user can moderate. False for all but a handful. */
+export async function fetchAmModerator(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_moderator')
+  if (error) throw new Error(error.message)
+  return data === true
+}
+
+/**
+ * Everything awaiting a decision, OLDEST first — the 24-hour clock App Store
+ * guideline 1.2 asks about starts at the first report, not the newest one.
+ */
+export async function fetchModerationQueue(): Promise<ModerationItem[]> {
+  const { data, error } = await supabase.rpc('moderation_queue')
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    kind: r.kind as 'comment' | 'message',
+    contentId: r.content_id,
+    body: r.body ?? '',
+    authorId: r.author_id,
+    authorName: r.author_name ?? 'Member',
+    authorBanned: r.author_banned ?? false,
+    reportCount: r.report_count ?? 0,
+    reasons: (r.reasons ?? []).filter((x): x is string => !!x),
+    firstReported: r.first_reported,
+    alreadyHidden: r.already_hidden ?? false,
+  }))
+}
+
+/**
+ * `dismiss` also UN-hides a comment that three reports auto-hid, so a
+ * brigade cannot mute someone permanently. `ban` removes the content too.
+ */
+export async function resolveReport(
+  kind: 'comment' | 'message',
+  contentId: string,
+  action: 'dismiss' | 'remove' | 'ban',
+  note?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('resolve_report', {
+    p_kind: kind,
+    p_content_id: contentId,
+    p_action: action,
+    p_note: note?.trim() || undefined,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/** Lift (or apply) a ban on a person rather than on one piece of content. */
+export async function setUserBanned(
+  userId: string,
+  banned: boolean,
+  note?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('set_user_banned', {
+    p_user_id: userId,
+    p_banned: banned,
+    p_note: note?.trim() || undefined,
+  })
+  if (error) throw new Error(error.message)
+}
+
+export async function fetchModerationLog(limit = 50): Promise<ModerationAction[]> {
+  const { data, error } = await supabase.rpc('moderation_log', { p_limit: limit })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    action: r.action as ModerationAction['action'],
+    targetKind: r.target_kind as ModerationAction['targetKind'],
+    targetId: r.target_id,
+    moderatorName: r.moderator_name ?? 'A moderator',
+    targetName: r.target_name,
+    note: r.note,
+    createdAt: r.created_at,
+  }))
+}

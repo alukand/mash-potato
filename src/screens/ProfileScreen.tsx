@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   createPlaylist,
   deleteMyAccount,
+  fetchAmModerator,
   fetchMyAvatarKey,
   fetchMyEmail,
   fetchMyTasteMode,
@@ -63,6 +64,8 @@ interface ProfileScreenProps {
   onGroupsChanged: () => Promise<void>
   /** Run the first-run walkthrough again (it is otherwise once per device). */
   onReplayTour: () => void
+  /** Open the report queue. Only ever shown to moderators. */
+  onOpenModeration: () => void
   /** Present when pushed on the view-stack; absent as the Profile tab. */
   onBack?: () => void
 }
@@ -85,6 +88,7 @@ export function ProfileScreen({
   onNameChanged,
   onGroupsChanged,
   onReplayTour,
+  onOpenModeration,
   onBack,
 }: ProfileScreenProps) {
   const [reviewed, setReviewed] = useState<ReviewedTitle[]>([])
@@ -104,6 +108,13 @@ export function ProfileScreen({
   const [avatarKey, setAvatarKey] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [avatarBusy, setAvatarBusy] = useState(false)
+
+  /**
+   * Whether to show the door to the report queue. This is a COURTESY, not a
+   * gate: every moderation RPC checks the role server-side, so a false here
+   * hides a link and nothing more.
+   */
+  const [amModerator, setAmModerator] = useState(false)
 
   /** Blocked people, for the unblock list (undefined = not loaded). */
   const [blocks, setBlocks] = useState<BlockedUser[] | undefined>(undefined)
@@ -132,10 +143,13 @@ export function ProfileScreen({
         setDangerText('')
       } else {
         // Only fetched when the cluster opens: nobody needs their block list
-        // on every Profile visit.
+        // on every Profile visit, and almost nobody is a moderator.
         void fetchMyBlocks()
           .then(setBlocks)
           .catch(() => setBlocks([]))
+        void fetchAmModerator()
+          .then(setAmModerator)
+          .catch(() => setAmModerator(false))
       }
       return next
     })
@@ -940,6 +954,27 @@ export function ProfileScreen({
             alexanderlukasland@gmail.com
           </a>
         </p>
+
+        {/* Almost nobody sees this. The queue reads other people's reported
+            content, so the server refuses everyone else regardless — this is
+            just the door. */}
+        {amModerator && (
+          <button
+            type="button"
+            onClick={onOpenModeration}
+            className="mp-card mt-5 flex w-full items-center justify-between gap-3 rounded-[22px] px-4 py-3.5 text-left"
+          >
+            <span className="min-w-0">
+              <span className="block text-[14px] font-medium">Reports</span>
+              <span className="block text-[12px] text-muted">
+                Reported comments and messages, and what was done about them
+              </span>
+            </span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted" aria-hidden>
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
+        )}
 
         {/* Blocking existed since 2026-07-14 with a delete policy and NO way
             to undo it from the app. DMs make that gap visible, and App Review

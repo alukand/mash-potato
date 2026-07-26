@@ -226,6 +226,43 @@ the twin's 98 file assert the local posture.
   `src/lib/cred.ts` — see DESIGN.md "Reward loop law" + its DO-NOT-BUILD
   list). `profiles.banned` is dashboard-only (column-level grant).
   Client: `DiscussionSection` on TitleDetail; "Talk it out" on the reveal.
+- MODERATION (20260727180000): reports had nowhere to GO until this — they
+  piled up in `comment_reports`/`message_reports` and triage meant hand-written
+  SQL, which cannot honour the 24-hour SLA App Store guideline 1.2 asks you to
+  attest to. `profiles.is_moderator` is the role, and it is **neither readable
+  nor writable by any client** — bootstrapping one is a dashboard/SQL act on
+  purpose, because an app that can promote its own moderators has no boundary
+  at all. Both report tables gained `resolved_at`/`resolved_by`/`resolution`
+  (resolution is a property of the CONTENT, so acting closes EVERY report row
+  for it — otherwise the queue redisplays finished work). `moderation_actions`
+  is the append-only trail: `revoke all ... from public, anon, authenticated`,
+  so no UPDATE or DELETE exists for anyone including the moderator who acted.
+  Its `created_at` defaults to **`clock_timestamp()`, not `now()`** — `now()`
+  is transaction-start time, so two actions in one transaction tie and the log
+  loses its order. `moderator_id` is NULLABLE: `not null` alongside
+  `on delete set null` is a contradiction that would have failed
+  `delete_my_account` for a moderator. Four definer RPCs, each checking
+  `is_moderator()` FIRST: `moderation_queue` (reported content only — that
+  scope is the entire justification for a function that reads other people's
+  DMs; ordered OLDEST first because the clock starts at the first report),
+  `resolve_report` (dismiss / remove / ban; **dismiss UN-hides** an
+  auto-hidden comment, or three bad-faith reports become a permanent mute),
+  `set_user_banned` (refuses self-moderation), `moderation_log`. Client:
+  `ModerationScreen` on the view-stack (`{kind:'moderation'}`, `/moderation`,
+  base tab Profile), reached from Profile's settings cluster when
+  `fetchAmModerator()` is true — a COURTESY, not a gate; typing the URL gets a
+  non-moderator a polite refusal and four 401s.
+- ANON HOLDS NO WRITES (20260727190000): hosted had granted `anon`
+  INSERT/UPDATE/DELETE/TRUNCATE on **all 21 public tables**, including
+  `profiles.banned` and `is_moderator`. Inert — not one policy on any of them
+  names anon, so RLS denied every row and both probes 401'd — but it is the
+  latent form of the `titles` finding: the grant already said yes, and only an
+  absence said no. Two lessons pinned: the twin never granted anon ANYTHING,
+  so `hardening_test.sql`'s "anon cannot INSERT into titles" passed while
+  hosted said otherwise; `20-grants.sql` now simulates the anon grants (and
+  re-applies messaging's anon revokes) so the revoke is actually exercised.
+  Both suites assert the CLASS — "no public table grants anon a write" — which
+  is the only version that cannot go stale as tables are added.
 - Avatars: `profiles.avatar_key` picks one of twenty ORIGINAL movie-archetype
   SVGs (`src/components/avatars.tsx`, one `<Avatar>` recipe app-wide, initial
   circle when null). Column-narrowed update grant (display_name, avatar_key —
@@ -480,8 +517,9 @@ the twin's 98 file assert the local posture.
   Codemagic `ios-testflight` workflow builds + uploads (see `codemagic.yaml`
   + `docs/TESTFLIGHT.md`). App record Apple ID 6788610092.
 - Hosted Supabase project ref: `lvmcwvhlfijvegxbqipc` (MCP config in
-  `.mcp.json`) — all migrations applied (through 20260726150000
-  cancel_session; messaging + cancel deployed 2026-07-26 via
+  `.mcp.json`) — all migrations applied (through 20260727190000
+  anon_write_revoke; moderation + the anon revoke deployed 2026-07-27,
+  messaging + cancel 2026-07-26, all via
   `npx supabase db push --linked`, which works here even though
   `supabase login` needs a TTY. Note db push ends with a pg-delta
   "failed to cache migrations catalog" cert error and exit 255 AFTER the
