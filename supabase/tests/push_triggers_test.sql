@@ -6,7 +6,7 @@
 create extension if not exists pgtap with schema extensions;
 
 begin;
-select plan(14);
+select plan(18);
 
 -- ---- seed as the test superuser (RLS bypassed) ----
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
@@ -135,6 +135,48 @@ select is(
   (select count(*)::int from net.http_request_queue
      where (headers ->> 'x-push-secret') is distinct from 'test-secret'),
   0, 'every request carries the shared secret');
+
+-- ===================== messaging: new_message ==============================
+-- Ana and Ben share a group, so their DM opens accepted.
+set local role authenticated;
+reset role;
+update public.profiles set accepted_terms_at = now();
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+select public.start_dm('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb') as push_dm \gset
+select public.send_message(:'push_dm', 'the sandworm bit is unreal') as _pm \gset
+
+reset role;
+-- 15
+select is(
+  (select count(*)::int from net.http_request_queue
+     where convert_from(body, 'utf8') like '%new_message%'),
+  1, 'sending a message queues exactly one new_message event');
+
+-- 16: THE HYGIENE RULE again, for words this time. The Edge Function resolves
+-- the text with the service key; it must never ride the pg_net payload.
+select is(
+  (select count(*)::int from net.http_request_queue
+     where convert_from(body, 'utf8') like '%sandworm%'),
+  0, 'no payload ever contains message text');
+
+-- 17: and no field that could carry it
+select is(
+  (select count(*)::int from net.http_request_queue
+     where convert_from(body, 'utf8') like '%"body"%'
+        or convert_from(body, 'utf8') like '%preview%'),
+  0, 'no payload carries a body or preview field');
+
+-- 18: a roster 'system' message is not an alert
+set local role authenticated;
+select public.create_group_chat('Push Chat',
+  array['bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb']::uuid[]) as push_chat \gset
+select public.add_chat_participants(:'push_chat', array[]::uuid[]) as _noop \gset
+reset role;
+select is(
+  (select count(*)::int from net.http_request_queue
+     where convert_from(body, 'utf8') like '%new_message%'),
+  1, 'a system message (roster change) queues nothing');
 
 select * from finish();
 rollback;

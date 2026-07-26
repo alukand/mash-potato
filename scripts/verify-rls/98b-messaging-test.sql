@@ -249,6 +249,67 @@ begin
   raise notice 'PASS 12: anon has no read on any messaging table';
 end $$;
 
-do $$ begin raise notice '=== ALL 12 MESSAGING ASSERTIONS PASSED ==='; end $$;
+-- PASS 13: typing channels — a member may listen and ping on their own thread.
+-- Realtime authorizes a private channel by running these very policies with
+-- the channel name in the `realtime.topic` GUC, so setting it by hand and
+-- exercising realtime.messages IS the production check.
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+do $$
+declare c uuid; n int;
+begin
+  select id into c from public.conversations
+   where kind = 'dm' and (dm_user_a = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+                       or dm_user_b = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+  perform set_config('realtime.topic', 'typing:' || c, true);
+  insert into realtime.messages (topic, extension, payload)
+  values ('typing:' || c, 'broadcast', '{"userId":"ana"}');
+  select count(*) into n from realtime.messages;
+  if n <> 1 then raise exception 'FAIL 13: a member read % typing rows, want 1', n; end if;
+  raise notice 'PASS 13: a member can send and receive on their own typing topic';
+end $$;
+
+-- PASS 14: ...and a non-member is shut out of the SAME topic. Cara has her own
+-- DM with Ana; she is not in Ana's thread with Ben.
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+do $$
+declare c uuid; n int;
+begin
+  select id into c from public.conversations
+   where kind = 'dm' and dm_user_a in ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                                       'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+                     and dm_user_b in ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                                       'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+  perform set_config('realtime.topic', 'typing:' || c, true);
+  select count(*) into n from realtime.messages;
+  if n <> 0 then raise exception 'FAIL 14: an outsider read % typing rows', n; end if;
+  begin
+    insert into realtime.messages (topic, extension, payload)
+    values ('typing:' || c, 'broadcast', '{"userId":"cara"}');
+    raise exception 'FAIL 14: an outsider could ping someone else''s thread';
+  exception when insufficient_privilege then null;
+  end;
+  raise notice 'PASS 14: a non-member can neither read nor send on that topic';
+end $$;
+
+-- PASS 15: the policies grant NOTHING outside the typing: namespace — the
+-- predicate is anchored on the prefix, so a bare or foreign topic is denied
+-- even to a real member.
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+do $$
+declare bad text;
+begin
+  foreach bad in array array['everything', 'realtime:public:messages', 'typing:'] loop
+    perform set_config('realtime.topic', bad, true);
+    begin
+      insert into realtime.messages (topic, extension, payload)
+      values (bad, 'broadcast', '{}');
+      raise exception 'FAIL 15: topic % was writable', bad;
+    exception when insufficient_privilege then null;
+    end;
+  end loop;
+  raise notice 'PASS 15: only typing:<conversation> topics are authorized';
+end $$;
+
+do $$ begin raise notice '=== ALL 15 MESSAGING ASSERTIONS PASSED ==='; end $$;
 
 rollback;

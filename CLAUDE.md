@@ -314,6 +314,52 @@ the twin's 98 file assert the local posture.
   playlist as a card from TitleDetail, resolving the titles row only ON SEND
   so browsing never writes one; its optional note rides INSIDE the card
   (a share card must render `body` too, or the note vanishes).
+  Moderation: the thread menu carries Block for DMs (two-step, and the copy
+  is PRECISE — a block stops a DM but only hides in a group chat, because you
+  both belong in the room); Profile's settings cluster lists **Blocked
+  people** with Unblock, closing a gap that had existed since 2026-07-14
+  (a delete policy with no client path). The terms gate is checked UP FRONT
+  via `fetchTermsAccepted` and shows house rules before you type —
+  DiscussionSection instead string-matches `post_comment`'s exception text,
+  coupling a UI branch to a message asserted in two suites; do not copy that.
+  A message REQUEST comes from someone you share no group with, so
+  `my_groupmates` cannot name them: both the inbox and the thread header fill
+  those in via `fetchPeopleProfiles` (public_profile), or a request reads
+  "Someone" and cannot be judged.
+  PUSH (`new_message`, send-push v8): the trigger payload is ID-ONLY
+  (message_id, conversation_id, actor_id) — the Edge Function resolves the
+  sender name AND the message text with the service key, and picks recipients
+  by restating `is_conversation_member`'s three branches minus the sender,
+  minus anyone who muted, minus either side of a block. Two client traps that
+  bit: the top-level validator rejected any event without `group_id`, which
+  would have 400'd every DM (there is now a GROUPLESS set), and `push.ts`'s
+  tap handler early-returned on unknown routing keys, silently dropping every
+  message tap. A message tap lands on `[{messages}, {thread}]` so Back walks
+  out to the inbox rather than Home.
+  SEARCH is `search_messages` (Postgres FTS over the generated tsvector),
+  debounced 300ms in MessagesScreen; a non-null result set REPLACES the
+  requests/conversations sections rather than filtering them, so an empty hit
+  list reads as "nothing matches", not as an empty inbox.
+  TYPING is the app's only NON-postgres_changes realtime (20260726180000):
+  broadcast on a PRIVATE channel `typing:<conversation_id>`, authorized by two
+  RLS policies on `realtime.messages` that call `is_conversation_member` on
+  the id parsed out of `realtime.topic()`. A row per keystroke would be WAL
+  traffic and dead tuples on the hottest path, so typing is never a table.
+  Only private channels evaluate those policies — every existing subscription
+  (reveal-*, poll-*, discussion-*, thread-*, inbox-*) is public and untouched.
+  The twin stubs `realtime.messages` + `realtime.topic()` in `00-stubs.sql`,
+  which is what lets the migration replay verbatim AND lets 98b actually
+  execute the predicate (assertions 13-15).
+  REALTIME TOPICS MUST BE UNIQUE PER SUBSCRIBER: two components asking for
+  the same topic throws "cannot add postgres_changes callbacks after
+  subscribe()". `channelNonce()` (time+random) suffixes thread-/inbox- for
+  that reason — a module-level counter looks equivalent and is NOT, because
+  HMR re-evaluates the module and resets it while the client still holds the
+  old channels. Typing keeps its FIXED topic; the policy parses it.
+  TEST-DB HYGIENE: the pgTAP fixtures seed ana/ben/cara/dan@test.dev. Creating
+  a real local user on one of those emails collides with EVERY file that seeds
+  it (`users_email_partial_key`) and fails the whole suite — use names outside
+  that set for manual E2E users.
 - `supabase/migrations/` — schema + RLS as code (grants included — do not
   rely on platform default privileges). `powershell -File
   scripts\check-grants.ps1` lints migration TEXT for the GRANTS LAW (neither

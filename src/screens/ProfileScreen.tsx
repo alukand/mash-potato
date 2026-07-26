@@ -8,6 +8,7 @@ import {
   updateMyTasteMode,
   fetchMyExport,
   fetchMyFriends,
+  fetchMyBlocks,
   fetchMyGlobalRatings,
   fetchMyPlaylists,
   fetchMyReviewedTitles,
@@ -18,11 +19,13 @@ import {
   updateMyAvatar,
   updateMyDisplayName,
   updateMyPassword,
+  unblockUser,
   verifyCurrentPassword,
   verifyEmailChange,
 } from '../lib/api'
 import { signOutWithPushCleanup } from '../lib/push'
 import type {
+  BlockedUser,
   FriendInfo,
   GroupInfo,
   PlaylistSummary,
@@ -102,16 +105,39 @@ export function ProfileScreen({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [avatarBusy, setAvatarBusy] = useState(false)
 
+  /** Blocked people, for the unblock list (undefined = not loaded). */
+  const [blocks, setBlocks] = useState<BlockedUser[] | undefined>(undefined)
+  const [unblockBusyId, setUnblockBusyId] = useState<string | null>(null)
+
+  async function handleUnblock(id: string) {
+    setUnblockBusyId(id)
+    try {
+      await unblockUser(id)
+      setBlocks(await fetchMyBlocks())
+    } catch {
+      // non-fatal; the row simply stays
+    } finally {
+      setUnblockBusyId(null)
+    }
+  }
+
   // The header gear gates the account cluster (how you score, account, data,
   // sign out, danger zone); the default view stays about you and your stuff.
   const [settingsOpen, setSettingsOpen] = useState(false)
   function toggleSettings() {
     setSettingsOpen((open) => {
+      const next = !open
       if (open) {
         setDangerOpen(false)
         setDangerText('')
+      } else {
+        // Only fetched when the cluster opens: nobody needs their block list
+        // on every Profile visit.
+        void fetchMyBlocks()
+          .then(setBlocks)
+          .catch(() => setBlocks([]))
       }
-      return !open
+      return next
     })
     window.scrollTo(0, 0)
   }
@@ -914,6 +940,47 @@ export function ProfileScreen({
             alexanderlukasland@gmail.com
           </a>
         </p>
+
+        {/* Blocking existed since 2026-07-14 with a delete policy and NO way
+            to undo it from the app. DMs make that gap visible, and App Review
+            expects blocking to be manageable. */}
+        <div className="mt-5">
+          <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Blocked people
+          </p>
+          {blocks === undefined ? (
+            <p className="px-1 text-[13px] text-muted">Loading…</p>
+          ) : blocks.length === 0 ? (
+            <p className="px-1 text-[13px] leading-snug text-muted">
+              You have not blocked anyone. Blocking stops their messages and
+              hides you from each other.
+            </p>
+          ) : (
+            <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
+              {blocks.map((b) => (
+                <div key={b.userId} className="flex items-center gap-3 px-4 py-3">
+                  <Avatar
+                    avatarKey={b.avatarKey}
+                    displayName={b.displayName}
+                    color={colorForUser(b.userId)}
+                    size={34}
+                  />
+                  <p className="min-w-0 flex-1 truncate text-[14px] font-medium">
+                    {b.displayName}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={unblockBusyId === b.userId}
+                    onClick={() => void handleUnblock(b.userId)}
+                    className="shrink-0 rounded-full border border-line px-3 py-1.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text disabled:opacity-50"
+                  >
+                    {unblockBusyId === b.userId ? 'Unblocking…' : 'Unblock'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* The tour is once-per-device and had no reset, so nobody could see
             it twice, on purpose or to test it. */}

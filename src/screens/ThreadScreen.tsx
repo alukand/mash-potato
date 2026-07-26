@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  acceptDiscussionTerms,
+  blockUserRpc,
   deleteMessage,
   fetchGroupmates,
   fetchInbox,
   fetchLatestSession,
+  fetchPeopleProfiles,
   fetchReadReceipts,
+  fetchTermsAccepted,
   fetchThread,
   leaveChat,
   markConversationRead,
@@ -14,6 +18,7 @@ import {
   sendMessage,
   setConversationPrefs,
   toggleMessageReaction,
+  typingChannel,
 } from '../lib/api'
 import type { InboxEntry, MessageEntry, MessageReactionKind } from '../lib/api'
 import { colorForUser } from '../lib/palette'
@@ -70,7 +75,14 @@ export function ThreadScreen({
   const [confirmKind, setConfirmKind] = useState<'delete' | 'report' | null>(null)
   const [replyTo, setReplyTo] = useState<MessageEntry | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  /** undefined = not checked yet; false = show the house rules first. */
+  const [termsOk, setTermsOk] = useState<boolean | undefined>(undefined)
+  const [confirmBlock, setConfirmBlock] = useState(false)
+  /** Who is typing right now; entries expire on their own. */
+  const [typers, setTypers] = useState<Set<string>>(new Set())
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const typingRef = useRef<{ ping: () => void; stop: () => void } | null>(null)
+  const lastPingRef = useRef(0)
 
   const load = useCallback(async () => {
     try {
@@ -81,10 +93,18 @@ export function ThreadScreen({
         fetchReadReceipts(conversationId).catch(() => []),
       ])
       setMessages(page)
-      setNames(new Map(mates.map((m) => [m.userId, m.displayName])))
       setReceipts(reads)
       const entry = inbox.find((e) => e.conversationId === conversationId) ?? null
       setMeta(entry)
+      const roster = new Map(mates.map((m) => [m.userId, m.displayName]))
+      // Same as the inbox: a stranger who messaged you is not a groupmate, so
+      // the header would read "Someone" without this.
+      if (entry?.kind === 'dm' && entry.otherUserId && !roster.has(entry.otherUserId)) {
+        const extra = await fetchPeopleProfiles([entry.otherUserId])
+        const p = extra.get(entry.otherUserId)
+        if (p) roster.set(entry.otherUserId, p.displayName)
+      }
+      setNames(roster)
       setError(null)
       if (entry?.groupId) {
         const latest = await fetchLatestSession(entry.groupId).catch(() => null)
@@ -99,6 +119,44 @@ export function ThreadScreen({
     void load()
     return onThreadChange(conversationId, () => void load())
   }, [load, conversationId])
+
+  // Typing pings. Each arrival clears itself after ~4s, so a sender who goes
+  // quiet (or drops off) never leaves a stuck "typing…".
+  useEffect(() => {
+    const timers = new Map<string, ReturnType<typeof setTimeout>>()
+    const chan = typingChannel(conversationId, userId, (from) => {
+      setTypers((prev) => new Set(prev).add(from))
+      clearTimeout(timers.get(from))
+      timers.set(
+        from,
+        setTimeout(() => {
+          setTypers((prev) => {
+            const next = new Set(prev)
+            next.delete(from)
+            return next
+          })
+        }, 4000),
+      )
+    })
+    typingRef.current = chan
+    return () => {
+      for (const t of timers.values()) clearTimeout(t)
+      chan.stop()
+      typingRef.current = null
+      setTypers(new Set())
+    }
+  }, [conversationId, userId])
+
+  // Ask before you type, not after a rejected send.
+  useEffect(() => {
+    let cancelled = false
+    fetchTermsAccepted(userId)
+      .then((ok) => !cancelled && setTermsOk(ok))
+      .catch(() => !cancelled && setTermsOk(true))
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
 
   // Opening a thread reads it; so does every new message while you are here.
   useEffect(() => {
@@ -243,6 +301,59 @@ export function ThreadScreen({
               Leave this chat
             </button>
           )}
+          {meta.kind === 'dm' && meta.otherUserId && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setMenuOpen(false)
+                setConfirmBlock(true)
+              }}
+              className="flex w-full items-center px-4 py-3 text-left text-[13px] font-medium text-coral transition-colors active:bg-surface disabled:opacity-50"
+            >
+              Block {title}
+            </button>
+          )}
+        </div>
+      )}
+
+      {confirmBlock && meta?.otherUserId && (
+        <div className="mp-rise mb-3 rounded-2xl border border-coral/30 bg-coral/5 p-4">
+          <p className="text-[13px] font-semibold leading-snug text-coral">
+            Block {title}?
+          </p>
+          {/* Precise on purpose: a block STOPS a DM, but in a group chat it
+              can only hide, because you are both legitimately in the room. */}
+          <p className="mt-1.5 text-[12px] leading-snug text-muted">
+            They will not be able to message you, and you will not see each
+            other here. In any group chat you share, their messages are hidden
+            from you rather than stopped. You can undo this in Profile.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmBlock(false)}
+              className="flex-1 rounded-full border border-line py-2 text-[12px] font-semibold text-muted transition-colors hover:text-text"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                const other = meta.otherUserId
+                setConfirmBlock(false)
+                if (!other) return
+                void run('Could not block them', async () => {
+                  await blockUserRpc(other)
+                  onBack()
+                })
+              }}
+              className="flex-1 rounded-full bg-coral/90 py-2 text-[12px] font-bold text-bg disabled:opacity-50"
+            >
+              Block
+            </button>
+          </div>
         </div>
       )}
 
@@ -457,9 +568,21 @@ export function ThreadScreen({
             )
           })
         )}
-        {seenBy.length > 0 && (
+        {seenBy.length > 0 && typers.size === 0 && (
           <p className="mt-1 pr-1 text-right font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
             Seen{isGroupish ? ` by ${seenBy.length}` : ''}
+          </p>
+        )}
+        {typers.size > 0 && (
+          <p className="mt-2 flex items-center gap-1.5 px-1 text-[12px] italic text-muted">
+            <span aria-hidden className="flex gap-0.5">
+              <span className="h-1 w-1 rounded-full bg-muted" />
+              <span className="h-1 w-1 rounded-full bg-muted" />
+              <span className="h-1 w-1 rounded-full bg-muted" />
+            </span>
+            {typers.size === 1
+              ? `${names.get([...typers][0]) ?? 'Someone'} is typing…`
+              : `${typers.size} people are typing…`}
           </p>
         )}
         <div ref={bottomRef} />
@@ -467,6 +590,32 @@ export function ThreadScreen({
 
       {/* ---- composer ---- */}
       <div className="sticky bottom-0 -mx-5 border-t border-line/50 bg-bg/90 px-5 pb-safe pt-3 backdrop-blur-md">
+        {termsOk === false ? (
+          // The house rules, shown BEFORE the first message rather than as a
+          // rejected send (App Review 1.2: zero-tolerance agreement).
+          <div className="rounded-2xl border border-line bg-surface-2 p-4">
+            <p className="text-[13px] font-semibold leading-snug">House rules</p>
+            <p className="mt-1.5 text-[12px] leading-snug text-muted">
+              No harassment, hate, or objectionable content, in public or in a
+              private chat. Accounts that post it are removed. You can report
+              any message and block anyone.
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void run('Could not save that', async () => {
+                  await acceptDiscussionTerms()
+                  setTermsOk(true)
+                })
+              }
+              className="mt-3 w-full rounded-full border border-teal/40 bg-teal/10 py-2.5 text-[13px] font-semibold text-teal transition-colors hover:bg-teal/20 disabled:opacity-50"
+            >
+              Agree and start messaging
+            </button>
+          </div>
+        ) : (
+        <>
         {replyTo && (
           <div className="mb-2 flex items-center gap-2 rounded-xl border-l-2 border-teal/50 bg-surface-2 px-2.5 py-1.5">
             <span className="min-w-0 flex-1 truncate text-[11px] leading-snug text-muted">
@@ -496,7 +645,15 @@ export function ThreadScreen({
             disabled={busy}
             aria-label="Write a message"
             placeholder="Message…"
-            onChange={(e) => setBody(e.target.value)}
+            onChange={(e) => {
+              setBody(e.target.value)
+              // Throttled to one ping a second: this fires per keystroke.
+              const now = Date.now()
+              if (e.target.value.length > 0 && now - lastPingRef.current > 1000) {
+                lastPingRef.current = now
+                typingRef.current?.ping()
+              }
+            }}
             className={`max-h-28 flex-1 resize-none ${fieldClassSm}`}
           />
           <button
@@ -508,6 +665,8 @@ export function ThreadScreen({
             {busy ? 'Sending…' : 'Send'}
           </button>
         </div>
+        </>
+        )}
       </div>
 
       {/* ---- message actions ---- */}

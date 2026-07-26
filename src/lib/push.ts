@@ -29,10 +29,16 @@ export async function bindPushOpenHandler(): Promise<void> {
         typeof data.tmdb_id === 'string' && data.tmdb_id !== '' ? Number(data.tmdb_id) : null
       const mediaType =
         data.media_type === 'movie' || data.media_type === 'tv' ? data.media_type : null
-      if (!groupId && (tmdbId === null || mediaType === null)) return
+      // A message carries a conversation and NO group. Without this key in the
+      // guard below, every message tap was silently dropped here.
+      const conversationId =
+        typeof data.conversation_id === 'string' && data.conversation_id !== ''
+          ? data.conversation_id
+          : null
+      if (!groupId && !conversationId && (tmdbId === null || mediaType === null)) return
       window.dispatchEvent(
         new CustomEvent('mp:push-open', {
-          detail: { groupId, tmdbId, mediaType },
+          detail: { groupId, tmdbId, mediaType, conversationId },
         }),
       )
     })

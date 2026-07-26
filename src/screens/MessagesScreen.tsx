@@ -4,10 +4,12 @@ import {
   declineDmRequest,
   fetchGroupmates,
   fetchInbox,
+  fetchPeopleProfiles,
   onInboxChange,
+  searchMessages,
   startDm,
 } from '../lib/api'
-import type { GroupmateInfo, InboxEntry } from '../lib/api'
+import type { GroupmateInfo, InboxEntry, MessageHit } from '../lib/api'
 import { colorForUser, colorForGroup } from '../lib/palette'
 import { Avatar } from '../components/avatars'
 import { GroupMark, UnreadBadge } from '../components/ui'
@@ -39,12 +41,33 @@ export function MessagesScreen({ userId, onOpenThread, onBack }: MessagesScreenP
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [composing, setComposing] = useState(false)
+  const [query, setQuery] = useState('')
+  const [hits, setHits] = useState<MessageHit[] | null>(null)
+  const [searching, setSearching] = useState(false)
 
   const load = useCallback(async () => {
     try {
       const [inbox, mates] = await Promise.all([fetchInbox(false), fetchGroupmates()])
+      const roster = new Map(mates.map((m) => [m.userId, m]))
+      // A message request comes from someone you share no group with, so the
+      // groupmate roster cannot name them. Fill those in from public_profile,
+      // or the request reads "Someone" and cannot be judged.
+      const strangers = inbox
+        .filter((e) => e.kind === 'dm' && e.otherUserId && !roster.has(e.otherUserId))
+        .map((e) => e.otherUserId as string)
+      if (strangers.length > 0) {
+        const extra = await fetchPeopleProfiles(strangers)
+        for (const [id, p] of extra) {
+          roster.set(id, {
+            userId: id,
+            displayName: p.displayName,
+            avatarKey: p.avatarKey,
+            sharedGroups: [],
+          })
+        }
+      }
       setEntries(inbox)
-      setPeople(new Map(mates.map((m) => [m.userId, m])))
+      setPeople(roster)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load your messages')
@@ -55,6 +78,30 @@ export function MessagesScreen({ userId, onOpenThread, onBack }: MessagesScreenP
     void load()
     return onInboxChange(() => void load())
   }, [load])
+
+  // Debounced full-text search. RLS decides what is findable, not the RPC:
+  // search_my_messages is SECURITY INVOKER precisely so it can never drift
+  // from messages_select_member.
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) {
+      setHits(null)
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    let cancelled = false
+    const id = setTimeout(() => {
+      searchMessages(q, 40)
+        .then((rows) => !cancelled && setHits(rows))
+        .catch(() => !cancelled && setHits([]))
+        .finally(() => !cancelled && setSearching(false))
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(id)
+    }
+  }, [query])
 
   function nameFor(e: InboxEntry): string {
     if (e.kind === 'dm') {
@@ -140,8 +187,69 @@ export function MessagesScreen({ userId, onOpenThread, onBack }: MessagesScreenP
         </p>
       )}
 
+      {/* ---- search everything you can see ---- */}
+      <div className="mp-rise mb-4">
+        <input
+          type="text"
+          value={query}
+          maxLength={100}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search your messages"
+          placeholder="Search your messages…"
+          className="w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[13px] text-text placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60"
+        />
+      </div>
+
+      {hits !== null && (
+        <section className="mp-rise mb-6">
+          <div className="mb-2 flex items-baseline justify-between px-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+              Results <span className="tabular ml-1 font-mono text-[10px]">{hits.length}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-text"
+            >
+              Clear
+            </button>
+          </div>
+          {searching ? (
+            <p className="px-1 text-[13px] text-muted">Searching…</p>
+          ) : hits.length === 0 ? (
+            <p className="px-1 text-[13px] leading-snug text-muted">
+              Nothing matches “{query.trim()}”.
+            </p>
+          ) : (
+            <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
+              {hits.map((h) => {
+                const conv = (entries ?? []).find((e) => e.conversationId === h.conversationId)
+                return (
+                  <button
+                    key={h.messageId}
+                    type="button"
+                    onClick={() => onOpenThread(h.conversationId)}
+                    className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] leading-snug">{h.body}</span>
+                      <span className="mt-0.5 block truncate font-mono text-[10px] text-muted">
+                        {conv ? nameFor(conv) : 'a chat'} · {whenLabel(h.createdAt)}
+                      </span>
+                    </span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted/60" aria-hidden>
+                      <path d="m9 5 7 7-7 7" />
+                    </svg>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* ---- start something new ---- */}
-      {composing && (
+      {composing && hits === null && (
         <section className="mp-rise mb-6">
           <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
             Message someone
@@ -182,7 +290,7 @@ export function MessagesScreen({ userId, onOpenThread, onBack }: MessagesScreenP
       )}
 
       {/* ---- requests: someone you do not share a group with ---- */}
-      {requests.length > 0 && (
+      {requests.length > 0 && hits === null && (
         <section className="mp-rise mb-6">
           <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
             Requests <span className="tabular ml-1 font-mono text-[10px]">{requests.length}</span>
@@ -233,7 +341,7 @@ export function MessagesScreen({ userId, onOpenThread, onBack }: MessagesScreenP
       )}
 
       {/* ---- the conversations ---- */}
-      {entries === undefined ? (
+      {hits !== null ? null : entries === undefined ? (
         <p className="mp-rise py-10 text-center text-[13px] text-muted">Loading…</p>
       ) : threads.length === 0 ? (
         <div className="mp-rise py-10 text-center">

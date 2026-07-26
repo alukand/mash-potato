@@ -8,11 +8,13 @@
 // public.notification_config and in this function's PUSH_SHARED_SECRET env.
 // The service-role key is used ONLY here, server-side, to resolve recipients.
 //
-// Events (see 20260712230000_push_notifications.sql + 20260714120000):
+// Events (see 20260712230000_push_notifications.sql + 20260714120000 +
+// 20260726120000_messaging.sql):
 //   { event: 'group_added',   group_id, recipient_id, actor_id }
 //   { event: 'round_started', session_id, group_id, actor_id }
 //   { event: 'member_locked', session_id, group_id, actor_id }
 //   { event: 'comment_reply', comment_id, title_id, group_id?, recipient_id, actor_id }
+//   { event: 'new_message',   message_id, conversation_id, actor_id }   (no group_id)
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -83,6 +85,68 @@ async function titleInfo(
   )
   if (rows.length === 0) return null
   return { name: rows[0].name, tmdbId: rows[0].tmdb_id, mediaType: rows[0].media_type }
+}
+
+// ---- messaging ---------------------------------------------------------------
+
+interface ConversationRow {
+  id: string
+  kind: string
+  group_id: string | null
+  title: string | null
+  dm_user_a: string | null
+  dm_user_b: string | null
+  request_state: string
+}
+
+async function conversationRow(id: string): Promise<ConversationRow | null> {
+  const rows = await rest<ConversationRow>(
+    `conversations?id=eq.${id}&select=id,kind,group_id,title,dm_user_a,dm_user_b,request_state`,
+  )
+  return rows[0] ?? null
+}
+
+async function messageRow(
+  id: string,
+): Promise<{ body: string; kind: string; share_label: string | null } | null> {
+  const rows = await rest<{ body: string; kind: string; share_label: string | null }>(
+    `messages?id=eq.${id}&select=body,kind,share_label`,
+  )
+  return rows[0] ?? null
+}
+
+/**
+ * Everyone in a conversation, mirroring is_conversation_member's three
+ * branches. Service-role reads bypass RLS, so the membership rule has to be
+ * restated here — keep it in step with the migration.
+ */
+async function conversationMemberIds(c: ConversationRow): Promise<string[]> {
+  if (c.kind === 'dm') return [c.dm_user_a, c.dm_user_b].filter((x): x is string => !!x)
+  if (c.kind === 'group' && c.group_id) return memberIds(c.group_id)
+  const rows = await rest<{ user_id: string }>(
+    `conversation_participants?conversation_id=eq.${c.id}&select=user_id`,
+  )
+  return rows.map((r) => r.user_id)
+}
+
+/** Who has muted this conversation (they get no alert). */
+async function mutedIn(conversationId: string): Promise<Set<string>> {
+  const rows = await rest<{ user_id: string }>(
+    `conversation_state?conversation_id=eq.${conversationId}&muted=is.true&select=user_id`,
+  )
+  return new Set(rows.map((r) => r.user_id))
+}
+
+/** Anyone in a block relationship with the sender, either direction. */
+async function blockedWith(userId: string): Promise<Set<string>> {
+  const [outgoing, incoming] = await Promise.all([
+    rest<{ blocked_id: string }>(`user_blocks?blocker_id=eq.${userId}&select=blocked_id`),
+    rest<{ blocker_id: string }>(`user_blocks?blocked_id=eq.${userId}&select=blocker_id`),
+  ])
+  return new Set([
+    ...outgoing.map((r) => r.blocked_id),
+    ...incoming.map((r) => r.blocker_id),
+  ])
 }
 
 async function tokensFor(userIds: string[]): Promise<{ token: string; user_id: string }[]> {
@@ -185,11 +249,13 @@ async function sendApns(
 
 interface PushEvent {
   event: string
-  // absent for public-thread comment replies
+  // absent for public-thread comment replies AND for every message event
   group_id?: string | null
   session_id?: string
   comment_id?: string
   title_id?: string
+  message_id?: string
+  conversation_id?: string
   recipient_id?: string
   actor_id?: string | null
 }
@@ -237,6 +303,41 @@ async function composeAndSend(evt: PushEvent) {
       title = `${actor} locked in scores`
       body = `${session.titleName} is waiting on the rest of ${group}.`
     }
+  } else if (evt.event === 'new_message' && evt.message_id && evt.conversation_id) {
+    const [conv, msg] = await Promise.all([
+      conversationRow(evt.conversation_id),
+      messageRow(evt.message_id),
+    ])
+    if (!conv || !msg) return { skipped: 'conversation gone' }
+
+    const [members, muted, blocked] = await Promise.all([
+      conversationMemberIds(conv),
+      mutedIn(conv.id),
+      blockedWith(evt.actor_id ?? ''),
+    ])
+    recipients = members.filter(
+      (id) => id !== evt.actor_id && !muted.has(id) && !blocked.has(id),
+    )
+
+    // A pending request is ONE message to a stranger: it still notifies, or
+    // the request would be invisible until they happened to open the app.
+    // The text is resolved HERE, with the service key, never in the payload.
+    const preview =
+      msg.kind === 'title' || msg.kind === 'playlist'
+        ? (msg.body || `shared ${msg.share_label ?? 'something'}`)
+        : msg.body
+    if (conv.kind === 'dm') {
+      // A DM is already attributed by its title, so the body is just the text.
+      title = actor
+      body = preview
+    } else {
+      title =
+        conv.kind === 'group' && conv.group_id
+          ? await groupName(conv.group_id)
+          : (conv.title ?? 'Chat')
+      body = `${actor}: ${preview}`
+    }
+    extraRouting.conversation_id = conv.id
   } else {
     return { skipped: `unknown event ${evt.event}` }
   }
@@ -247,7 +348,7 @@ async function composeAndSend(evt: PushEvent) {
   const routing: Record<string, string> = { event: evt.event, ...extraRouting }
   if (evt.group_id) routing.group_id = evt.group_id
   if (evt.session_id) routing.session_id = evt.session_id
-  const threadId = evt.group_id ?? evt.title_id ?? 'mash'
+  const threadId = evt.conversation_id ?? evt.group_id ?? evt.title_id ?? 'mash'
   const results = await Promise.all(
     tokens.map((t) => sendApns(t.token, title, body, threadId, routing)),
   )
@@ -274,9 +375,15 @@ Deno.serve(async (req) => {
   } catch {
     return json({ error: 'bad payload' }, 400)
   }
-  // comment_reply may be public (no group); everything else needs a group.
   if (!evt?.event) return json({ error: 'bad payload' }, 400)
-  if (!evt.group_id && evt.event !== 'comment_reply') return json({ error: 'bad payload' }, 400)
+  // Most events are group-scoped, but two are not: a comment_reply can be on
+  // a public thread, and a message belongs to a CONVERSATION — a DM has no
+  // group at all. This check used to 400 every single message.
+  const GROUPLESS = new Set(['comment_reply', 'new_message'])
+  if (!evt.group_id && !GROUPLESS.has(evt.event)) return json({ error: 'bad payload' }, 400)
+  if (evt.event === 'new_message' && !evt.conversation_id) {
+    return json({ error: 'bad payload' }, 400)
+  }
 
   try {
     return json(await composeAndSend(evt))

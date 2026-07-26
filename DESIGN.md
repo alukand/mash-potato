@@ -386,6 +386,32 @@ baseline function grant, which is exactly how an open endpoint shipped on
 
 ## Changelog
 
+- 2026-07-26 (messaging, phases 2-6): the client, the message centre, share
+  cards, moderation, and push. The envelope in the header carries an unread
+  dot; the inbox shows requests first, then conversations by activity; threads
+  render grouped bubbles, day separators, reactions, quote-replies, "Seen",
+  and share cards that tap through to the title. `ShareToChatSheet` sends a
+  film or playlist from TitleDetail. Moderation: block from a DM (with copy
+  precise enough to be honest — a block STOPS a DM but only HIDES in a group
+  chat), a **Blocked people** list with Unblock in Profile (closing a gap open
+  since 2026-07-14), report-a-message, and a house-rules gate asked UP FRONT
+  rather than caught from an error string. Push: `new_message` with an
+  ID-only payload; the Edge Function resolves the text server-side and skips
+  the sender, anyone who muted, and either side of a block. Suites: pgTAP 250
+  (push_triggers 18, +4 asserting no message text and no body/preview field
+  ever rides a payload).
+  Closing the messaging work: **search** (Postgres FTS, debounced 300ms; hits
+  REPLACE the inbox sections so "nothing matches" never reads as an empty
+  inbox) and **typing indicators** — the app's first realtime that is not
+  postgres_changes. Typing is broadcast on a PRIVATE channel
+  `typing:<conversation_id>`, and privacy is not the topic name: two RLS
+  policies on `realtime.messages` run `is_conversation_member` against the id
+  parsed from `realtime.topic()`, proven both ways (a member subscribes, a
+  non-member and a signed-out client both get `Unauthorized`). Keystrokes are
+  never a table — a row each would be WAL traffic and dead tuples on the
+  hottest path in the product. The twin stubs `realtime.messages` +
+  `realtime.topic()` so the migration replays verbatim on vanilla Postgres
+  and 98b can execute the predicate itself (messaging assertions 12 → 15).
 - 2026-07-26 (a way out, and a defect sweep): **a mistaken round used to be a
   trap.** `reveal_sessions` has no delete policy (a client delete silently
   no-ops), both entry points are disabled while a round is blind, and the

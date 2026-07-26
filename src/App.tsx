@@ -128,6 +128,8 @@ function App() {
     groupId: string | null
     tmdbId: number | null
     mediaType: 'movie' | 'tv' | null
+    /** A message tap: land in the thread. Carries no group at all for a DM. */
+    conversationId: string | null
   } | null>(null)
   // First run: the slides show once per device, then the app opens group-less.
   const [onboarded, setOnboarded] = useState(() => readOnboarded())
@@ -246,6 +248,7 @@ function App() {
           groupId?: string | null
           tmdbId?: number | null
           mediaType?: 'movie' | 'tv' | null
+          conversationId?: string | null
         }>
       ).detail
       if (!detail) return
@@ -253,6 +256,7 @@ function App() {
         groupId: detail.groupId ?? null,
         tmdbId: detail.tmdbId ?? null,
         mediaType: detail.mediaType ?? null,
+        conversationId: detail.conversationId ?? null,
       })
     }
     window.addEventListener('mp:push-open', onOpen)
@@ -265,7 +269,14 @@ function App() {
       setActiveGroupId(pushTarget.groupId)
       storeGroupId(pushTarget.groupId)
     }
-    if (pushTarget.tmdbId !== null && pushTarget.mediaType !== null) {
+    if (pushTarget.conversationId) {
+      // a message lands IN the thread, not on a tab. Two entries so Back
+      // walks out to the message centre rather than dumping you on Home.
+      setStack([
+        { kind: 'messages' },
+        { kind: 'thread', conversationId: pushTarget.conversationId },
+      ])
+    } else if (pushTarget.tmdbId !== null && pushTarget.mediaType !== null) {
       // a comment reply lands on the title's discussion
       setStack([{ kind: 'title', tmdbId: pushTarget.tmdbId, mediaType: pushTarget.mediaType }])
     } else if (pushTarget.groupId && groups.some((g) => g.id === pushTarget.groupId)) {

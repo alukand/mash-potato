@@ -79,3 +79,35 @@ $$;
 
 grant usage on schema auth to anon, authenticated;
 grant execute on function auth.uid() to anon, authenticated;
+
+-- Realtime Authorization stand-in. Supabase's Realtime server authorizes a
+-- PRIVATE channel by running RLS on realtime.messages with the channel name
+-- bound to the `realtime.topic` GUC; realtime.topic() reads it back. Stubbing
+-- both lets the typing-channel migration replay VERBATIM and — more to the
+-- point — lets the twin execute the policy predicate itself, which is the
+-- only thing standing between a stranger and someone's DM keystrokes.
+create schema if not exists realtime;
+
+create or replace function realtime.topic()
+returns text
+language sql
+stable
+as $$
+  select nullif(current_setting('realtime.topic', true), '')::text
+$$;
+
+create table if not exists realtime.messages (
+  id bigserial primary key,
+  topic text not null,
+  extension text not null default 'broadcast',
+  payload jsonb,
+  event text,
+  private boolean default false,
+  inserted_at timestamptz not null default now()
+);
+alter table realtime.messages enable row level security;
+
+grant usage on schema realtime to anon, authenticated;
+grant execute on function realtime.topic() to anon, authenticated;
+grant select, insert on realtime.messages to authenticated;
+grant usage on sequence realtime.messages_id_seq to authenticated;

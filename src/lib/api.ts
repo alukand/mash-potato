@@ -2252,6 +2252,26 @@ export async function acceptDiscussionTerms(): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+/**
+ * Have I accepted the community terms? One acceptance covers every UGC
+ * surface (comments AND messages).
+ *
+ * Asked UP FRONT on purpose. DiscussionSection discovers the same gate by
+ * string-matching `post_comment`'s exception text, which couples a UI branch
+ * to an error message asserted in two test suites; messaging must not deepen
+ * that. Checking the column means the composer can show the house rules
+ * before you type, instead of after a rejected send.
+ */
+export async function fetchTermsAccepted(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('accepted_terms_at')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data?.accepted_terms_at !== null && data?.accepted_terms_at !== undefined
+}
+
 export async function postComment(
   titleId: string,
   groupId: string | null,
@@ -2718,6 +2738,31 @@ export async function fetchGroupmates(): Promise<GroupmateInfo[]> {
     .sort((a, b) => a.displayName.localeCompare(b.displayName))
 }
 
+/**
+ * Names and avatars for people who are NOT your groupmates. A message request
+ * comes from a stranger by definition, so `my_groupmates` cannot name them and
+ * the request would read "Someone" — undecidable. `public_profile` is the one
+ * shape a non-friend is allowed to see, so it is exactly right here.
+ * Failures are skipped rather than thrown: an unnamed row still beats none.
+ */
+export async function fetchPeopleProfiles(
+  userIds: string[],
+): Promise<Map<string, { displayName: string; avatarKey: string | null }>> {
+  const unique = [...new Set(userIds)]
+  const found = new Map<string, { displayName: string; avatarKey: string | null }>()
+  await Promise.all(
+    unique.map(async (id) => {
+      try {
+        const p = await fetchPublicProfile(id)
+        if (p) found.set(id, { displayName: p.displayName, avatarKey: p.avatarKey })
+      } catch {
+        // leave them unnamed
+      }
+    }),
+  )
+  return found
+}
+
 /** Who has read up to when. Drives "Seen" without exposing anyone's mute. */
 export async function fetchReadReceipts(
   conversationId: string,
@@ -2792,7 +2837,13 @@ export async function unblockUser(userId: string): Promise<void> {
 // subscriptions in this file get away with a scope name because only one
 // component is ever mounted for that scope; the inbox is not so lucky, since
 // App watches it for the unread badge while MessagesScreen watches it too.
-let channelSeq = 0
+//
+// A module-level COUNTER is not enough: HMR re-evaluates this module and
+// resets it to 0 while the supabase client (a different module) still holds
+// the old channels, so the very next subscribe collides again. React
+// StrictMode's double-mount is the same hazard. A random nonce survives both.
+const channelNonce = (): string =>
+  `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
 
 /**
  * Live updates for ONE open thread: messages and reactions. Reactions carry
@@ -2800,7 +2851,7 @@ let channelSeq = 0
  */
 export function onThreadChange(conversationId: string, onChange: () => void): () => void {
   const channel = supabase
-    .channel(`thread-${conversationId}-${++channelSeq}`)
+    .channel(`thread-${conversationId}-${channelNonce()}`)
     .on(
       'postgres_changes',
       {
@@ -2834,9 +2885,48 @@ export function onThreadChange(conversationId: string, onChange: () => void): ()
  * For DMs that is a PRIVACY BOUNDARY rather than a convenience: a non-member
  * fails messages_select_member, so no event is delivered to them at all.
  */
+/**
+ * Typing indicators: Realtime BROADCAST, never a table. A row per keystroke
+ * would be a WAL record, a postgres_changes fan-out, and dead-tuple bloat on
+ * the hottest path in the app, to carry something worthless a second later.
+ *
+ * The channel is PRIVATE (`config: { private: true }`), which makes Realtime
+ * evaluate the RLS policies on realtime.messages added in
+ * 20260726180000_typing_channels.sql — they check
+ * `is_conversation_member(topic-suffix)`, so a non-member can neither send
+ * nor receive. On a public channel the topic name would be the only secret.
+ *
+ * Returns a `{ ping, stop }` pair: ping on keystrokes (throttle at the call
+ * site), stop on unmount.
+ */
+export function typingChannel(
+  conversationId: string,
+  userId: string,
+  onTyping: (fromUserId: string) => void,
+): { ping: () => void; stop: () => void } {
+  const channel = supabase.channel(`typing:${conversationId}`, {
+    config: { private: true, broadcast: { self: false } },
+  })
+  channel
+    .on('broadcast', { event: 'typing' }, (payload) => {
+      const from = (payload.payload as { userId?: string } | undefined)?.userId
+      // self:false should cover this; belt and braces for reconnects.
+      if (typeof from === 'string' && from !== userId) onTyping(from)
+    })
+    .subscribe()
+  return {
+    ping: () => {
+      void channel.send({ type: 'broadcast', event: 'typing', payload: { userId } })
+    },
+    stop: () => {
+      void supabase.removeChannel(channel)
+    },
+  }
+}
+
 export function onInboxChange(onChange: () => void): () => void {
   const channel = supabase
-    .channel(`inbox-${++channelSeq}`)
+    .channel(`inbox-${channelNonce()}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, onChange)
     .on(
       'postgres_changes',
