@@ -20,6 +20,15 @@ revoke update on public.user_blocks from authenticated;
 revoke all on public.banned_terms from authenticated, anon;
 revoke update on public.profiles from authenticated;
 grant update (display_name, avatar_key, taste_mode) on public.profiles to authenticated;
+-- launch hardening (20260727120000): titles takes no direct client writes, the
+-- rate-limit ledger is definer-only, and profiles stops handing out `banned`.
+-- The profiles pair must stay in this order: a column revoke is a no-op while
+-- a table-level SELECT grant stands.
+revoke insert, update, delete on public.titles from authenticated;
+revoke all on public.rate_limits from authenticated, anon;
+revoke select on public.profiles from authenticated, anon;
+grant select (id, display_name, avatar_key, taste_mode, accepted_terms_at)
+  on public.profiles to authenticated;
 -- messaging: every write is a definer RPC, so no table takes direct writes.
 revoke insert, update, delete on public.conversations             from authenticated;
 revoke insert, update, delete on public.conversation_participants from authenticated;
@@ -47,7 +56,9 @@ begin
       -- "were you declined?" probe; the rest are trigger-only.
       'dm_request_declined', 'touch_conversation_activity',
       'notify_new_message', 'auto_hide_reported_message',
-      'create_group_conversation'])
+      'create_group_conversation',
+      -- rate-limit trigger internals (20260727120000)
+      'rate_limit_message', 'rate_limit_comment', 'rate_limit_dm'])
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);
   end loop;

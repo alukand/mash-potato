@@ -24,6 +24,8 @@ import {
   touchRecentGroup,
 } from './lib/activeGroup'
 import { bindPushOpenHandler, enablePush } from './lib/push'
+import { pathToState, stateToPath, stackKey } from './lib/urlState'
+import type { StackView } from './lib/urlState'
 import { Logo } from './components/Logo'
 import { BottomNav } from './components/BottomNav'
 import { FirstRunTour } from './components/FirstRunTour'
@@ -37,6 +39,7 @@ import { CreateGroupScreen } from './screens/CreateGroupScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { DiscoverScreen } from './screens/DiscoverScreen'
 import { GroupScreen } from './screens/GroupScreen'
+import { GroupHistoryScreen } from './screens/GroupHistoryScreen'
 import { PlaylistScreen } from './screens/PlaylistScreen'
 import { ProfileScreen } from './screens/ProfileScreen'
 import { PublicProfileScreen } from './screens/PublicProfileScreen'
@@ -46,30 +49,9 @@ import { TitleDetailScreen } from './screens/TitleDetailScreen'
 // view-stack (no router) so a title's detail page, the profile, or a
 // create-group form can open over any tab and pop back.
 
-// A view pushed over the tabs. Tapping a bottom tab clears the whole stack.
-type StackView =
-  | {
-      kind: 'title'
-      tmdbId: number
-      mediaType: 'movie' | 'tv'
-      /** Open the discussion on this group's thread (reveal deep link). */
-      discussGroupId?: string
-      /** Composer placeholder seed (the reveal's clash headline). */
-      discussSeed?: string
-    }
-  | { kind: 'createGroup' }
-  | { kind: 'user'; userId: string }
-  | { kind: 'playlist'; playlistId: string }
-  | { kind: 'messages' }
-  | { kind: 'thread'; conversationId: string }
-
-function stackKey(v: StackView): string {
-  if (v.kind === 'title') return `title:${v.tmdbId}:${v.mediaType}`
-  if (v.kind === 'user') return `user:${v.userId}`
-  if (v.kind === 'playlist') return `playlist:${v.playlistId}`
-  if (v.kind === 'thread') return `thread:${v.conversationId}`
-  return v.kind
-}
+// `StackView` and `stackKey` moved to lib/urlState.ts, which owns the mapping
+// between the view stack and the address bar. One source of truth: a view kind
+// that has no URL should fail to compile there, not silently become unlinkable.
 
 // The Rate and Group tabs need a group; before one exists they teach the two
 // ways in instead of gating the whole app.
@@ -109,14 +91,39 @@ function Splash({ note }: { note?: string }) {
   )
 }
 
+/**
+ * Where the app should open.
+ *
+ * A deep link wins outright. Only a bare `/` defers to the remembered tab —
+ * on the web that keeps a returning visitor where they left off, and on
+ * native every launch is `/` so the behaviour is exactly what it always was.
+ */
+function initialLocation(): { tab: TabId; stack: StackView[] } {
+  const path = window.location.pathname
+  // ONLY a bare root defers to the remembered tab. `/discover` is a request,
+  // not an absence of one, so it must not be overridden by what you happened
+  // to be looking at last time.
+  if (path === '' || path === '/') {
+    return { tab: readStoredTab() ?? 'home', stack: [] }
+  }
+  return pathToState(path)
+}
+
 function App() {
-  const [tab, setTab] = useState<TabId>(() => readStoredTab() ?? 'home')
+  const [initial] = useState(initialLocation)
+  const [tab, setTab] = useState<TabId>(initial.tab)
   // undefined = still resolving; null = signed out / no groups
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [groups, setGroups] = useState<GroupInfo[] | undefined>(undefined)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [members, setMembers] = useState<MemberInfo[]>([])
   const [stack, setStack] = useState<StackView[]>([])
+  /**
+   * A night the history screen asked to reopen. It lives up here because the
+   * pushed view and the Rate tab never coexist — the hand-off has to survive
+   * the stack being cleared.
+   */
+  const [openSessionId, setOpenSessionId] = useState<string | null>(null)
   /** Unread across every conversation, for the header envelope's dot. */
   const [unreadTotal, setUnreadTotal] = useState(0)
   // First-run tab walkthrough: dims the app, pulses each tab in turn.
@@ -144,6 +151,19 @@ function App() {
       : null
 
   const lastUidRef = useRef<string | null>(null)
+  /**
+   * A deep link has to survive sign-in.
+   *
+   * The reset below fires on the FIRST session too, so without this a shared
+   * link would drop a brand-new signup on Home — at exactly the moment you
+   * can least afford to lose them. Consumed once: a later account switch
+   * still resets, because by then the link has been honoured.
+   */
+  const pendingDeepLinkRef = useRef<{ tab: TabId; stack: StackView[] } | null>(
+    window.location.pathname !== '/' && window.location.pathname !== ''
+      ? initial
+      : null,
+  )
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
       lastUidRef.current = data.session?.user.id ?? null
@@ -157,12 +177,19 @@ function App() {
       const nextUid = s?.user.id ?? null
       if (nextUid !== lastUidRef.current) {
         lastUidRef.current = nextUid
-        setTab('home')
-        setStack([])
+        const deepLink = pendingDeepLinkRef.current
+        pendingDeepLinkRef.current = null
+        if (deepLink && nextUid) {
+          setTab(deepLink.tab)
+          setStack(deepLink.stack)
+        } else {
+          setTab('home')
+          setStack([])
+        }
       }
     })
     return () => sub.subscription.unsubscribe()
-  }, [])
+  }, [initial])
 
   // Data effects key on WHO is signed in, not the session object: token
   // refreshes and same-user re-auth mint new session objects and must not
@@ -345,6 +372,53 @@ function App() {
   function popView() {
     setStack((s) => s.slice(0, -1))
   }
+
+  // ---- the address bar mirrors the view stack ------------------------------
+  //
+  // One direction each way, and they must not chase each other: the effect
+  // pushes only when the computed path actually DIFFERS from what is already
+  // there, so applying a popstate (which sets state) does not immediately push
+  // the entry back. `popstate` is the only listener; every other navigation in
+  // the app just changes state and this follows.
+
+  useEffect(() => {
+    // Signed out we render AuthScreen over whatever the path asked for, and
+    // rewriting the URL then would throw the deep link away before sign-in
+    // could honour it.
+    if (!session) return
+    const path = stateToPath(tab, stack)
+    const here = window.location.pathname
+    if (path === here) return
+
+    // Is the URL we are leaving one this app would ever have written? An
+    // unknown path, or `/discover/` with a stray slash, is NOT — it has to be
+    // CORRECTED in place. Pushing over it would leave a history entry that
+    // parses back to the same state, so Back would land there, get rewritten,
+    // and bounce the user straight forward again.
+    const from = pathToState(here)
+    const canonical = stateToPath(from.tab, from.stack) === here
+    window.history[canonical ? 'pushState' : 'replaceState'](null, '', path)
+  }, [tab, stack, session])
+
+  useEffect(() => {
+    function onPop() {
+      const next = pathToState(window.location.pathname)
+      setTab(next.tab)
+      setStack(next.stack)
+      // Walking BACK onto a URL this app would never write has to be corrected
+      // here, not by the effect above: popping an unknown path while already
+      // on Home changes no state, so that effect never runs and the address
+      // bar would keep claiming a page that isn't showing.
+      const canonical = stateToPath(next.tab, next.stack)
+      if (canonical !== window.location.pathname) {
+        window.history.replaceState(null, '', canonical)
+      }
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+  // Stable so GroupScreen's one-shot effect doesn't re-arm every render.
+  const clearOpenSession = useCallback(() => setOpenSessionId(null), [])
   function selectTab(next: TabId) {
     setStack([])
     setTab(next)
@@ -479,6 +553,25 @@ function App() {
                 onBack={popView}
               />
             )}
+            {top.kind === 'groupHistory' && (
+              <GroupHistoryScreen
+                groupId={top.groupId}
+                groupName={groups?.find((g) => g.id === top.groupId)?.name ?? 'This group'}
+                userId={userId}
+                onOpenSession={(sessionId) => {
+                  // Land on the Rate tab with that night open: the Reveal (and
+                  // late scoring) lives there, not on a read-only history page.
+                  setActiveGroupId(top.groupId)
+                  storeGroupId(top.groupId)
+                  setOpenSessionId(sessionId)
+                  setStack([])
+                  setTab('rate')
+                  storeTab('rate')
+                  window.scrollTo(0, 0)
+                }}
+                onBack={popView}
+              />
+            )}
             {top.kind === 'createGroup' && (
               <CreateGroupScreen
                 userId={userId}
@@ -545,6 +638,9 @@ function App() {
                   onCreateGroup={() => pushView({ kind: 'createGroup' })}
                   onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
                   onStartedInGroup={switchGroup}
+                  onOpenHistory={(id) => pushView({ kind: 'groupHistory', groupId: id })}
+                  openSessionId={openSessionId}
+                  onSessionOpened={clearOpenSession}
                 />
               ) : (
                 <NoGroupYet

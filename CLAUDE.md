@@ -18,7 +18,9 @@ agreement vs. clash. Each session snapshots its rubric at creation
   `src/index.css` — no tailwind.config.js), Capacitor (android/ + ios/
   generated), Supabase (Auth + Postgres + Realtime + RLS), push via
   APNs-direct (FCM when Android ships), TMDB. Mobile-first single ~480px column. Ask before adding dependencies
-  (including a router — deliberately absent so far).
+  (including a router — deliberately absent so far). Capacitor plugins in use:
+  push-notifications, plus share + filesystem (2026-07-25, for the shareable
+  Reveal card — `navigator.share` with files is unreliable in WKWebView).
 - Design tokens + fonts (Bricolage Grotesque / Hanken Grotesk / Azeret Mono)
   live in `src/index.css` and `index.html`. Score ramp 1→10 coral→gold→lime is
   `src/lib/scoreColor.ts`.
@@ -45,6 +47,15 @@ Never put the TMDB key or service_role key in client code — TMDB goes through
 the `tmdb-search` Edge Function (`supabase/functions/`; local secret in
 `supabase/functions/.env`, hosted via `supabase secrets set`). The anon key is
 fine client-side.
+
+**A COLUMN revoke is a no-op while a TABLE-level grant stands** (learned
+2026-07-27): `revoke select (banned) on profiles from authenticated` changed
+nothing because the table-level SELECT grant already covered every column. The
+working shape is `revoke select on <table>` then `grant select (cols)`. The
+same trap applies to the twin — `scripts/verify-rls/20-grants.sql` simulates
+the platform's blanket grants and then re-applies every deliberate revoke, so
+ANY new revoke in a migration must be mirrored there or the twin silently
+tests an ungated schema.
 
 GRANTS LAW (hardening migration 20260717160000): `public` functions get NO
 default execute — every new function migration must grant explicitly.
@@ -100,6 +111,73 @@ the twin's 98 file assert the local posture.
   on each scorer's own card (`ExtraCategoryChips` in ui.tsx; skipped =
   absent, never 0), the full resolved rubric always ships in the snapshot,
   and `RubricReceipt` is a pure read-only receipt.
+- `src/lib/affinity.ts` — agreement math ACROSS nights (scoring.ts answers
+  "how split were we tonight", this answers "who do I actually agree with").
+  `pairAgreement` / `tasteTwins` / `sorestSpot` / `commonGround` /
+  `groupRecap` / `myTilt`, all pure and unit-tested. Same partial-tolerance
+  rule as scoring.ts (a category absent from a card DROPS OUT, never scores
+  0), each night scored under its OWN rubric snapshot, and two floors:
+  `MIN_NIGHTS_FOR_A_CLAIM` 3 for a pair, `MIN_NIGHTS_FOR_A_CATEGORY` 2 for a
+  category — the cross-night twin of `raters >= 2` in `mostUnitedCategory`.
+  **Never ranks members** (DESIGN.md reward-loop law): `myTilt` is the
+  viewer's own average vs the group's, and a sorted per-member table would be
+  a leaderboard wearing a different hat. Fed by `fetchGroupHistory`, which
+  shares `loadGroupHistory` with `fetchGroupLog` — the log always loaded every
+  member's card and discarded it, so history costs ZERO extra queries and no
+  new RLS surface. UI: `GroupHistoryScreen` on the view-stack
+  (`{kind:'groupHistory', groupId}`), entered through GroupLog's memory strip
+  (same 3-night floor, so the door never opens onto "not enough nights").
+  Copy earns itself: `commonGround` returns the LEAST-BAD category, so below
+  1.6 it reads "You agree on X" and above it "Closest you get is X" — 4.7
+  points apart is not agreement.
+- `src/lib/shareCard.ts` — the Reveal as a postable 1080x1350 PNG.
+  **Drawn on canvas, never a DOM screenshot**, and that IS the privacy
+  design: the card is composed from an explicit `RevealCardInput` of
+  aggregates (group name, title, mashed, spread, rater COUNT, headline), so
+  names and individual scores cannot reach the image. Poster needs
+  `crossOrigin='anonymous'` (image.tmdb.org sends `ACAO: *`) or `toBlob`
+  throws SecurityError at the last step; `await document.fonts.ready` or the
+  card silently ships in a system font. Delivery: `@capacitor/share` +
+  `@capacitor/filesystem` on native (navigator.share with files is unreliable
+  in WKWebView), Web Share then download on web. `ShareRevealSheet` previews
+  the real card before it goes. SessionPanel's `revealHeadline` returns a
+  DISCRIMINATED UNION rendered two ways (colored JSX, flat card text) — one
+  source of truth for the branch that once produced "United on Story. Split
+  over Story."
+- `src/lib/urlState.ts` — the app's location AS A URL, and the owner of
+  `StackView` / `stackKey` (moved out of App.tsx so a view kind with no URL
+  fails to compile rather than silently becoming unlinkable). Deliberately NOT
+  a router: the view model is already a stack and browser history is a stack,
+  so `stateToPath` / `pathToState` are a serialiser between them (~80 lines, no
+  dependency — CLAUDE.md's "ask before adding a router" answered by not
+  needing one). Paths: `/` `/discover` `/rate` `/profile`, `/film|show/:tmdbId`,
+  `/u/:userId`, `/list/:playlistId`, `/group/:id/history`, `/messages`,
+  `/messages/:conversationId` (rebuilds a TWO-entry stack so Back reaches the
+  inbox — the same shape the push handler builds), `/new-group`; anything else
+  falls back to Home. `discussGroupId`/`discussSeed` stay OUT of the URL: a
+  shared link must not reopen someone else's half-written comment prompt.
+  App.tsx syncs both ways and the two must not chase each other: it pushes only
+  when the computed path DIFFERS, and uses `replaceState` when the path being
+  left is non-canonical (unknown, or a stray trailing slash) — pushing over
+  those leaves a history entry that parses to the same state, so Back would
+  bounce the user straight forward again. `popstate` corrects a non-canonical
+  URL itself, because popping onto an unknown path while already on Home
+  changes no state and the effect would never run. A deep link survives sign-in
+  via `pendingDeepLinkRef` (the auth reset fires on the first session too and
+  would otherwise dump a new signup on Home).
+- WEB (2026-07-27): the browser build was always there — Capacitor only wraps
+  `dist/`, and all four Capacitor call sites are `isNativePlatform()`-guarded.
+  Deploy topology is a static landing page at `mashpotato.app` (`web/`, hand
+  written, no build step, so a visitor reading the pitch never downloads the
+  app bundle) and the app at `app.mashpotato.app`. `public/_redirects` is the
+  SPA fallback and is NOT optional now that URLs exist. `public/_headers`
+  carries the CSP — it lives there and NOT in a meta tag, because index.html
+  also ships inside the native app where the origin is `capacitor://localhost`.
+  `style-src` needs `'unsafe-inline'` (React `style={{…}}` compiles to style
+  attributes); `script-src` stays strict because the startup-crash net moved
+  from inline into `public/boot.js` — a sha256 pin would have broken silently
+  the first time anyone edited it. `connect-src` must list `wss:` or realtime
+  is the first thing to die.
 - `src/lib/mapping.ts` — jsonb `scores` / `rubric` snapshot validators.
 - `src/lib/api.ts` — every Supabase call; screens never import the client.
   Member ratings live in `member_scores.scores` (jsonb map) plus an optional
@@ -243,9 +321,19 @@ the twin's 98 file assert the local posture.
   PosterResultGrid consumes tagged results. Shared UI recipes (fieldClass,
   CtaButton, GroupMark, VisibilityChip, ScoreSliderRow — the one
   score-slider row, "N/10" readout — plus HeaderAction/SettingsButton/
-  IconButton/GearIcon, the one settings affordance) live in
-  `src/components/ui.tsx`; the
+  IconButton/GearIcon, the one settings affordance, and WhereToWatch /
+  WhereToWatchLine) live in `src/components/ui.tsx`; the
   design system is documented in `DESIGN.md`.
+  WHERE TO WATCH: `fetchWatchProviders` is memoised per `mediaType:tmdbId`, so
+  a repeated row is free, but TMDB has no batch endpoint — N titles is N edge
+  calls. So availability sits only where a group COMMITS: the full
+  `<WhereToWatch>` card on TitleDetail, and the compact self-fetching
+  `<WhereToWatchLine>` on StartRound's picked card and GroupPoll's ballots.
+  NOT on poster grids (PosterGrid is shared with profile sections — N tiles
+  would be N calls, and a tile already leads to TitleDetail). The line leads
+  with streaming and only falls back to rent/buy, because the question at a
+  decision point is "can we put this on tonight". The JustWatch attribution is
+  a provider REQUIREMENT and lives in the one recipe — never re-typed.
 - Push notifications (APNs-direct; FCM slots in when Android ships):
   `device_tokens` (self-only RLS; `register_device_token` RPC handles device
   hand-me-downs), `notification_config` (service-only singleton; EMPTY row =
@@ -360,6 +448,26 @@ the twin's 98 file assert the local posture.
   a real local user on one of those emails collides with EVERY file that seeds
   it (`users_email_partial_key`) and fails the whole suite — use names outside
   that set for manual E2E users.
+- LAUNCH HARDENING (20260727120000, see `docs/SECURITY.md`): three surfaces
+  found open on HOSTED by auditing privileges rather than reading code.
+  (1) `titles` accepted an INSERT from any signed-in user (`with check
+  (true)`) with arbitrary `name`/`poster_path`, and titles are globally
+  readable — a way to put text in front of strangers. Writes now go only
+  through `ensure_title`, which validates media type, name length, control
+  characters, year range and poster-path SHAPE (it is interpolated into an
+  image.tmdb.org URL), runs MANUAL titles through the comment wordlist, and
+  is idempotent on (tmdb_id, media_type) so the client needs no 23505 retry.
+  (2) `titles` also had UPDATE granted on every column — inert only because
+  no UPDATE policy existed. (3) `profiles` handed every signed-in user the
+  whole row including `banned`, an oracle for who has been sanctioned.
+  RATE LIMITS: `rate_limits` (definer-only, like banned_terms) +
+  `consume_rate_limit(bucket, limit, window_seconds)`. Enforced by BEFORE
+  INSERT triggers on messages / title_comments / conversations rather than by
+  re-issuing the RPCs — a trigger cannot drift from a body it does not live
+  in. `'system'` messages and non-DM conversations are excluded, or leaving a
+  chat and creating a group could hit a ceiling. `tmdb-search` calls the same
+  RPC with the CALLER's JWT (120/min) and FAILS OPEN: a limiter that takes
+  browsing down when it breaks is worse than the abuse it prevents.
 - `supabase/migrations/` — schema + RLS as code (grants included — do not
   rely on platform default privileges). `powershell -File
   scripts\check-grants.ps1` lints migration TEXT for the GRANTS LAW (neither

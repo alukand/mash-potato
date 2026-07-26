@@ -331,6 +331,50 @@ async function handleProviders(body: Record<string, unknown>, apiKey: string): P
   })
 }
 
+/** Requests one caller may make in a minute. Well above real browsing. */
+const RATE_LIMIT = 120
+const RATE_WINDOW_SECONDS = 60
+
+/**
+ * Charge this request against the caller's bucket.
+ *
+ * Runs as the CALLER (their Authorization header is forwarded verbatim), so
+ * consume_rate_limit sees their auth.uid() and cannot be aimed at anyone else.
+ * Returns a 429 Response when the bucket is full, otherwise null.
+ *
+ * Fails OPEN: if the limiter itself is unreachable, browsing should still work.
+ * A rate limiter that takes the app down when it breaks is worse than the
+ * abuse it prevents.
+ */
+async function rateLimit(req: Request): Promise<Response | null> {
+  const authorization = req.headers.get('Authorization')
+  const url = Deno.env.get('SUPABASE_URL')
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  if (!authorization || !url || !anonKey) return null
+
+  try {
+    const res = await fetch(`${url}/rest/v1/rpc/consume_rate_limit`, {
+      method: 'POST',
+      headers: { Authorization: authorization, apikey: anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        p_bucket: 'tmdb_proxy',
+        p_limit: RATE_LIMIT,
+        p_window_seconds: RATE_WINDOW_SECONDS,
+      }),
+    })
+    if (res.ok) return null
+    const detail = (await res.json().catch(() => ({}))) as { message?: string }
+    // Only a tripped limit should block; anything else (a 401 from an expired
+    // token, a 500) is the limiter's problem, not the caller's.
+    if (/too fast/i.test(detail.message ?? '')) {
+      return json({ error: 'you are searching too fast, give it a moment' }, 429)
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -350,6 +394,13 @@ Deno.serve(async (req) => {
   } catch {
     return json({ error: 'invalid JSON body' }, 400)
   }
+
+  // Signed-in is not the same as entitled to unlimited quota: this proxy
+  // spends OUR TMDB key, so one account must not be able to drain it. Counted
+  // in Postgres (consume_rate_limit) rather than in memory, because edge
+  // instances are ephemeral and a per-instance counter limits nothing.
+  const limited = await rateLimit(req)
+  if (limited) return limited
 
   const op = body.op ?? 'search'
   switch (op) {

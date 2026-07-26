@@ -1,0 +1,4 @@
+# SPA fallback. Every path is served by index.html and resolved client-side by
+# lib/urlState.ts. Without this, /film/27205 404s on a hard refresh or a shared
+# link — the classic way a newly-routed single-page app ships broken.
+/*  /index.html  200

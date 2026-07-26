@@ -1,0 +1,19 @@
+{
+  "name": "Mash Potato",
+  "short_name": "Mash Potato",
+  "description": "Your group's shared definition of a good movie. Rate blind, reveal together, get one Mashed score.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#15121B",
+  "theme_color": "#15121B",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    }
+  ]
+}

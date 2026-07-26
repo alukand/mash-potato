@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import { colorForGroup } from '../lib/palette'
+import { fetchWatchProviders, posterUrl } from '../lib/api'
+import type { WatchProvider, WatchProviders } from '../lib/api'
 import { scoreColor, scoreWord } from '../lib/scoreColor'
 import { rubricRowsForMode, TASTE_MODES } from '../lib/rubricCatalog'
 import type { TasteMode } from '../lib/rubricCatalog'
@@ -511,5 +513,118 @@ export function SettingsButton({
       <GearIcon size={12} />
       {open ? 'Done' : label}
     </button>
+  )
+}
+
+// ---- where to watch --------------------------------------------------------
+//
+// One recipe for provider logos, because the JustWatch attribution is a
+// data-provider REQUIREMENT: re-typing this markup per screen is how a surface
+// eventually ships without it.
+
+function ProviderLogo({ provider, size = 32 }: { provider: WatchProvider; size?: number }) {
+  return provider.logoPath ? (
+    <img
+      src={posterUrl(provider.logoPath, 'w92')}
+      alt={provider.name}
+      title={provider.name}
+      loading="lazy"
+      className="rounded-lg border border-line/50 object-cover"
+      style={{ width: size, height: size }}
+    />
+  ) : (
+    <span
+      title={provider.name}
+      className="grid place-items-center rounded-lg border border-line bg-surface-2 font-mono font-bold text-muted"
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
+    >
+      {provider.name.charAt(0)}
+    </span>
+  )
+}
+
+/** The full Stream / Rent / Buy card, as the title page shows it. */
+export function WhereToWatch({ providers }: { providers: WatchProviders }) {
+  const rows = (
+    [
+      { label: 'Stream', items: providers.stream },
+      { label: 'Rent', items: providers.rent },
+      { label: 'Buy', items: providers.buy },
+    ] as const
+  ).filter((row) => row.items.length > 0)
+  if (rows.length === 0) return null
+
+  return (
+    <div className="mp-card rounded-[22px] px-5 py-1.5">
+      {rows.map((row, i) => (
+        <div
+          key={row.label}
+          className={`flex items-center gap-3 py-3 ${i > 0 ? 'border-t border-line/50' : ''}`}
+        >
+          <span className="w-12 shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
+            {row.label}
+          </span>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {row.items.map((p) => (
+              <ProviderLogo key={p.name} provider={p} />
+            ))}
+          </div>
+        </div>
+      ))}
+      <p className="border-t border-line/50 py-2 font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+        Streaming data by JustWatch
+      </p>
+    </div>
+  )
+}
+
+/**
+ * The one-line answer, for the screens where a group is COMMITTING to a title
+ * (starting a round, voting, curating a watchlist). Fetches its own providers —
+ * `fetchWatchProviders` memoises per title, so a row that reappears is free.
+ *
+ * Deliberately answers only "can we put this on tonight", so it leads with
+ * streaming and mentions rent/buy only when nothing streams. Rent-and-buy
+ * grids belong on the title page, where you went to read about the film.
+ */
+export function WhereToWatchLine({
+  tmdbId,
+  mediaType,
+  className = '',
+}: {
+  tmdbId: number | null
+  mediaType: 'movie' | 'tv'
+  className?: string
+}) {
+  const [watch, setWatch] = useState<WatchProviders | null>(null)
+
+  useEffect(() => {
+    if (tmdbId === null) return
+    let cancelled = false
+    fetchWatchProviders(tmdbId, mediaType)
+      .then((w) => !cancelled && setWatch(w))
+      // Availability is a nicety; a provider outage must never break the row
+      // it is decorating.
+      .catch(() => !cancelled && setWatch(null))
+    return () => {
+      cancelled = true
+    }
+  }, [tmdbId, mediaType])
+
+  if (!watch) return null
+  const paidOnly = watch.stream.length === 0 && watch.rent.length + watch.buy.length > 0
+  if (watch.stream.length === 0 && !paidOnly) return null
+
+  return (
+    <div className={`flex min-w-0 items-center gap-1.5 ${className}`}>
+      <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+        {paidOnly ? 'Rent' : 'On'}
+      </span>
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
+        {(paidOnly ? [...watch.rent, ...watch.buy] : watch.stream).slice(0, 4).map((p) => (
+          <ProviderLogo key={p.name} provider={p} size={18} />
+        ))}
+      </div>
+    </div>
   )
 }

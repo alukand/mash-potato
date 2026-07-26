@@ -80,6 +80,15 @@ interface GroupScreenProps {
   onOpenPlaylist: (playlistId: string) => void
   /** A round was started in a DIFFERENT group; the caller switches to it. */
   onStartedInGroup: (groupId: string) => void
+  /** Open the group's whole run (taste twins + recap) on the view-stack. */
+  onOpenHistory: (groupId: string) => void
+  /**
+   * A night to reopen, handed down from a pushed view that has no reach into
+   * this screen's state (the history screen). Cleared via `onSessionOpened`
+   * so it fires once rather than re-opening on every render.
+   */
+  openSessionId?: string | null
+  onSessionOpened?: () => void
 }
 
 // Live group view. Members + rubrics come from Postgres through RLS.
@@ -109,6 +118,9 @@ export function GroupScreen({
   onCreateGroup,
   onOpenPlaylist,
   onStartedInGroup,
+  onOpenHistory,
+  openSessionId = null,
+  onSessionOpened,
 }: GroupScreenProps) {
   const isOwner = group.role === 'owner'
   // Normie groups: one shared three-part rubric, no per-member editing.
@@ -243,6 +255,14 @@ export function GroupScreen({
     setRenamed(false)
     setViewSessionId(null)
   }, [group.id, group.name])
+
+  // A night handed back from the history screen. Consumed immediately, so
+  // clearing the banner ("Back to the latest") doesn't snap straight back.
+  useEffect(() => {
+    if (!openSessionId) return
+    setViewSessionId(openSessionId)
+    onSessionOpened?.()
+  }, [openSessionId, onSessionOpened])
 
   async function handleSavePreset() {
     if (rows === null || presetName.trim().length === 0) return
@@ -602,6 +622,7 @@ export function GroupScreen({
         <div className="mb-7">
           <GroupLog
             entries={log}
+            onOpenHistory={() => onOpenHistory(group.id)}
             onOpenSession={(sessionId) => {
               setViewSessionId(sessionId)
               window.scrollTo(0, 0)

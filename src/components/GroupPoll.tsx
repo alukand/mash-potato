@@ -15,7 +15,7 @@ import type { GroupInfo, GroupPollInfo, MemberInfo, NewTitle } from '../lib/api'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 import { colorForMember } from '../lib/palette'
 import { Avatar } from './avatars'
-import { CtaButton, fieldClassSm } from './ui'
+import { CtaButton, WhereToWatchLine, fieldClassSm } from './ui'
 import { GroupInviteSheet } from './GroupInviteSheet'
 
 interface Candidate {
@@ -262,6 +262,13 @@ export function GroupPoll({ group, members, userId }: GroupPollProps) {
                     {o.year ? ` ${o.year}` : ''}
                     {mine ? ' · your vote' : ''}
                   </span>
+                  {/* Whether anyone can actually play it should be able to
+                      swing the vote, so it sits ON the ballot. */}
+                  <WhereToWatchLine
+                    tmdbId={o.tmdbId}
+                    mediaType={o.mediaType}
+                    className="mt-1"
+                  />
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5">
                   <span className="flex -space-x-1.5">

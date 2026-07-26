@@ -39,7 +39,7 @@ import { CommunityHistogram } from '../components/CommunityHistogram'
 import { DiscussionSection } from '../components/DiscussionSection'
 import { GroupInviteSheet } from '../components/GroupInviteSheet'
 import { ShareToChatSheet } from '../components/ShareToChatSheet'
-import { CtaButton, GroupMark, ScoreSliderRow, fieldClassSm } from '../components/ui'
+import { CtaButton, GroupMark, ScoreSliderRow, WhereToWatch, fieldClassSm } from '../components/ui'
 
 // Solo ratings follow YOUR taste mode: Normies score the enjoyment-heavy
 // three, Cinephiles the base-seven craft rubric. The community section shows
@@ -737,51 +737,7 @@ export function TitleDetailScreen({
                 </a>
               )}
             </div>
-            <div className="mp-card rounded-[22px] px-5 py-1.5">
-              {(
-                [
-                  { label: 'Stream', items: watch.stream },
-                  { label: 'Rent', items: watch.rent },
-                  { label: 'Buy', items: watch.buy },
-                ] as const
-              )
-                .filter((row) => row.items.length > 0)
-                .map((row, i) => (
-                  <div
-                    key={row.label}
-                    className={`flex items-center gap-3 py-3 ${i > 0 ? 'border-t border-line/50' : ''}`}
-                  >
-                    <span className="w-12 shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-muted">
-                      {row.label}
-                    </span>
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      {row.items.map((p) =>
-                        p.logoPath ? (
-                          <img
-                            key={p.name}
-                            src={posterUrl(p.logoPath, 'w92')}
-                            alt={p.name}
-                            title={p.name}
-                            loading="lazy"
-                            className="h-8 w-8 rounded-lg border border-line/50 object-cover"
-                          />
-                        ) : (
-                          <span
-                            key={p.name}
-                            title={p.name}
-                            className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface-2 font-mono text-[11px] font-bold text-muted"
-                          >
-                            {p.name.charAt(0)}
-                          </span>
-                        ),
-                      )}
-                    </div>
-                  </div>
-                ))}
-              <p className="border-t border-line/50 py-2 font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
-                Streaming data by JustWatch
-              </p>
-            </div>
+            <WhereToWatch providers={watch} />
           </section>
         )}
 

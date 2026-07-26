@@ -479,48 +479,28 @@ export async function fetchSessionById(sessionId: string): Promise<SessionInfo |
 }
 
 /**
- * Find-or-create the title row. TMDB picks are deduped on (tmdb_id,
- * media_type); manual entries always insert (titles has no update policy,
- * so upsert-on-conflict is not an option — insert races just re-select).
+ * Find-or-create the title row.
+ *
+ * Direct writes to `titles` are gone (20260727120000): the table accepted an
+ * INSERT from any signed-in user with `check (true)`, and titles are globally
+ * readable, so it was a way to put arbitrary text in front of other people.
+ * `ensure_title` validates the name, year and poster path, holds MANUAL titles
+ * to the same wordlist as comments, dedupes on (tmdb_id, media_type) and
+ * settles insert races server-side — so the client no longer needs its own
+ * pre-select or 23505 retry.
  */
 async function ensureTitle(title: NewTitle): Promise<string> {
-  if (title.tmdbId !== null) {
-    const { data: existing, error: findError } = await supabase
-      .from('titles')
-      .select('id')
-      .eq('tmdb_id', title.tmdbId)
-      .eq('media_type', title.mediaType)
-      .maybeSingle()
-    if (findError) throw new Error(findError.message)
-    if (existing) return existing.id
-  }
-
-  const { data, error } = await supabase
-    .from('titles')
-    .insert({
-      name: title.name,
-      year: title.year,
-      media_type: title.mediaType,
-      tmdb_id: title.tmdbId,
-      poster_path: title.posterPath,
-    })
-    .select('id')
-    .single()
-  if (error) {
-    // unique (tmdb_id, media_type): someone inserted it first — reuse theirs
-    if (error.code === '23505' && title.tmdbId !== null) {
-      const { data: raced, error: retryError } = await supabase
-        .from('titles')
-        .select('id')
-        .eq('tmdb_id', title.tmdbId)
-        .eq('media_type', title.mediaType)
-        .single()
-      if (retryError) throw new Error(retryError.message)
-      return raced.id
-    }
-    throw new Error(error.message)
-  }
-  return data.id
+  const { data, error } = await supabase.rpc('ensure_title', {
+    // generated types don't model nullable RPC params; null is valid for all
+    // three — a manual entry has no TMDB id, year or poster.
+    p_tmdb_id: title.tmdbId as number,
+    p_media_type: title.mediaType,
+    p_name: title.name,
+    p_year: title.year as number,
+    p_poster_path: title.posterPath as string,
+  })
+  if (error) throw new Error(error.message)
+  return data as string
 }
 
 /**
@@ -1281,11 +1261,34 @@ export interface GroupLogEntry {
 }
 
 /**
- * Every REVEALED session of the group, newest first, each with its Mashed
- * score computed from its own rubric snapshot. One scorecards query covers
- * all sessions (RLS: revealed rows are member-visible).
+ * One revealed night with EVERY member's card still attached. The group log
+ * throws this detail away (it only needs the Mashed number); the history
+ * screen is built entirely out of it, which is why the two share a loader
+ * instead of querying twice.
  */
-export async function fetchGroupLog(groupId: string): Promise<GroupLogEntry[]> {
+export interface GroupHistoryNight {
+  sessionId: string
+  titleName: string
+  titleYear: number | null
+  mediaType: 'movie' | 'tv'
+  posterPath: string | null
+  tmdbId: number | null
+  revealedAt: string | null
+  /**
+   * The night's OWN rubric snapshot, in order — a session predates any later
+   * rubric edit, so history stays coherent. Carries labels, so nothing
+   * downstream has to re-resolve category names.
+   */
+  rubric: SessionRubricEntry[]
+  cards: MemberScorecard[]
+}
+
+/**
+ * Every REVEALED session of the group, newest first, with each night's rubric
+ * snapshot and every member's scorecard. One scorecards query covers all
+ * sessions (RLS: revealed rows are member-visible).
+ */
+async function loadGroupHistory(groupId: string): Promise<GroupHistoryNight[]> {
   const { data: sessions, error } = await supabase
     .from('reveal_sessions')
     .select('id, revealed_at, rubric, titles(tmdb_id, media_type, name, year, poster_path)')
@@ -1315,7 +1318,6 @@ export async function fetchGroupLog(groupId: string): Promise<GroupLogEntry[]> {
 
   return rows.map((r) => {
     const rubric = rubricFromJson(r.rubric) ?? []
-    const cards = bySession.get(r.id) ?? []
     return {
       sessionId: r.id,
       titleName: r.titles!.name,
@@ -1324,9 +1326,30 @@ export async function fetchGroupLog(groupId: string): Promise<GroupLogEntry[]> {
       posterPath: r.titles!.poster_path,
       tmdbId: r.titles!.tmdb_id,
       revealedAt: r.revealed_at,
-      mashed: rubric.length > 0 ? mashedScore(cards, weightsFromRubric(rubric)) : null,
+      rubric,
+      cards: bySession.get(r.id) ?? [],
     }
   })
+}
+
+/** The group's memory, unabridged — see `GroupHistoryNight`. */
+export async function fetchGroupHistory(groupId: string): Promise<GroupHistoryNight[]> {
+  return loadGroupHistory(groupId)
+}
+
+export async function fetchGroupLog(groupId: string): Promise<GroupLogEntry[]> {
+  const nights = await loadGroupHistory(groupId)
+  return nights.map((n) => ({
+    sessionId: n.sessionId,
+    titleName: n.titleName,
+    titleYear: n.titleYear,
+    mediaType: n.mediaType,
+    posterPath: n.posterPath,
+    tmdbId: n.tmdbId,
+    revealedAt: n.revealedAt,
+    // No rubric snapshot means no defensible number, same as before.
+    mashed: n.rubric.length > 0 ? mashedScore(n.cards, weightsFromRubric(n.rubric)) : null,
+  }))
 }
 
 // ---- global (community) ratings ------------------------------------------

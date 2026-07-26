@@ -257,6 +257,15 @@ trigger pins them private). Friends are simply your groupmates — no follow
 graph. Visibility chips share one vocabulary: globe + teal = public,
 lock + muted = private.
 
+**What a shared card may carry (2026-07-25):** the group name, the title, the
+MASHED score, the clash headline, and counts (`N scored`, `spread`). Never a
+member name, never an individual score. Your group's number is yours to post;
+your friend's 3/10 is not yours to publish, and they never agreed to it. This
+is enforced by shape, not by care: `renderRevealCard` takes a
+`RevealCardInput` of aggregates only, so there is no code path from a
+scorecard to the image. Any future share surface must be built the same way —
+never by screenshotting a DOM that has personal data in it.
+
 **Onboarding (2026-07-18):** first-run is two beats. (1) The slides teach
 with LIVE MINIATURES of the product, not icons: the avatar trio mashing
 into an 8.2 pill, blind slider fills growing under a "Locked, hidden from
@@ -385,6 +394,60 @@ baseline function grant, which is exactly how an open endpoint shipped on
 2026-07-25.
 
 ## Changelog
+
+- 2026-07-27 (the app gets an address): the browser build always existed —
+  Capacitor only wraps `dist/` — so the work was the three things a web app
+  needs and a wrapped one does not. **URLs**, via `lib/urlState.ts`: not a
+  router, a serialiser, because the view model is already a stack and browser
+  history is a stack. Every screen is now linkable, refresh keeps your place,
+  and Back means back. This is also what makes the share card finish its job:
+  a posted image with nowhere to click was a dead end. **A landing page**
+  (`web/`, static, no build step, deliberately not the app bundle) at the apex
+  with the app on `app.mashpotato.app`. **A social identity**: OG tags, a
+  manifest, and `maximum-scale=1.0, user-scalable=no` removed from the
+  viewport — blocking pinch-zoom is an accessibility failure on the web in a
+  way it is not inside a native shell. Security headers ship with it
+  (`public/_headers`), CSP verified in ENFORCING mode against a live session
+  rather than assumed.
+
+- 2026-07-27 (launch hardening — see `docs/SECURITY.md`): an audit of actual
+  privileges on HOSTED, rather than of the migrations, found three write/read
+  surfaces open and one missing ceiling. `titles` accepted an INSERT from any
+  signed-in user with arbitrary `name`/`poster_path` and is globally readable
+  (a route to put text in front of strangers, which is what App Store 1.2
+  polices); it also had UPDATE granted on every column, inert only because no
+  policy existed. `profiles` handed every signed-in user the whole row,
+  including `banned` — an oracle for who has been sanctioned. And nothing put
+  a ceiling on write volume. Title writes now go through `ensure_title`
+  (validates shape, holds MANUAL titles to the comment wordlist); profiles
+  keeps its permissive row policy but re-grants only the columns the app
+  reads; and `consume_rate_limit` backs BEFORE INSERT triggers plus the TMDB
+  proxy. The limiter FAILS OPEN, because a rate limiter that takes browsing
+  down when it breaks is worse than the abuse it prevents. Suites: pgTAP 270,
+  twin +9. Hosted advisors: 0 ERROR, and `rls_policy_always_true` is gone.
+
+- 2026-07-25 (the group's whole run, availability, and a card you can post):
+  three features drawn from a competitive read of Letterboxd and the
+  group-picking category. (1) **Group history** — `lib/affinity.ts` computes
+  agreement ACROSS nights: your taste twin, your foil, the category a pair
+  always clashes on, and the group's recap. Third-party tools exist purely to
+  compute Letterboxd compatibility, and all of them produce one blunt
+  percentage because a star rating is all they have; per-CATEGORY scores on
+  films watched together are the thing nobody else can copy. Every claim is
+  floored — a pair needs three shared nights, a category needs two, the same
+  discipline as `raters >= 2` in `mostUnitedCategory`. **No member standings
+  table**, per the reward-loop law: the viewer sees their own tilt against the
+  group and nobody else's. Costs nothing extra to fetch — `fetchGroupLog`
+  already loaded every card and threw them away.
+  (2) **Where to watch, at the decision point** — `WhereToWatchLine` on
+  StartRound's picked card and on poll ballots, because "it's not on anything
+  we have" is what actually kills movie night. Not on poster grids: N tiles
+  would mean N calls, and a tile already leads to the title page.
+  (3) **Share the Reveal** — a canvas-drawn 1080x1350 card. **Drawn, never
+  screenshotted**, and that is the privacy design: the card is composed from
+  an explicit `RevealCardInput` of aggregates, so member names and individual
+  scores physically cannot reach the image. A preview sheet shows the real
+  card before it leaves. See the privacy model below.
 
 - 2026-07-26 (messaging, phases 2-6): the client, the message centre, share
   cards, moderation, and push. The envelope in the header carries an unread

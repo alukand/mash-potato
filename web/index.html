@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mash Potato — your group's shared definition of a good movie</title>
+    <meta
+      name="description"
+      content="Build one rubric with your friends, rate every film blind, then watch the Reveal drop all your scores at once. One Mashed score per title, and the argument is the point."
+    />
+    <meta name="theme-color" content="#15121B" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href="https://mashpotato.app/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Mash Potato" />
+    <meta property="og:title" content="Mash Potato" />
+    <meta
+      property="og:description"
+      content="Your group's shared definition of a good movie. Rate blind, reveal together, get one Mashed score."
+    />
+    <meta property="og:url" content="https://mashpotato.app/" />
+    <meta property="og:image" content="https://mashpotato.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400..700&family=Azeret+Mono:wght@400..700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Tokens copied from src/index.css (DESIGN.md calls them LOCKED). Copied,
+         not imported: this page must stay a single static file that loads
+         instantly and never pulls in the app bundle. -->
+    <style>
+      :root {
+        --bg: #15121b;
+        --surface: #1e1926;
+        --surface-2: #271f31;
+        --line: #352b42;
+        --text: #f3eee5;
+        --muted: #9c93ab;
+        --gold: #e7b24e;
+        --teal: #51c5be;
+        --coral: #e07a5f;
+        --lime: #c9d14e;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Hanken Grotesk', system-ui, sans-serif;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      /* the app's teal/gold wash, so the two surfaces read as one product */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(60% 40% at 50% 0%, rgba(81, 197, 190, 0.16), transparent 70%),
+          radial-gradient(50% 40% at 80% 30%, rgba(231, 178, 78, 0.08), transparent 70%);
+      }
+      main { position: relative; max-width: 940px; margin: 0 auto; padding: 0 24px; }
+      .wrap { padding: 72px 0 96px; }
+      .eyebrow {
+        font-family: 'Azeret Mono', ui-monospace, monospace;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        color: var(--muted);
+      }
+      h1 {
+        font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+        font-size: clamp(38px, 7vw, 68px);
+        font-weight: 700;
+        line-height: 1.03;
+        letter-spacing: -0.02em;
+        margin: 18px 0 20px;
+        max-width: 16ch;
+      }
+      .lede { font-size: clamp(16px, 2.2vw, 20px); color: var(--muted); max-width: 54ch; }
+      .lede strong { color: var(--text); font-weight: 600; }
+      .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; align-items: center; }
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 14px 26px;
+        font-weight: 700;
+        font-size: 15px;
+        text-decoration: none;
+        color: var(--bg);
+        background-image: linear-gradient(180deg, #6fd6d0, #3fb0a9);
+        box-shadow: 0 14px 30px -14px rgba(81, 197, 190, 0.8);
+      }
+      .cta.secondary {
+        background-image: none;
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--line);
+        box-shadow: none;
+      }
+      section { margin-top: 92px; }
+      h2 {
+        font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+        font-size: clamp(26px, 4vw, 36px);
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin-bottom: 28px;
+      }
+      .steps { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+      .card {
+        background: linear-gradient(180deg, var(--surface), #1a1622);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        padding: 26px;
+      }
+      .card .n {
+        font-family: 'Azeret Mono', ui-monospace, monospace;
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        color: var(--teal);
+        text-transform: uppercase;
+      }
+      .card h3 {
+        font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+        font-size: 20px;
+        font-weight: 600;
+        margin: 10px 0 8px;
+      }
+      .card p { color: var(--muted); font-size: 14.5px; }
+      /* The Mashed number is ALWAYS teal and always labelled — the one piece of
+         locked identity this page must not get wrong. */
+      .score { display: flex; align-items: baseline; gap: 12px; margin-top: 26px; }
+      .score .big {
+        font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+        font-size: 74px;
+        font-weight: 700;
+        color: var(--teal);
+        line-height: 1;
+      }
+      .score .label {
+        font-family: 'Azeret Mono', ui-monospace, monospace;
+        font-size: 11px;
+        letter-spacing: 0.2em;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+      .headline-demo { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-size: 22px; margin-top: 18px; }
+      .headline-demo .u { color: var(--teal); font-weight: 600; }
+      .headline-demo .c { color: var(--coral); font-weight: 600; }
+      footer {
+        margin-top: 104px;
+        border-top: 1px solid var(--line);
+        padding: 28px 0 56px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      footer a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
+      footer a:hover { color: var(--text); }
+      footer nav { display: flex; flex-wrap: wrap; gap: 18px; }
+      @media (prefers-reduced-motion: no-preference) {
+        .wrap > * { animation: rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+        .wrap > *:nth-child(2) { animation-delay: 0.06s; }
+        .wrap > *:nth-child(3) { animation-delay: 0.12s; }
+        @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="wrap">
+        <p class="eyebrow">Mash Potato</p>
+        <h1>Your group's shared definition of a good movie.</h1>
+        <p class="lede">
+          Most rating apps ask one person for one number. Mash Potato asks your
+          whole group — you build the rubric together, everyone scores
+          <strong>blind</strong>, and the Reveal drops all of it at once.
+        </p>
+        <div class="cta-row">
+          <a class="cta" href="https://app.mashpotato.app">Open the app</a>
+          <a class="cta secondary" href="#how">See how it works</a>
+        </div>
+      </div>
+
+      <section id="how">
+        <h2>How a round works</h2>
+        <div class="steps">
+          <div class="card">
+            <p class="n">01 — Agree</p>
+            <h3>Set the rubric once</h3>
+            <p>
+              Story, Acting, Pacing, Score, and the rest — weighted the way your
+              group actually argues. Comedy night makes Humor heavy.
+            </p>
+          </div>
+          <div class="card">
+            <p class="n">02 — Score blind</p>
+            <h3>Nobody sees anybody</h3>
+            <p>
+              Everyone rates on their own. Nobody anchors on the loudest opinion,
+              because nobody can see it yet.
+            </p>
+          </div>
+          <div class="card">
+            <p class="n">03 — Reveal</p>
+            <h3>All at once</h3>
+            <p>
+              One Mashed score for the film — and the headline is where you
+              disagreed, because that is the interesting part.
+            </p>
+          </div>
+        </div>
+
+        <div class="score">
+          <span class="big">7.4</span>
+          <span class="label">Mashed</span>
+        </div>
+        <p class="headline-demo">
+          United on <span class="u">Story</span>. Split over
+          <span class="c">Pacing</span>.
+        </p>
+      </section>
+
+      <footer>
+        <p>© Mash Potato</p>
+        <!-- No Privacy link yet, deliberately: the policy is real legal text
+             and a footer link to a 404 is worse than no link. It is on the
+             App Store blocker list in docs/SECURITY.md; add the link and
+             /privacy.html together. -->
+        <nav>
+          <a href="/support.html">Support</a>
+          <a href="https://app.mashpotato.app">Open the app</a>
+        </nav>
+      </footer>
+    </main>
+  </body>
+</html>

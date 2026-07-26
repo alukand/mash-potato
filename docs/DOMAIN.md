@@ -1,5 +1,48 @@
 # mashpotato.app — domain + hosted auth checklist
 
+## Deploy topology (2026-07-27)
+
+Two static sites, one repo, no server:
+
+| Host | Source | Build | Output |
+| --- | --- | --- | --- |
+| `mashpotato.app` | `web/` | none | `web/` |
+| `app.mashpotato.app` | repo root | `npm run build` | `dist/` |
+
+The landing page is hand-written and dependency-free on purpose: somebody
+reading the pitch should not download the app bundle to do it.
+
+**Cloudflare Pages (or Netlify — both read `_redirects` / `_headers`).**
+Two projects, same repo, different root + build command. The app project needs
+build env `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (the anon key is
+public by design; see CLAUDE.md).
+
+**DNS:** apex → the landing project, `app` CNAME → the app project, `www` →
+redirect to the apex.
+
+### Before the first deploy
+
+1. **Produce `web/og.png`.** Open `web/og.html`, set the viewport to exactly
+   1200×630, screenshot the card, save it as `web/og.png`. Until it exists the
+   `og:image` on both sites 404s, and some scrapers cache that failure — so do
+   this first, not after sharing a link.
+2. **Supabase → Auth → URL Configuration**: Site URL `https://mashpotato.app`,
+   and add `https://app.mashpotato.app` plus the Pages preview domains to the
+   redirect allowlist. Nothing depends on this today (every email flow is a
+   6-digit code, not a link), but it must be right before any link-based flow
+   ships.
+3. Hard-refresh a deep link such as `/film/27205` on the deployed app to prove
+   the SPA fallback in `public/_redirects` is live. Without it every shared
+   link 404s on reload.
+
+### Known gaps
+
+- No `apple-touch-icon`: iOS ignores SVG and needs a PNG. Android and desktop
+  take the SVG from `public/manifest.webmanifest`.
+- No `/privacy` page yet, so the landing footer deliberately does not link to
+  one. It is an App Store blocker — see `docs/SECURITY.md`.
+
+
 ## Hosted deploy state (last synced 2026-07-25)
 
 Project `lvmcwvhlfijvegxbqipc`. The repo is **linked** (`supabase link` done

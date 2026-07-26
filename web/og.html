@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>og.png source — 1200×630</title>
+    <!--
+      SOURCE FOR web/og.png. Not deployed; it exists so the social card can be
+      regenerated exactly rather than redrawn by hand in a design tool.
+
+      To export: open this file, set the viewport to exactly 1200×630, and
+      screenshot the .card element. Save as web/og.png.
+
+      (Generating the PNG in-repo would need an image toolchain the project
+      does not have, and this app deliberately keeps its dependencies few.)
+    -->
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400..700&family=Azeret+Mono:wght@400..700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { background: #0b0910; display: grid; place-items: center; min-height: 100vh; }
+      .card {
+        width: 1200px;
+        height: 630px;
+        background:
+          radial-gradient(60% 70% at 25% 5%, rgba(81, 197, 190, 0.2), transparent 70%),
+          radial-gradient(50% 60% at 85% 40%, rgba(231, 178, 78, 0.09), transparent 70%),
+          #15121b;
+        color: #f3eee5;
+        padding: 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        font-family: 'Hanken Grotesk', system-ui, sans-serif;
+        position: relative;
+        overflow: hidden;
+      }
+      .eyebrow {
+        font-family: 'Azeret Mono', monospace;
+        font-size: 21px;
+        font-weight: 700;
+        letter-spacing: 0.3em;
+        color: #9c93ab;
+      }
+      h1 {
+        font-family: 'Bricolage Grotesque', sans-serif;
+        font-size: 76px;
+        font-weight: 700;
+        line-height: 1.06;
+        letter-spacing: -0.02em;
+        max-width: 15ch;
+      }
+      .sub { font-size: 27px; color: #9c93ab; }
+      /* Locked identity: the Mashed number is always teal and always labelled. */
+      .score { position: absolute; right: 80px; bottom: 150px; text-align: right; }
+      .score .big {
+        font-family: 'Bricolage Grotesque', sans-serif;
+        font-size: 116px;
+        font-weight: 700;
+        color: #51c5be;
+        line-height: 1;
+      }
+      .score .lab {
+        font-family: 'Azeret Mono', monospace;
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: 0.3em;
+        color: #9c93ab;
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <p class="eyebrow">MASH POTATO</p>
+      <h1>Your group's shared definition of a good movie.</h1>
+      <p class="sub">Rate blind. Reveal together. One Mashed score.</p>
+      <div class="score">
+        <div class="big">7.4</div>
+        <div class="lab">MASHED</div>
+      </div>
+    </div>
+  </body>
+</html>

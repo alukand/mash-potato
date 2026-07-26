@@ -3,10 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
-    />
+    <!-- No `maximum-scale` / `user-scalable=no`: this ships to browsers now,
+         and blocking pinch-zoom on the web denies people who need to magnify
+         text any way to read it. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- The CSP lives in public/_headers, NOT here. This file also ships
+         inside the native app, where the origin is capacitor://localhost and a
+         web-shaped policy would be wrong. Headers apply to the web origin
+         only, which is exactly the scope that wants them. -->
     <meta name="theme-color" content="#15121B" />
     <meta name="color-scheme" content="dark" />
     <meta
@@ -14,6 +18,25 @@
       content="Mash Potato — your group's shared definition of a good movie. Rate blind, reveal together, get one Mashed score."
     />
     <title>Mash Potato</title>
+    <!-- No apple-touch-icon yet: it must be a PNG (iOS ignores SVG), and
+         pointing at a file that 404s is worse than letting iOS fall back.
+         Android and desktop take the SVG from the manifest. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Link previews. Without these a shared mashpotato.app link unfurls as
+         bare text, which wastes the one moment someone is deciding to click. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Mash Potato" />
+    <meta property="og:title" content="Mash Potato" />
+    <meta
+      property="og:description"
+      content="Your group's shared definition of a good movie. Rate blind, reveal together, get one Mashed score."
+    />
+    <meta property="og:url" content="https://app.mashpotato.app/" />
+    <meta property="og:image" content="https://mashpotato.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
 
     <!-- Fonts: Bricolage Grotesque (display + big scores — warm, characterful,
          nobody else's movie app), Hanken Grotesk (UI/body), Azeret Mono
@@ -30,35 +53,10 @@
   </head>
   <body>
     <div id="root"></div>
-    <!-- Startup-crash net: if the app JS throws before React ever mounts (e.g.
-         missing env config in a release build), #root stays empty forever with
-         no visible signal. This shows the actual error instead of a blank
-         screen — critical on iOS where there's no console to check. -->
-    <script>
-      (function () {
-        function show(msg) {
-          var root = document.getElementById('root')
-          if (root && root.childElementCount === 0) {
-            root.innerHTML =
-              '<div style="min-height:100dvh;display:flex;flex-direction:column;' +
-              'align-items:center;justify-content:center;padding:24px;text-align:center;' +
-              'font-family:-apple-system,system-ui,sans-serif;color:#f3eee5;">' +
-              '<p style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;' +
-              "color:#9c93ab;margin-bottom:12px;\">Mash Potato couldn't start</p>" +
-              '<p style="max-width:320px;font-size:13px;line-height:1.5;color:#e07a5f;">' +
-              msg +
-              '</p></div>'
-          }
-        }
-        window.addEventListener('error', function (e) {
-          show((e && e.message) || 'Unknown startup error.')
-        })
-        window.addEventListener('unhandledrejection', function (e) {
-          var reason = e && e.reason
-          show((reason && reason.message) || String(reason) || 'Unknown startup error.')
-        })
-      })()
-    </script>
+    <!-- Startup-crash net. In public/boot.js rather than inline so a strict
+         `script-src 'self'` CSP covers it without a hash that would silently
+         break whenever the script is edited. -->
+    <script src="/boot.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -4,7 +4,7 @@ import { fetchTitleDetail, posterUrl } from '../lib/api'
 import type { GroupInfo, NewTitle } from '../lib/api'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 import type { TaggedResult } from '../hooks/useTmdbSearch'
-import { CtaButton, fieldClass } from './ui'
+import { CtaButton, WhereToWatchLine, fieldClass } from './ui'
 import { GroupInviteSheet } from './GroupInviteSheet'
 
 interface StartRoundProps {
@@ -129,6 +129,13 @@ export function StartRound({
                 {picked.mediaType === 'movie' ? 'Film' : 'TV'}
                 {picked.year ? ` ${picked.year}` : ''}
               </p>
+              {/* The last screen before a round starts is the last useful
+                  moment to learn nobody can actually play this tonight. */}
+              <WhereToWatchLine
+                tmdbId={picked.tmdbId}
+                mediaType={picked.mediaType}
+                className="mt-1.5"
+              />
             </div>
             <button
               type="button"

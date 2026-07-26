@@ -1,0 +1,29 @@
+# Cloudflare Pages / Netlify header rules for the app origin.
+#
+# The CSP is an allow-list of everywhere this app legitimately talks to. Keep
+# it in step with reality or it fails closed:
+#   - image.tmdb.org        posters and provider logos
+#   - fonts.googleapis.com  the stylesheet; fonts.gstatic.com the font files
+#   - *.supabase.co         REST + auth over https, realtime over WSS. The wss
+#                           entry is the one people forget, and realtime is the
+#                           first thing that dies without it.
+#   - blob: / data:         the share card is drawn on a canvas and previewed
+#                           from an object URL
+# `script-src 'self'` needs no hash because the startup-crash net lives in
+# /boot.js rather than inline.
+#
+# `style-src 'unsafe-inline'` is NOT laziness: React `style={{…}}` compiles to
+# style ATTRIBUTES, which style-src governs, and the app uses them throughout
+# (gradients, member colours, animation delays). Dropping it blanks the UI.
+# Scripts, which are what actually matter here, stay strict.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://image.tmdb.org; connect-src 'self' https://lvmcwvhlfijvegxbqipc.supabase.co wss://lvmcwvhlfijvegxbqipc.supabase.co; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# Vite fingerprints these, so they can be cached hard.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

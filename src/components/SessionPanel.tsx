@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { analyze, categoryStat, formatScore } from '../lib/scoring'
-import type { CategoryScores, MemberScorecard } from '../lib/scoring'
+import type { CategoryScores, CategoryStat, MemberScorecard } from '../lib/scoring'
 import { scoreColor } from '../lib/scoreColor'
 import { weightsFromRubric } from '../lib/mapping'
 import {
@@ -31,6 +31,7 @@ import type { MemberRubric } from '../lib/rubricCatalog'
 import { Avatar } from './avatars'
 import { CtaButton, ExtraCategoryChips, ScoreSliderRow, fieldClassSm } from './ui'
 import { RoundScorer } from './RoundScorer'
+import { ShareRevealSheet } from './ShareRevealSheet'
 import { ScoreRing } from './ScoreRing'
 import { MashMath } from './MashMath'
 
@@ -79,6 +80,41 @@ const DISCUSS_SEEDS: Record<string, (label: string) => string> = {
 const discussSeedFor = (key: string, label: string) =>
   (DISCUSS_SEEDS[key] ?? ((l: string) => `Split over ${l}. Defend your take…`))(label)
 
+/**
+ * Which headline the Reveal is making. ONE source of truth for the branching,
+ * rendered two ways: as colored JSX on screen, as flat text on the shareable
+ * card. The awkward case is real — when one category wins BOTH crowns, naming
+ * a united AND a split category produces "United on Story. Split over Story."
+ * — so the branch has to be decided once, not re-derived per renderer.
+ */
+type RevealHeadline =
+  | { kind: 'sweptAgree' }
+  | { kind: 'sweptSplit'; range: number }
+  | { kind: 'split'; united: string; contested: string }
+
+function revealHeadline(
+  united: CategoryStat,
+  contested: CategoryStat,
+  labelFor: (key: string) => string,
+): RevealHeadline {
+  if (united.category !== contested.category) {
+    return {
+      kind: 'split',
+      united: labelFor(united.category),
+      contested: labelFor(contested.category),
+    }
+  }
+  return contested.range === 0
+    ? { kind: 'sweptAgree' }
+    : { kind: 'sweptSplit', range: contested.range }
+}
+
+function headlineText(h: RevealHeadline): string {
+  if (h.kind === 'sweptAgree') return 'Same wavelength, every category.'
+  if (h.kind === 'sweptSplit') return `Split by ${h.range}, every category.`
+  return `United on ${h.united}. Split over ${h.contested}.`
+}
+
 export function SessionPanel({
   group,
   members,
@@ -113,6 +149,9 @@ export function SessionPanel({
   const [rerateBusy, setRerateBusy] = useState(false)
   const [rerateError, setRerateError] = useState<string | null>(null)
   const [confirmRerate, setConfirmRerate] = useState(false)
+
+  // ---- share the reveal outward (preview first; see ShareRevealSheet) ----
+  const [shareOpen, setShareOpen] = useState(false)
 
   // Reset per-session state the moment the session changes (a new round can
   // replace the latest session without remounting this component). Render-time
@@ -463,6 +502,7 @@ export function SessionPanel({
   const aligned = result.mostUnited
   const clash = result.mostContested
   const outlier = result.outlier
+  const headline = aligned && clash ? revealHeadline(aligned, clash, labelFor) : null
 
   return (
     <>
@@ -690,7 +730,7 @@ export function SessionPanel({
       )}
 
       {/* ---- The Reveal: disagreement as a headline (the moat) ---- */}
-      {aligned && clash && (
+      {aligned && clash && headline && (
         <section className="mp-rise mt-8 px-1" style={{ animationDelay: '80ms' }}>
           <div
             aria-hidden
@@ -706,26 +746,19 @@ export function SessionPanel({
           <h3 className="mt-2.5 font-display text-[27px] font-medium leading-[1.22]">
             {/* Bricolage carries no italic (faux-oblique only); the stress
                 comes from color + a true weight step instead. */}
-            {aligned.category === clash.category ? (
-              // One category winning BOTH crowns means every shared category
-              // tied on range (common in two-member groups): naming a united
-              // and a split category would be a lie, so name the sweep.
-              clash.range === 0 ? (
-                <>
-                  Same wavelength, <span className="font-semibold text-teal">every category</span>.
-                </>
-              ) : (
-                <>
-                  Split by {clash.range},{' '}
-                  <span className="font-semibold text-coral">every category</span>.
-                </>
-              )
+            {headline.kind === 'sweptAgree' ? (
+              <>
+                Same wavelength, <span className="font-semibold text-teal">every category</span>.
+              </>
+            ) : headline.kind === 'sweptSplit' ? (
+              <>
+                Split by {headline.range},{' '}
+                <span className="font-semibold text-coral">every category</span>.
+              </>
             ) : (
               <>
-                United on{' '}
-                <span className="font-semibold text-teal">{labelFor(aligned.category)}</span>.
-                Split over{' '}
-                <span className="font-semibold text-coral">{labelFor(clash.category)}</span>.
+                United on <span className="font-semibold text-teal">{headline.united}</span>. Split
+                over <span className="font-semibold text-coral">{headline.contested}</span>.
               </>
             )}
           </h3>
@@ -924,7 +957,18 @@ export function SessionPanel({
             </div>
           </div>
         ) : (
-          <div className="flex items-center justify-center gap-2.5">
+          <div className="flex flex-wrap items-center justify-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setShareOpen(true)}
+              className="flex items-center gap-1.5 rounded-full border border-teal/40 bg-teal/10 px-5 py-2.5 text-[12px] font-semibold text-teal transition-colors active:bg-teal/20"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 16V4m0 0L8 8m4-4 4 4" />
+                <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+              </svg>
+              Share
+            </button>
             <button
               type="button"
               onClick={() => setConfirmRerate(true)}
@@ -952,6 +996,25 @@ export function SessionPanel({
           </p>
         )}
       </section>
+
+      {/* The card is built field by field from aggregates. Nothing personal is
+          in scope here, so nothing personal can end up in the image. */}
+      {shareOpen && (
+        <ShareRevealSheet
+          card={{
+            groupName: group.name,
+            titleName: session.titleName,
+            titleYear: session.titleYear,
+            mediaType: session.mediaType,
+            posterPath: session.posterPath,
+            mashed: result.mashed,
+            spread: result.spread,
+            raters: result.lockedCount,
+            headline: headline ? headlineText(headline) : null,
+          }}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
     </>
   )
 }

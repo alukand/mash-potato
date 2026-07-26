@@ -976,6 +976,27 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limits: {
+        Row: {
+          bucket: string
+          hits: number
+          user_id: string
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          hits?: number
+          user_id: string
+          window_start: string
+        }
+        Update: {
+          bucket?: string
+          hits?: number
+          user_id?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       reveal_sessions: {
         Row: {
           created_at: string
@@ -1302,6 +1323,10 @@ export type Database = {
         Args: { p_group_id: string; p_title_id: string }
         Returns: boolean
       }
+      consume_rate_limit: {
+        Args: { p_bucket: string; p_limit: number; p_window_seconds: number }
+        Returns: undefined
+      }
       conversation_read_receipts: {
         Args: { p_conversation_id: string }
         Returns: {
@@ -1335,6 +1360,16 @@ export type Database = {
       dm_request_declined: {
         Args: { p_conversation_id: string }
         Returns: boolean
+      }
+      ensure_title: {
+        Args: {
+          p_media_type: string
+          p_name: string
+          p_poster_path: string
+          p_tmdb_id: number
+          p_year: number
+        }
+        Returns: string
       }
       group_conversation: { Args: { p_group_id: string }; Returns: string }
       group_cred: {

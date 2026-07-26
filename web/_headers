@@ -1,0 +1,13 @@
+# Header rules for the LANDING origin (mashpotato.app).
+#
+# Much tighter than the app's, because this is three static files: no API
+# calls, no images beyond the local favicon, no scripts at all. `script-src
+# 'none'` is a real statement — if this page ever needs JavaScript, that is the
+# moment to ask whether it still belongs on a static marketing site.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains

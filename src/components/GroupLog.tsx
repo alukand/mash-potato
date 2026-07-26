@@ -8,6 +8,8 @@ interface GroupLogProps {
   entries: GroupLogEntry[]
   /** Open that night's full reveal in the panel (late scoring included). */
   onOpenSession: (sessionId: string) => void
+  /** Open the group's whole run: taste twins, the recap, every night. */
+  onOpenHistory: () => void
   /** mp-rise stagger, e.g. '240ms'. */
   animationDelay?: string
 }
@@ -15,7 +17,12 @@ interface GroupLogProps {
 // The group's full reveal history, with quick text + media filters and a
 // one-line memory strip (average Mashed + the group's best round) once
 // there's enough history to mean something. Every row reopens that night.
-export function GroupLog({ entries, onOpenSession, animationDelay }: GroupLogProps) {
+export function GroupLog({
+  entries,
+  onOpenSession,
+  onOpenHistory,
+  animationDelay,
+}: GroupLogProps) {
   const [query, setQuery] = useState('')
   const [media, setMedia] = useState<'all' | 'movie' | 'tv'>('all')
 
@@ -51,21 +58,33 @@ export function GroupLog({ entries, onOpenSession, animationDelay }: GroupLogPro
         Tap any night to reopen its Reveal.
       </p>
 
-      {/* the group's memory, in one quiet line */}
+      {/* The group's memory in one quiet line — and the door to all of it.
+          Same three-night floor the history screen uses before it will make
+          a claim, so the door never opens onto "not enough nights yet". */}
       {showStats && (
-        <div className="mb-3 flex items-center gap-3 px-1 font-mono text-[10px] text-muted">
+        <button
+          type="button"
+          onClick={onOpenHistory}
+          className="mb-3 -mx-1 flex w-[calc(100%+0.5rem)] items-center gap-3 rounded-xl px-2 py-1.5 font-mono text-[10px] text-muted transition-colors active:bg-surface-2"
+        >
           <span>
             avg <span className="tabular text-teal">{formatScore(avg)}</span>
           </span>
           <span aria-hidden className="h-3 w-px bg-line" />
-          <span className="min-w-0 truncate">
+          <span className="min-w-0 flex-1 truncate text-left">
             best{' '}
             <span className="tabular" style={{ color: scoreColor(best.mashed ?? 0) }}>
               {formatScore(best.mashed)}
             </span>{' '}
             {best.titleName}
           </span>
-        </div>
+          <span className="flex shrink-0 items-center gap-1 uppercase tracking-[0.12em] text-teal">
+            The story
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m9 5 7 7-7 7" />
+            </svg>
+          </span>
+        </button>
       )}
 
       {entries.length > 3 && (
