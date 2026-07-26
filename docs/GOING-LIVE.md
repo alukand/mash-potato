@@ -94,27 +94,40 @@ An empty-looking zone at this point is correct — nothing should serve
 > landing page. If you would rather keep DNS elsewhere, your registrar must
 > support `ALIAS` or `ANAME` records.
 
-> **Why move nameservers at all?** A bare domain (`mashpotato.app`, no `www`)
-> cannot legally point at another hostname with a plain CNAME. Cloudflare
-> fakes it with CNAME flattening, which is what lets the apex serve the
-> landing page. If you would rather keep DNS elsewhere, your registrar must
-> support `ALIAS` or `ANAME` records.
-
 ## 2. The app → `app.mashpotato.app`
 
-1. In Cloudflare: **Workers & Pages** → **Create** → **Pages** →
-   **Connect to Git**.
+> **Make sure you are in the PAGES flow, not Workers.** Cloudflare now steers
+> new projects toward Workers, and its screens look nearly identical. Two
+> tells that you are in the wrong one: the heading says "Configure your
+> **Worker** project", and there is a **Deploy command** field containing
+> `npx wrangler deploy`. That would fail here — the repo has no
+> `wrangler.toml` and no Worker entry point. The Pages form has **no** deploy
+> command and **does** have a **Build output directory**.
+>
+> Pages is the right tool for this repo: two purely static sites, no
+> server-side code, already built around `_headers` and `_redirects`. Workers
+> static assets would work too, but needs a wrangler config committed per
+> site, and two configs in one repo is friction for no gain. Migrating a
+> static site to Workers later is documented and low-risk if you ever want to.
+
+1. In Cloudflare: **Workers & Pages** → **Create application** → the **Pages**
+   tab → **Connect to Git**. (If you land on a form asking for a deploy
+   command, back out — you are in Workers.)
 2. Authorise GitHub and pick **`alukand/mash-potato`**.
 3. Set up the build:
 
    | Field | Value |
    | --- | --- |
-   | Project name | `mashpotato-app` |
+   | Project name | `mash-potato` |
    | Production branch | `master` |
    | Framework preset | None |
    | Build command | `npm run build` |
    | Build output directory | `dist` |
    | Root directory | *(leave blank)* |
+
+   The project name sets the preview subdomain, so this gives you
+   `mash-potato.pages.dev`. It has nothing to do with the custom domain you
+   attach later.
 
 4. Expand **Environment variables (advanced)** and add two, for **Production**:
 
@@ -144,7 +157,7 @@ A **second** Pages project, from the **same repository**.
 
    | Field | Value |
    | --- | --- |
-   | Project name | `mashpotato-web` |
+   | Project name | `mash-potato-web` |
    | Production branch | `master` |
    | Build command | *(leave completely empty)* |
    | Build output directory | `web` |
@@ -166,7 +179,7 @@ Supabase dashboard → project `lvmcwvhlfijvegxbqipc` → **Authentication** →
 
 - **Site URL:** `https://mashpotato.app`
 - **Redirect URLs:** add `https://app.mashpotato.app` and
-  `https://mashpotato-app.pages.dev` (the preview domain).
+  `https://mash-potato.pages.dev` (the preview domain).
 
 Nothing depends on this today — every email flow in the app is a 6-digit code
 you type in, not a link you click — but it has to be right before any
