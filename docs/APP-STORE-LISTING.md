@@ -132,8 +132,17 @@ Accepted sizes, portrait: **1242 x 2688** or **1284 x 2778**.
 
 Straight from an iPhone works only if the phone produces one of those:
 11 Pro Max / XS Max give 1242 x 2688; 12/13/14 Pro Max give 1284 x 2778.
-A 15/16/17 Pro Max gives 1290 x 2796 and will be refused, six pixels off.
-Resize to 1284 x 2778 in that case.
+A 15/16 Pro gives 1179 x 2556 and a 15/16/17 Pro Max gives 1290 x 2796 —
+both refused. **Do not resize by hand**; run:
+
+```
+powershell -File scripts\shots.ps1 -In "C:\path	oaw\screenshots"
+```
+
+It scales to fit (never crops), centres on the app's own #15121B background so
+the couple of pixels of padding are invisible, strips the alpha channel Apple
+rejects, and numbers the files so ASC keeps your order. Output lands in an
+`asc-ready` subfolder.
 
 Take them signed in as the **review account**. No real users' names or scores.
 
