@@ -136,7 +136,8 @@ A 15/16 Pro gives 1179 x 2556 and a 15/16/17 Pro Max gives 1290 x 2796 —
 both refused. **Do not resize by hand**; run:
 
 ```
-powershell -File scripts\shots.ps1 -In "C:\path	oaw\screenshots"
+powershell -File scripts\shots.ps1 -In "C:\Users\thede\Desktop\shots"
+aw\screenshots"
 ```
 
 It scales to fit (never crops), centres on the app's own #15121B background so
