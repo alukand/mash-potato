@@ -14,27 +14,29 @@ anything.
 
 ---
 
-## 1. App Name — max 30
+## 1. App Name — max 30 — ALREADY SET, leave it
 
 ```
-Mash Potato
+Mash Potato: Rate Movies & TV
 ```
 
-Brand only. Keyword-stuffed names get rejected, and the subtitle is the right
-place for the descriptor.
+29/30. This is what App Store Connect already has, and it is good: it carries
+the brand plus three searchable words. **Do not change it**, and note the
+consequence below.
 
 ## 2. Subtitle — max 30
 
 ```
-Rate movies blind with friends
+Blind scoring for film clubs
 ```
 
-Carries the mechanic and four searchable words the name does not. Do not
-repeat any of these words in Keywords; Apple indexes name + subtitle +
-keywords together and duplicates waste the budget.
+28/30, two to spare.
 
-**This is exactly 30 of 30 characters — no room.** If you reword it, re-run
-`node scripts/check-listing.mjs` before pasting.
+**Why not "Rate movies blind with friends" (my earlier draft):** the app name
+already contains *Rate*, *Movies* and *TV*. Apple indexes name + subtitle +
+keywords as one pool, so repeating those words spends the budget twice and
+buys nothing. This version adds *blind*, *scoring*, *film* and *clubs* — four
+new terms — instead.
 
 ## 3. Promotional Text — max 170
 
@@ -47,10 +49,10 @@ Your group has argued about the same film three times. Build one rubric, everyon
 ## 4. Keywords — max 100
 
 Comma-separated, **no spaces after the commas** (a space costs a character).
-Singulars only where Apple already stems the plural.
+Nothing here repeats a word from the name or the subtitle.
 
 ```
-film,review,critic,score,rating,watchlist,cinema,tv,series,club,vote,poll,group,night,watch,taste
+review,critic,watchlist,cinema,series,vote,poll,group,night,watch,taste,friends,together,verdict
 ```
 
 ## 5. Description — max 4000
@@ -116,6 +118,168 @@ A round can be revealed by a single member, so no second account is needed to se
 
 User-generated content controls: a filtered wordlist on all posts and messages, per-item reporting, user blocking, an agreement to house rules before a first post, and a moderator queue that flags anything older than 24 hours.
 ```
+
+---
+
+## Screen by screen, exactly as ASC shows it
+
+Written against the real 1.0 page, top to bottom. Anything not named here is
+left alone.
+
+### Screenshots — the "iPhone 6.5" Display" box
+
+Accepted sizes, portrait: **1242 x 2688** or **1284 x 2778**.
+
+Straight from an iPhone works only if the phone produces one of those:
+11 Pro Max / XS Max give 1242 x 2688; 12/13/14 Pro Max give 1284 x 2778.
+A 15/16/17 Pro Max gives 1290 x 2796 and will be refused, six pixels off.
+Resize to 1284 x 2778 in that case.
+
+Take them signed in as the **review account**. No real users' names or scores.
+
+Drag 3-5 in. Order matters: the first three are what shows in search.
+
+1. a Reveal (Mashed score + the dot plot + the united/split headline)
+2. the blind round mid-scoring
+3. the rubric with its weights
+4. Home
+5. Discover
+
+`Choose File` works too if dragging is awkward.
+
+### Promotional Text
+
+Paste section 3. 143/170.
+
+### Description
+
+Paste section 5. 1634/4000.
+
+### Keywords
+
+Paste section 4. 96/100.
+
+### Support URL
+
+```
+https://mashpotato.app/support
+```
+
+### Marketing URL
+
+```
+https://mashpotato.app
+```
+
+### Version
+
+Already `1.0`. Leave it.
+
+### Copyright — max 200
+
+```
+2026 <your full legal name>
+```
+
+Year, space, name. No (c) symbol. Enrolled as an individual, this is your
+personal legal name.
+
+### Routing App Coverage File
+
+Skip. That is for maps apps.
+
+### App Clip
+
+Skip. The warning is normal; you have no clip.
+
+### iMessage App
+
+Skip. You have no iMessage extension, so it needs no screenshots.
+
+### Build
+
+`Add Build`, pick the processed build. If nothing is listed it is still
+processing in TestFlight; wait for the email and come back.
+
+### In-App Purchases and Subscriptions
+
+Nothing to do. There are none.
+
+### Game Center
+
+**Leave the checkbox unticked.**
+
+### App Review Information
+
+- **Sign-in required** — already ticked. Leave it.
+- **User name** — the review account's email address.
+- **Password** — its password.
+- **First name / Last name / Phone number / Email** — yours. A real reachable
+  phone and inbox; this is how they contact you about a rejection.
+- **Notes** — paste section 8.
+- **Attachment** — skip.
+
+### App Store Version Release
+
+Currently set to **Automatically release this version**.
+
+**Change it to `Manually release this version`** (the first radio button).
+Otherwise approval can push it public at 3am with no chance to check the
+listing first. You get a Release button when it is approved.
+
+### Then
+
+**Save** (top right), then **Add for Review**.
+
+---
+
+## The other two sections, in the left sidebar
+
+These live outside the version page and must both be done or Add for Review
+will refuse.
+
+### App Information (General -> App Information)
+
+- **Primary Category**: Entertainment
+- **Secondary Category**: leave empty
+- **Privacy Policy URL**: `https://mashpotato.app/privacy`
+- **Subtitle**: paste section 2
+- Save.
+
+### Age Rating (inside App Information)
+
+Answer honestly. For this app:
+- Violence, sexual content, nudity, profanity, horror, gambling, contests,
+  drugs, alcohol: **None**.
+- **User-generated content / in-app communication: Yes** — you have comments,
+  group chat and DMs. Saying no is a rejection and a takedown risk.
+- Whether it is moderated: **yes** — filtering, reporting, blocking and a
+  24-hour queue.
+- Unrestricted web access: **No**. No embedded browser.
+
+Expect **13+**, possibly 16+. Take what it computes.
+
+### App Privacy (Trust & Safety -> App Privacy)
+
+`Get Started`, then "Do you collect data from this app?" -> **Yes**.
+
+Tick exactly these four and nothing else:
+
+| Section | Item |
+|---|---|
+| Contact Info | Email Address |
+| Contact Info | Name |
+| User Content | Other User Content |
+| Identifiers | User ID |
+
+For each of the four: purpose **App Functionality**, linked to the user
+**Yes**, used for tracking **No**.
+
+Leave Usage Data, Diagnostics, Search History, Location, Purchases and
+Contacts unticked — none are collected. No analytics SDK, no crash reporter,
+and TMDB searches are proxied rather than stored against a user.
+
+Then **Publish**.
 
 ---
 
