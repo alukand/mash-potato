@@ -325,9 +325,10 @@ are to catch something.
 
 Tracked in `docs/SECURITY.md`:
 
-- **Moderation tooling** — the real App Store blocker. Reports currently pile
-  up in tables and banning means hand-written SQL, which cannot honour the
-  24-hour commitment Apple asks you to make.
+- ~~**Moderation tooling**~~ — shipped 2026-07-27. A role-gated report queue,
+  three actions, and an append-only audit trail, so the 24-hour commitment
+  Apple asks for is one someone can actually keep. Guideline 1.2 now has an
+  implementation for every clause; see `docs/APP-STORE.md`.
 - ~~**APNs secrets**~~ — push **is live and delivering** (verified 2026-07-27
   end-to-end against APNs). This line said the opposite for a fortnight
   because it was never re-tested. `docs/PUSH.md` has the checks.
