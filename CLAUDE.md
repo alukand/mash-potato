@@ -169,7 +169,17 @@ the twin's 98 file assert the local posture.
   `dist/`, and all four Capacitor call sites are `isNativePlatform()`-guarded.
   Deploy topology is a static landing page at `mashpotato.app` (`web/`, hand
   written, no build step, so a visitor reading the pitch never downloads the
-  app bundle) and the app at `app.mashpotato.app`. `public/_redirects` is the
+  app bundle) and the app at `app.mashpotato.app`. BOTH Cloudflare Pages
+  projects are GIT-CONNECTED to github/alukand/mash-potato and deploy on push
+  to master: `mash-potato` (build `npm run build`, output `dist`) and
+  `mash-potato-site` (NO build command, output `web`, path filter `web/*`).
+  The landing project used to be DIRECT-UPLOAD, so the repo and the live site
+  drifted silently — the privacy page served `[LEGAL ENTITY]` for a fortnight
+  after being fixed here. Moving a custom domain BETWEEN Pages projects costs
+  ~40s of 522 while the cert re-provisions, so build and verify the new
+  project on its own `.pages.dev` FIRST and move the domains last. The retired
+  `mash-potato-web` is kept, domain-less, as a rollback.
+  `public/_redirects` is the
   SPA fallback and is NOT optional now that URLs exist. `public/_headers`
   carries the CSP — it lives there and NOT in a meta tag, because index.html
   also ships inside the native app where the origin is `capacitor://localhost`.
