@@ -133,9 +133,11 @@ later for "now with X".
 and pulls harsher UGC scrutiny.
 
 **Age rating.** The questionnaire asks about user-generated content and
-unrestricted messaging. This app has both, so expect **12+ or higher**. Answer
-honestly; understating it is its own rejection, and the moderation tooling is
-what lets you answer "yes, with controls" instead of "yes, unmoderated".
+unrestricted messaging. This app has both. Apple has replaced the old
+4+/9+/12+/17+ tiers with **4+ / 9+ / 13+ / 16+ / 18+**, so expect **13+,
+possibly 16+**. Answer honestly; understating it is its own rejection, and the
+moderation tooling is what lets you answer "yes, with controls" instead of
+"yes, unmoderated". Exact answers in `docs/APP-STORE-LISTING.md`.
 
 **App Privacy questionnaire.** This is the fiddly one, so here is the mapping
 from the actual schema:
