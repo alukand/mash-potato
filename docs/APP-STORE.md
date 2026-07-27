@@ -31,53 +31,75 @@ blocker.
 
 ---
 
-## The three things that will actually hold you up
+## What still needs a human
 
-### 1. The reviewer cannot sign up, and cannot be left staring at an empty app
+### 1. The review account — the one thing that still needs you
 
-This is the most likely rejection, and it is entirely avoidable.
+This is the most likely rejection and the only remaining code-side blocker.
 
-The app requires an account. Apple **requires working credentials** in App
-Store Connect → App Review Information → Sign-In Required. And note the trap:
-**sign-up sends a 6-digit code to an email address the reviewer does not
-control**, so "they can just register" is not a path. It has to be a
-pre-made **email + password** account (password sign-in exists; use it).
+The app requires an account, and Apple **requires working credentials** in App
+Store Connect → App Review Information. Two traps:
 
-Worse, a bare account lands on a group-less app: Rate shows "no group yet" and
-there is nothing to review. So the demo account must be **seeded**:
+- **Sign-UP mails a 6-digit code** to an address the reviewer does not
+  control, so "they can register themselves" is not a path. It must be a
+  pre-made **email + password** account (password sign-in exists; that is the
+  flow the reviewer will use).
+- **A bare account lands group-less.** Rate shows "no group yet" and there is
+  nothing to review.
 
-- a group with 2-3 members (the other members can be dormant accounts)
-- at least one **revealed** session, so the Reveal, the Mashed score and the
-  united/split headline are visible immediately
-- a couple of rated titles and something saved, so Home is not empty
+**Do NOT hand Apple a login to an account that shares a group with real
+users.** The hosted database has live groups — "First Testers" alone has four
+real people's display names, their individual scores and their DMs in it. A
+reviewer signed in there would read all of it, which is precisely what the
+blind-score design exists to prevent. The demo account must sit in its own
+group with synthetic members, or alone.
 
-Good news, verified in the schema: the reveal quorum is
-`least(2, greatest(eligible, 1))`, so **a solo round still reveals**. A
-reviewer alone can run the full loop start to finish without a second human.
-Say so in the review notes anyway — do not make them discover it.
+**Verified while checking this:** the reveal quorum is
+`least(2, greatest(eligible, 1))`, so a **solo round still reveals**. One
+account, alone, can run the entire loop end to end. That makes the setup much
+smaller than it looks.
 
-Review notes should spell out, in order: sign in with X, open Rate, start a
-round on any film, score it, lock, reveal. Five lines. Reviewers follow them
-literally.
+**Recipe — about five minutes in the app itself.** Doing it through the UI
+rather than by hand-writing rows means the data is real, consistent, and
+cannot violate a constraint:
 
-### 2. The app currently claims iPad support, and is not an iPad app
+1. Sign up at https://app.mashpotato.app with an address you control
+   (`review@mashpotato.app` via Cloudflare Email Routing is tidy) and set a
+   password you are willing to put in App Store Connect.
+2. Create a group — call it something neutral like "Movie Night".
+3. Start a round on a well-known film, score all seven categories, add a
+   one-line take, lock, reveal. That single round gives the reviewer the dot
+   plot, the Mashed score and the united/split headline.
+4. Repeat twice more so Home and the group log are not empty.
+5. Rate a couple of titles solo from Discover, and save two or three, so the
+   Home stat tiles read 1 / 3 / 3 rather than all zeros.
 
-`ios/App/App.xcodeproj/project.pbxproj` sets
-`TARGETED_DEVICE_FAMILY = "1,2"` — iPhone **and** iPad. Consequences:
+Then paste into App Review Information → Notes:
 
-- Apple **reviews it on an iPad**, and
-- iPad screenshots become **required**, and
-- the UI is a fixed ~480px mobile column, which on a 13" iPad is a thin strip
-  of content in a large empty field. "Does not adapt to iPad" is a routine
-  rejection.
+```
+Sign in with the credentials above (password sign-in, no code needed).
+1. The app opens on Home with recent activity.
+2. Tap Rate to see the group and its last Reveal: one Mashed score,
+   every member's score, and the agree/disagree headline.
+3. Tap "Start the next round", pick any film, score the categories,
+   then Lock. Scores stay hidden until locked - that is the core idea.
+4. Tap Reveal to open the round.
+5. Reporting, blocking and account deletion are in Profile and in the
+   message thread menus.
+A round can be revealed by a single member, so no second account is needed.
+```
 
-For a 1.0, set it to `1` (iPhone only). It is a one-line change, it removes a
-whole class of rejection, and iPad can be added later as a real piece of work
-rather than an accident of the Capacitor template.
+### 2. ~~iPad~~ — done
+
+`TARGETED_DEVICE_FAMILY` was `"1,2"`, so the app claimed iPad: Apple would
+have **reviewed it on an iPad** and **required iPad screenshots**, against a
+fixed ~480px column that renders as a strip in an empty field. Set to `1`
+(iPhone only) on 2026-07-27. iPad becomes a real piece of work later rather
+than an accident of the Capacitor template.
 
 ### 3. Screenshots have to be captured, and they are the listing
 
-Required: **iPhone 6.9"** (or 6.7"). If iPad stays enabled, 13" iPad too.
+Required: **iPhone 6.9"** (or 6.7") only, now that the app is iPhone-only.
 Minimum one, up to ten; the first two or three are what people actually see.
 
 Capture from the simulator or a device with the **seeded demo data**, not an
@@ -143,21 +165,53 @@ data.
 
 ---
 
-## Order of operations
+## Submitting, click by click
 
-1. Decide iPad: set `TARGETED_DEVICE_FAMILY = 1` (recommended) or commit to
-   building an iPad layout.
-2. Create and seed the demo account.
-3. Build and upload via Codemagic (`docs/TESTFLIGHT.md`). Bump
-   `CURRENT_PROJECT_VERSION` — App Store Connect rejects a duplicate build
-   number.
-4. Capture screenshots from that build with the demo data.
-5. Fill the listing: name, subtitle, description, keywords, category, age
-   rating, App Privacy answers, screenshots, the two URLs.
-6. Add App Review Information: demo credentials + the five-line walkthrough.
-7. Submit. First review is typically 24-48 hours.
+Everything below is App Store Connect (appstoreconnect.apple.com) unless
+stated. The app record already exists: **Mash Potato**, Apple ID 6788610092.
 
----
+**Before you open ASC**
+
+1. Create and seed the review account (recipe above). Five minutes.
+2. Run the Codemagic `ios-testflight` workflow. It sets the build number from
+   `$BUILD_NUMBER` via `agvtool`, so you do not have to bump anything by hand,
+   but the build number must be higher than any previously uploaded one.
+3. Wait for the build to finish processing in TestFlight (usually 5-15
+   minutes; you get an email).
+4. Install that build and take screenshots at iPhone 6.9", signed in as the
+   review account.
+
+**In App Store Connect**
+
+5. **My Apps → Mash Potato → the iOS App version** (create a new version and
+   call it `1.0` if one is not already open).
+6. **Screenshots** — drag in the 6.9" set. The first three are what people see
+   in search results, so lead with a Reveal.
+7. **Promotional text / Description / Keywords / Support URL / Marketing URL.**
+   Support URL is `https://mashpotato.app/support`; marketing URL is
+   `https://mashpotato.app`.
+8. **Build** — click the Build section and select the processed build.
+9. **General → App Information**: category, and **Privacy Policy URL** =
+   `https://mashpotato.app/privacy`.
+10. **Age Rating → Edit**: answer the questionnaire. Say yes to
+    user-generated content and to unrestricted web access being absent; the
+    moderation controls let you answer honestly without landing at 17+.
+11. **App Privacy → Get Started**: work through the data types using the table
+    above. Answer **no** to tracking everywhere.
+12. **App Review Information**: tick *Sign-in required*, enter the review
+    account's email and password, and paste the notes block above. Add a
+    contact phone and email.
+13. **Version Release**: manual release is the safer choice for a first
+    version, so an approval does not go public while you are asleep.
+14. **Add for Review → Submit**.
+
+**After submitting**
+
+- State goes *Waiting for Review* → *In Review* → *Pending Developer Release*
+  (if you chose manual) or *Ready for Sale*.
+- First review is typically 24-48 hours.
+- A rejection arrives in **Resolution Center** with a guideline number. Reply
+  there; you do not need a new build unless they ask for one.
 
 ## Not blockers, but worth knowing
 
