@@ -395,6 +395,33 @@ baseline function grant, which is exactly how an open endpoint shipped on
 
 ## Changelog
 
+- 2026-07-27 (the landing page becomes a marketing page): `web/index.html`
+  rebuilt from a one-screen pitch into a six-movement page. **Register note:
+  this file's `register: product` governs the APP; `web/` is BRAND register**
+  and takes brand permissions (display type to 57px, a signature interaction,
+  long scroll) while staying inside the locked palette and the three fonts.
+  Narrative spine is Journey: the page is one movie night, agree -> rate blind
+  -> Reveal -> argue.
+  - **Signature element:** the Reveal is *performed by the visitor* — a
+    checkbox + label flips a sealed panel into five positioned member dots,
+    the teal Mashed number and the united/split headline. Pure CSS, because
+    `_headers` ships `script-src 'none'`; a real `<input>` also gets keyboard
+    operation for free.
+  - **Imagery is drawn, not screenshotted.** Real captures would ship a dev
+    database (Anime Club, E2E Film Club) and go stale on the next UI change;
+    the CSS artifacts are built from these tokens so they cannot drift.
+  - **Tried and rejected:** hero eyebrow chip above the H1 (banned pattern,
+    detect flagged it, removed); teal box-shadow glow on the CTA (AI-tell,
+    swapped for a neutral shadow); all-caps mono on 30+ character strings
+    (that is body copy in costume, set in sentence case); an invisible ghost
+    em-dash holding the blind Mashed slot (1.1:1 is not a design, it is dead
+    ink — the grid cell already reserves the height).
+  - **Deviation from detect, argued not ignored:** five `low-contrast`
+    findings pair `.dot b` (muted) with the dot's fill because `b` nests
+    inside `.dot`. It is positioned `top:-20px`, i.e. OUTSIDE the circle on
+    the card, where the real ratio is 5.87:1. Verified numerically rather
+    than waved away.
+
 - 2026-07-27 (the app gets an address): the browser build always existed —
   Capacitor only wraps `dist/` — so the work was the three things a web app
   needs and a wrapped one does not. **URLs**, via `lib/urlState.ts`: not a

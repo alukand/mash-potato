@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mash Potato — your group's shared definition of a good movie</title>
+    <title>Mash Potato — settle it. One score your whole group agreed to.</title>
     <meta
       name="description"
-      content="Build one rubric with your friends, rate every film blind, then watch the Reveal drop all your scores at once. One Mashed score per title, and the argument is the point."
+      content="Your group sets the rubric once. Everyone rates blind. The Reveal drops all the scores at once and names what you agreed on and what you didn't. One Mashed score per film."
     />
     <meta name="theme-color" content="#15121B" />
     <meta name="color-scheme" content="dark" />
@@ -33,9 +33,25 @@
       rel="stylesheet"
     />
 
-    <!-- Tokens copied from src/index.css (DESIGN.md calls them LOCKED). Copied,
-         not imported: this page must stay a single static file that loads
-         instantly and never pulls in the app bundle. -->
+    <!--
+      NO JAVASCRIPT ANYWHERE. `public/_headers` ships `script-src 'none'`, and
+      that is a feature rather than a restriction to work around: a page that
+      pitches a privacy-shaped product has no business loading a tracker.
+
+      Consequences that shaped the build:
+        * the Reveal is a checkbox + label, so the visitor performs it with no
+          script and gets keyboard operation for free;
+        * entrances are CSS load-in, not scroll-triggered (scroll needs JS or
+          scroll-timeline, which Safari does not carry yet);
+        * every "screenshot" is drawn in HTML/CSS. Real captures would show a
+          dev database (Anime Club, E2E Film Club) and would go stale the day
+          the app changes. These artifacts stay true because they are built
+          from the same tokens the app is.
+
+      Tokens are COPIED from src/index.css, not imported: this page must stay
+      one static file that never pulls in the app bundle. If DESIGN.md's
+      locked palette changes, change it here too.
+    -->
     <style>
       :root {
         --bg: #15121b;
@@ -48,203 +64,620 @@
         --teal: #51c5be;
         --coral: #e07a5f;
         --lime: #c9d14e;
+
+        --shell: min(1180px, 100% - 3rem);
+        --ease: cubic-bezier(0.16, 1, 0.3, 1);
       }
-      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      *,
+      *::before,
+      *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html { scroll-behavior: smooth; }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
       body {
         background: var(--bg);
         color: var(--text);
         font-family: 'Hanken Grotesk', system-ui, sans-serif;
-        line-height: 1.55;
+        font-size: clamp(16px, 1.05vw, 18px);
+        line-height: 1.62;
         -webkit-font-smoothing: antialiased;
         overflow-x: hidden;
       }
-      /* the app's teal/gold wash, so the two surfaces read as one product */
+
+      /* The app's teal/gold wash, so the two surfaces read as one product. */
       body::before {
         content: '';
         position: fixed;
         inset: 0;
+        z-index: -1;
         pointer-events: none;
         background:
-          radial-gradient(60% 40% at 50% 0%, rgba(81, 197, 190, 0.16), transparent 70%),
-          radial-gradient(50% 40% at 80% 30%, rgba(231, 178, 78, 0.08), transparent 70%);
+          radial-gradient(60% 38% at 50% -4%, rgba(81, 197, 190, 0.17), transparent 70%),
+          radial-gradient(46% 34% at 88% 22%, rgba(231, 178, 78, 0.07), transparent 70%);
       }
-      main { position: relative; max-width: 940px; margin: 0 auto; padding: 0 24px; }
-      .wrap { padding: 72px 0 96px; }
-      .eyebrow {
+
+      .shell { width: var(--shell); margin-inline: auto; }
+
+      /* ---------- type roles ---------- */
+
+      .display {
+        font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+        font-weight: 700;
+        letter-spacing: -0.028em;
+        line-height: 1.02;
+      }
+      /* Mono is reserved for DATA: scores, weights, counts, labels attached to
+         real numbers. Never decoration. */
+      .data {
         font-family: 'Azeret Mono', ui-monospace, monospace;
-        font-size: 11px;
-        text-transform: uppercase;
+        font-size: 12px;
+        font-weight: 700;
         letter-spacing: 0.2em;
+        text-transform: uppercase;
         color: var(--muted);
       }
-      h1 {
+      .tnum { font-variant-numeric: tabular-nums; }
+
+      h2 {
         font-family: 'Bricolage Grotesque', system-ui, sans-serif;
-        font-size: clamp(38px, 7vw, 68px);
-        font-weight: 700;
-        line-height: 1.03;
-        letter-spacing: -0.02em;
-        margin: 18px 0 20px;
-        max-width: 16ch;
+        font-weight: 600;
+        font-size: clamp(30px, 4.4vw, 46px);
+        letter-spacing: -0.022em;
+        line-height: 1.06;
       }
-      .lede { font-size: clamp(16px, 2.2vw, 20px); color: var(--muted); max-width: 54ch; }
+      h3 {
+        font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+        font-weight: 600;
+        font-size: clamp(19px, 1.6vw, 22px);
+        letter-spacing: -0.01em;
+        line-height: 1.2;
+      }
+      p { max-width: 68ch; }
+      .lede { font-size: clamp(17px, 1.5vw, 21px); color: var(--muted); }
       .lede strong { color: var(--text); font-weight: 600; }
-      .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; align-items: center; }
+
+      a { color: inherit; }
+
+      /* ---------- entrance (load-in only; no scroll JS available) ---------- */
+
+      @media (prefers-reduced-motion: no-preference) {
+        .rise { animation: rise 0.75s var(--ease) backwards; }
+        .d1 { animation-delay: 0.05s; }
+        .d2 { animation-delay: 0.12s; }
+        .d3 { animation-delay: 0.19s; }
+        .d4 { animation-delay: 0.26s; }
+        @keyframes rise {
+          from { opacity: 0; transform: translate3d(0, 14px, 0); }
+        }
+      }
+
+      /* ---------- top bar ---------- */
+
+      .top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        backdrop-filter: blur(14px);
+        background: color-mix(in oklab, var(--bg) 82%, transparent);
+        border-bottom: 1px solid color-mix(in oklab, var(--line) 60%, transparent);
+      }
+      .top-in {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding-block: 0.85rem;
+      }
+      .mark {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+        font-weight: 700;
+        font-size: 17px;
+        letter-spacing: -0.01em;
+        text-decoration: none;
+      }
+      .mark span[aria-hidden] {
+        width: 20px; height: 20px; border-radius: 50%;
+        background: radial-gradient(circle at 32% 30%, #f6d98e, var(--gold) 62%, #b9822c);
+      }
+
       .cta {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: 0.5rem;
         border-radius: 999px;
-        padding: 14px 26px;
+        padding: 0.72rem 1.35rem;
         font-weight: 700;
-        font-size: 15px;
+        font-size: 0.94rem;
         text-decoration: none;
-        color: var(--bg);
-        background-image: linear-gradient(180deg, #6fd6d0, #3fb0a9);
-        box-shadow: 0 14px 30px -14px rgba(81, 197, 190, 0.8);
+        color: #10222a;
+        background-image: linear-gradient(180deg, #7fdcd6, #3fb0a9);
+        box-shadow: 0 12px 26px -14px rgba(0, 0, 0, 0.85);
+        transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease);
       }
-      .cta.secondary {
+      .cta:hover { transform: translateY(-2px); box-shadow: 0 18px 34px -14px rgba(0, 0, 0, 0.9); }
+      .cta.small { padding: 0.5rem 1rem; font-size: 0.85rem; }
+      .cta.ghost {
         background-image: none;
         background: transparent;
         color: var(--text);
         border: 1px solid var(--line);
         box-shadow: none;
       }
-      section { margin-top: 92px; }
-      h2 {
-        font-family: 'Bricolage Grotesque', system-ui, sans-serif;
-        font-size: clamp(26px, 4vw, 36px);
-        font-weight: 600;
-        letter-spacing: -0.01em;
-        margin-bottom: 28px;
+      .cta.ghost:hover { border-color: color-mix(in oklab, var(--teal) 55%, var(--line)); box-shadow: none; }
+
+      /* ---------- hero ---------- */
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr);
+        gap: clamp(2rem, 5vw, 4.5rem);
+        align-items: center;
+        padding-block: clamp(3.5rem, 8vw, 7rem) clamp(3rem, 6vw, 5.5rem);
       }
-      .steps { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+      @media (max-width: 900px) { .hero { grid-template-columns: minmax(0, 1fr); } }
+
+      .hero h1 {
+        /* Bound by word count, not by taste: at 66px this wrapped to four
+           lines and orphaned "times." on its own. `balance` distributes the
+           three evenly instead of leaving a runt. */
+        font-size: clamp(36px, 4.9vw, 57px);
+        max-width: 19ch;
+        text-wrap: balance;
+        margin-block: 0.9rem 1.3rem;
+      }
+      .hero h1 em { font-style: normal; color: var(--teal); }
+      .hero-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; align-items: center; }
+      .hero-note { margin-top: 1.1rem; font-size: 0.88rem; color: var(--muted); }
+
+      /* ---------- artifact: a scorecard, drawn not screenshotted ---------- */
+
       .card {
-        background: linear-gradient(180deg, var(--surface), #1a1622);
+        background: linear-gradient(176deg, var(--surface), #191521);
         border: 1px solid var(--line);
-        border-radius: 22px;
-        padding: 26px;
+        border-radius: 24px;
+        box-shadow: 0 40px 70px -50px rgba(0, 0, 0, 0.95);
       }
-      .card .n {
-        font-family: 'Azeret Mono', ui-monospace, monospace;
-        font-size: 11px;
-        letter-spacing: 0.16em;
-        color: var(--teal);
-        text-transform: uppercase;
+
+      .sheet { padding: clamp(1.1rem, 2vw, 1.6rem); }
+      .sheet-top {
+        display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+        gap: 1rem; padding-bottom: 0.9rem; margin-bottom: 0.35rem;
+        border-bottom: 1px solid color-mix(in oklab, var(--line) 70%, transparent);
       }
-      .card h3 {
+      .sheet-title { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 1.06rem; }
+
+      .row { display: grid; grid-template-columns: 1fr auto; gap: 0.9rem; align-items: center; padding-block: 0.5rem 0.3rem; }
+      .row-name { font-size: 0.93rem; }
+      .row-val { font-family: 'Azeret Mono', ui-monospace, monospace; font-size: 0.86rem; font-weight: 700; }
+
+      /* A slider drawn as a rule with a filled portion: the app's own control. */
+      .bar { position: relative; height: 3px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+      .bar i { position: absolute; inset: 0 auto 0 0; display: block; border-radius: 2px; }
+
+      .mashed-strip {
+        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        margin-top: 1.1rem; padding-top: 1.1rem;
+        border-top: 1px solid color-mix(in oklab, var(--line) 70%, transparent);
+      }
+      .mashed-num {
         font-family: 'Bricolage Grotesque', system-ui, sans-serif;
-        font-size: 20px;
-        font-weight: 600;
-        margin: 10px 0 8px;
+        font-weight: 700; font-size: clamp(44px, 5vw, 60px); line-height: 0.9;
+        color: var(--teal); letter-spacing: -0.03em;
       }
-      .card p { color: var(--muted); font-size: 14.5px; }
-      /* The Mashed number is ALWAYS teal and always labelled — the one piece of
-         locked identity this page must not get wrong. */
-      .score { display: flex; align-items: baseline; gap: 12px; margin-top: 26px; }
-      .score .big {
-        font-family: 'Bricolage Grotesque', system-ui, sans-serif;
-        font-size: 74px;
-        font-weight: 700;
-        color: var(--teal);
-        line-height: 1;
+
+      /* ---------- section frame ---------- */
+
+      section { padding-block: clamp(3.5rem, 8vw, 7rem); }
+      /* The header is sticky, so an anchored jump would tuck the heading
+         underneath it without this. */
+      [id] { scroll-margin-top: 5rem; }
+      .band { background: linear-gradient(180deg, transparent, rgba(30, 25, 38, 0.55) 12%, rgba(30, 25, 38, 0.55) 88%, transparent); }
+      .head { max-width: 62ch; }
+      .head .data { display: block; margin-bottom: 0.9rem; }
+      .head p { margin-top: 1.05rem; color: var(--muted); font-size: clamp(16px, 1.25vw, 18.5px); }
+
+      /* ---------- the rubric: weights you can see ---------- */
+
+      .rubric {
+        display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+        gap: clamp(2rem, 5vw, 4.5rem); align-items: center; margin-top: clamp(2rem, 4vw, 3.2rem);
       }
-      .score .label {
-        font-family: 'Azeret Mono', ui-monospace, monospace;
-        font-size: 11px;
-        letter-spacing: 0.2em;
-        color: var(--muted);
-        text-transform: uppercase;
+      @media (max-width: 900px) { .rubric { grid-template-columns: minmax(0, 1fr); } }
+
+      .weights { display: grid; gap: 0.15rem; }
+      .weight { display: grid; grid-template-columns: 13ch 1fr 4ch; gap: 1rem; align-items: center; padding-block: 0.52rem; }
+      .weight-name { font-size: 0.95rem; }
+      .weight-num { font-family: 'Azeret Mono', ui-monospace, monospace; font-size: 0.8rem; font-weight: 700; color: var(--muted); text-align: right; }
+      .weight .bar { height: 6px; border-radius: 3px; }
+      .weight .bar i { background: linear-gradient(90deg, color-mix(in oklab, var(--teal) 55%, var(--surface-2)), var(--teal)); }
+      .weight.heavy .bar i { background: linear-gradient(90deg, color-mix(in oklab, var(--gold) 55%, var(--surface-2)), var(--gold)); }
+      .weight.heavy .weight-num { color: var(--gold); }
+      .weight.heavy .weight-name { color: var(--gold); }
+
+      /* ---------- THE REVEAL, the page's signature ---------- */
+
+      .reveal-wrap { margin-top: clamp(2rem, 4vw, 3.2rem); position: relative; }
+
+      .rv-toggle { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+
+      .stage { padding: clamp(1.3rem, 3vw, 2.2rem); position: relative; }
+
+      .stage-head { display: flex; flex-wrap: wrap; row-gap: 0.4rem; align-items: baseline; justify-content: space-between; gap: 0.75rem; margin-bottom: 1.9rem; }
+
+      /* the 1-10 axis every member's dot lands on */
+      .axis { position: relative; height: 96px; margin: 0 20px 0.6rem; }
+      .axis-line { position: absolute; left: 0; right: 0; top: 47px; height: 2px; border-radius: 2px;
+        background: linear-gradient(90deg, rgba(224,122,95,0.45), rgba(231,178,78,0.45) 55%, rgba(201,209,78,0.45)); }
+      .tick { position: absolute; top: 58px; transform: translateX(-50%);
+        font-family: 'Azeret Mono', ui-monospace, monospace; font-size: 12px; letter-spacing: 0.1em; color: var(--muted); }
+
+      .dot {
+        position: absolute; top: 32px; margin-left: -15px;
+        display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+        font-family: 'Azeret Mono', ui-monospace, monospace; font-size: 12px; font-weight: 700; color: #16121c;
+        opacity: 0; transform: scale(0.55);
+        transition: opacity 0.5s var(--ease), transform 0.5s var(--ease);
       }
-      .headline-demo { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-size: 22px; margin-top: 18px; }
-      .headline-demo .u { color: var(--teal); font-weight: 600; }
-      .headline-demo .c { color: var(--coral); font-weight: 600; }
-      footer {
-        margin-top: 104px;
-        border-top: 1px solid var(--line);
-        padding: 28px 0 56px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 18px;
-        justify-content: space-between;
-        color: var(--muted);
-        font-size: 13px;
+      .dot b { position: absolute; top: -20px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em;
+        text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+
+      /* Blind state: a sealed panel sitting where the numbers will land. */
+      .sealed {
+        position: absolute; inset: 20px 0 auto 0; height: 56px; border-radius: 12px;
+        border: 1px dashed color-mix(in oklab, var(--line) 165%, transparent);
+        background: repeating-linear-gradient(115deg, rgba(39,31,49,0.8) 0 12px, rgba(30,25,38,0.8) 12px 24px);
+        display: grid; place-items: center;
+        font-family: 'Azeret Mono', ui-monospace, monospace; font-size: 12px; font-weight: 700;
+        letter-spacing: normal; color: var(--muted);
+        transition: opacity 0.45s var(--ease);
       }
-      footer a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
-      footer a:hover { color: var(--text); }
-      footer nav { display: flex; flex-wrap: wrap; gap: 18px; }
-      @media (prefers-reduced-motion: no-preference) {
-        .wrap > * { animation: rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
-        .wrap > *:nth-child(2) { animation-delay: 0.06s; }
-        .wrap > *:nth-child(3) { animation-delay: 0.12s; }
-        @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+
+      /* Blind and revealed share one cell so the card is never empty and the
+         layout never jumps when the state flips. */
+      .swap { display: grid; }
+      .swap > * { grid-area: 1 / 1; }
+      .blind-copy { color: var(--muted); transition: opacity 0.3s var(--ease); }
+      .blind-copy .lock { color: var(--text); font-weight: 600; }
+      .rv-toggle:checked ~ .stage .blind-copy { opacity: 0; pointer-events: none; }
+
+      .verdict { opacity: 0; transition: opacity 0.6s var(--ease) 0.35s; }
+      .verdict-line { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600;
+        font-size: clamp(20px, 2.4vw, 30px); letter-spacing: -0.015em; line-height: 1.3; }
+      .u { color: var(--teal); }
+      .c { color: var(--coral); }
+
+      .rv-btn {
+        display: inline-flex; align-items: center; gap: 0.6rem; cursor: pointer;
+        border-radius: 999px; padding: 0.7rem 1.3rem; margin-top: 1.6rem;
+        border: 1px solid color-mix(in oklab, var(--teal) 45%, var(--line));
+        font-weight: 700; font-size: 0.9rem; color: var(--teal);
+        background: color-mix(in oklab, var(--teal) 10%, transparent);
+        transition: background 0.25s var(--ease), transform 0.25s var(--ease);
+        -webkit-tap-highlight-color: transparent;
       }
+      .rv-btn:hover { background: color-mix(in oklab, var(--teal) 18%, transparent); transform: translateY(-1px); }
+      .rv-toggle:focus-visible ~ .stage .rv-btn { outline: 2px solid var(--teal); outline-offset: 3px; }
+      .rv-btn .on { display: none; }
+
+      /* --- the flip --- */
+      .rv-toggle:checked ~ .stage .sealed { opacity: 0; }
+      .rv-toggle:checked ~ .stage .dot { opacity: 1; transform: scale(1); }
+      .rv-toggle:checked ~ .stage .verdict { opacity: 1; }
+      .rv-toggle:checked ~ .stage .rv-btn .off { display: none; }
+      .rv-toggle:checked ~ .stage .rv-btn .on { display: inline; }
+      .rv-toggle:checked ~ .stage .mashed-reveal { opacity: 1; transform: scale(1); }
+
+      .mashed-reveal { opacity: 0; transform: scale(0.9); transform-origin: right top;
+        transition: opacity 0.55s var(--ease) 0.15s, transform 0.55s var(--ease) 0.15s; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .dot, .sealed, .verdict, .mashed-reveal { transition-duration: 0.01ms !important; }
+      }
+
+      /* ---------- what else ---------- */
+
+      /* Six items: auto-fit landed on 4+2 and left a hole. Three columns give
+         two even rows on desktop. */
+      .more { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.8rem 2.6rem; margin-top: clamp(2rem, 4vw, 3rem); }
+      @media (max-width: 860px) { .more { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 560px) { .more { grid-template-columns: minmax(0, 1fr); } }
+      .more h3 { margin-bottom: 0.4rem; }
+      .more p { color: var(--muted); font-size: 0.95rem; max-width: 42ch; }
+      .more > div { padding-top: 1.15rem; border-top: 1px solid color-mix(in oklab, var(--line) 75%, transparent); }
+
+      /* ---------- close ---------- */
+
+      .close { text-align: center; padding-block: clamp(4rem, 9vw, 8rem); }
+      .close h2 { max-width: 18ch; margin-inline: auto; }
+      .close p { margin: 1.1rem auto 0; color: var(--muted); }
+      .close .cta { margin-top: 2rem; padding: 0.95rem 1.9rem; font-size: 1rem; }
+
+      @media (max-width: 600px) {
+        .data { letter-spacing: 0.12em; }
+        .weight { grid-template-columns: 10ch 1fr 3.5ch; gap: 0.7rem; }
+        .axis { margin-inline: 10px; }
+      }
+
+      footer { border-top: 1px solid var(--line); padding-block: 2.2rem 3.5rem; }
+      .foot { display: flex; flex-wrap: wrap; gap: 1.2rem 2rem; align-items: baseline; justify-content: space-between; }
+      .foot nav { display: flex; flex-wrap: wrap; gap: 1.4rem; }
+      .foot a { color: var(--muted); text-decoration: none; font-size: 0.88rem; transition: color 0.2s; }
+      .foot a:hover { color: var(--text); }
+      .foot .mark { color: var(--text); }
+      .foot .legal { color: var(--muted); font-size: 0.8rem; }
+      /* Second-read moment: the app's real 1-to-10 score ramp, unlabelled. */
+      .ramp { height: 2px; border-radius: 2px; margin-top: 2rem;
+        background: linear-gradient(90deg, var(--coral), var(--gold) 55%, var(--lime)); opacity: 0.5; }
     </style>
   </head>
   <body>
+    <header class="top">
+      <div class="shell top-in">
+        <a class="mark" href="/"><span aria-hidden="true"></span>Mash Potato</a>
+        <a class="cta small" href="https://app.mashpotato.app">Open the app</a>
+      </div>
+    </header>
+
     <main>
-      <div class="wrap">
-        <p class="eyebrow">Mash Potato</p>
-        <h1>Your group's shared definition of a good movie.</h1>
-        <p class="lede">
-          Most rating apps ask one person for one number. Mash Potato asks your
-          whole group — you build the rubric together, everyone scores
-          <strong>blind</strong>, and the Reveal drops all of it at once.
-        </p>
-        <div class="cta-row">
-          <a class="cta" href="https://app.mashpotato.app">Open the app</a>
-          <a class="cta secondary" href="#how">See how it works</a>
+      <!-- ============ HERO ============ -->
+      <div class="shell hero">
+        <div>
+          <h1 class="display rise">
+            Your group has argued about the same film <em>three times.</em>
+          </h1>
+          <p class="lede rise d2">
+            Everyone rates it in private. The Reveal drops all the scores at
+            once, mashes them into <strong>one number your group actually
+            built</strong>, and names the category you fought over.
+          </p>
+          <div class="hero-actions rise d3">
+            <a class="cta" href="https://app.mashpotato.app">Start a group, free</a>
+            <a class="cta ghost" href="#reveal-section">See a Reveal</a>
+          </div>
+          <p class="hero-note rise d3">
+            Runs in your browser. No install, no App Store wait.
+          </p>
+        </div>
+
+        <!-- Drawn, not screenshotted. See the head comment. -->
+        <div class="card sheet rise d4" role="img"
+             aria-label="A scorecard for the film Sinners: Story 8, Acting 9, Writing 7, Pacing 5, Score and Soundtrack 9, giving a Mashed score of 7.8.">
+          <div class="sheet-top">
+            <span class="sheet-title">Sinners</span>
+            <span class="data">Your card &middot; locked</span>
+          </div>
+
+          <div class="row"><span class="row-name">Story</span><span class="row-val" style="color: var(--lime)">8</span></div>
+          <div class="bar"><i style="width: 80%; background: var(--lime)"></i></div>
+          <div class="row"><span class="row-name">Acting</span><span class="row-val" style="color: var(--lime)">9</span></div>
+          <div class="bar"><i style="width: 90%; background: var(--lime)"></i></div>
+          <div class="row"><span class="row-name">Writing</span><span class="row-val" style="color: var(--gold)">7</span></div>
+          <div class="bar"><i style="width: 70%; background: var(--gold)"></i></div>
+          <div class="row"><span class="row-name">Pacing</span><span class="row-val" style="color: var(--coral)">5</span></div>
+          <div class="bar"><i style="width: 50%; background: var(--coral)"></i></div>
+          <div class="row"><span class="row-name">Score &amp; Soundtrack</span><span class="row-val" style="color: var(--lime)">9</span></div>
+          <div class="bar"><i style="width: 90%; background: var(--lime)"></i></div>
+
+          <div class="mashed-strip">
+            <div>
+              <div class="mashed-num tnum">7.8</div>
+              <div class="data" style="margin-top: 0.4rem">Mashed &middot; 5 of 5 in</div>
+            </div>
+            <p style="font-family: 'Azeret Mono', ui-monospace, monospace; font-size: 12px;
+                      line-height: 1.5; text-align: right; max-width: 19ch; color: var(--muted)">
+              Weighted by your group's rubric
+            </p>
+          </div>
         </div>
       </div>
 
-      <section id="how">
-        <h2>How a round works</h2>
-        <div class="steps">
-          <div class="card">
-            <p class="n">01 — Agree</p>
-            <h3>Set the rubric once</h3>
+      <!-- ============ THE RUBRIC ============ -->
+      <div class="band">
+        <section class="shell">
+          <div class="head">
+            <span class="data">Step one, once</span>
+            <h2 class="display">Decide what counts before you watch anything.</h2>
             <p>
-              Story, Acting, Pacing, Score, and the rest — weighted the way your
-              group actually argues. Comedy night makes Humor heavy.
+              Most rating apps hand you one box and a number out of five. Your
+              group sets weights instead: how much Story is worth against
+              Pacing, whether a soundtrack can rescue a film. Agree once, and
+              every film after that gets measured the same way.
             </p>
           </div>
-          <div class="card">
-            <p class="n">02 — Score blind</p>
-            <h3>Nobody sees anybody</h3>
-            <p>
-              Everyone rates on their own. Nobody anchors on the loudest opinion,
-              because nobody can see it yet.
-            </p>
+
+          <div class="rubric">
+            <div class="weights" role="img"
+                 aria-label="Default rubric weights: Story 30, Acting 25, Cinematography 25, Emotional Impact 25, Writing 20, Pacing 15, Score and Sound 15. On a comedy night Humor is added at 35, heavier than anything else.">
+              <div class="weight"><span class="weight-name">Story</span><span class="bar"><i style="width: 86%"></i></span><span class="weight-num">30</span></div>
+              <div class="weight"><span class="weight-name">Acting</span><span class="bar"><i style="width: 71%"></i></span><span class="weight-num">25</span></div>
+              <div class="weight"><span class="weight-name">Cinematography</span><span class="bar"><i style="width: 71%"></i></span><span class="weight-num">25</span></div>
+              <div class="weight"><span class="weight-name">Emotional Impact</span><span class="bar"><i style="width: 71%"></i></span><span class="weight-num">25</span></div>
+              <div class="weight"><span class="weight-name">Writing</span><span class="bar"><i style="width: 57%"></i></span><span class="weight-num">20</span></div>
+              <div class="weight"><span class="weight-name">Pacing</span><span class="bar"><i style="width: 43%"></i></span><span class="weight-num">15</span></div>
+              <div class="weight"><span class="weight-name">Score &amp; Sound</span><span class="bar"><i style="width: 43%"></i></span><span class="weight-num">15</span></div>
+              <div class="weight heavy"><span class="weight-name">Humor</span><span class="bar"><i style="width: 100%"></i></span><span class="weight-num">35</span></div>
+            </div>
+
+            <div>
+              <h3 class="display">Comedy night moves the goalposts, on purpose.</h3>
+              <p style="color: var(--muted); margin-top: 0.85rem">
+                Pick a comedy and Humor arrives weighted heavier than Story.
+                Pick a horror film and Fear Factor does the same. The rubric
+                bends to the genre without anybody renegotiating it mid-argument,
+                and every night keeps a snapshot of the rubric it was scored
+                under, so old verdicts never quietly change meaning.
+              </p>
+              <p style="color: var(--muted); margin-top: 1.05rem">
+                Not in the mood to tune anything? A group can run on
+                <strong style="color: var(--text)">Normies</strong> instead:
+                Enjoyment, Acting, Writing. Three sliders, no configuration.
+              </p>
+            </div>
           </div>
-          <div class="card">
-            <p class="n">03 — Reveal</p>
-            <h3>All at once</h3>
-            <p>
-              One Mashed score for the film — and the headline is where you
-              disagreed, because that is the interesting part.
-            </p>
-          </div>
+        </section>
+      </div>
+
+      <!-- ============ THE REVEAL, signature ============ -->
+      <section class="shell" id="reveal-section">
+        <div class="head">
+          <span class="data">Step two, every time</span>
+          <h2 class="display">Nobody sees a single score until everybody has locked one in.</h2>
+          <p>
+            The loudest person in the room usually sets the number. Blind
+            scoring takes that away: no anchoring, no drifting toward whoever
+            spoke first. The database enforces it, so it is not the app politely
+            hiding things from you.
+          </p>
         </div>
 
-        <div class="score">
-          <span class="big">7.4</span>
-          <span class="label">Mashed</span>
+        <div class="reveal-wrap">
+          <!-- The checkbox comes first so the sibling selectors can reach the
+               stage. No JS: the visitor performs the Reveal, and a real input
+               means it works from the keyboard for free. -->
+          <input class="rv-toggle" type="checkbox" id="reveal" />
+          <div class="card stage">
+            <div class="stage-head">
+              <div>
+                <span class="sheet-title" style="font-size: 1.15rem">Sinners</span>
+                <span class="data" style="margin-left: 0.6rem">Thursday &middot; 5 members</span>
+              </div>
+              <div class="swap" style="justify-items: end; text-align: right">
+                <div class="blind-copy">
+                  <div class="data">5 of 5 locked</div>
+                </div>
+                <div class="mashed-reveal">
+                  <div class="mashed-num tnum" style="font-size: clamp(34px, 3.4vw, 44px)">7.8</div>
+                  <div class="data" style="margin-top: 0.25rem">Mashed</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="axis">
+              <div class="axis-line" aria-hidden="true"></div>
+
+              <div class="sealed">Scores sealed until everyone locks</div>
+
+              <span class="dot" style="left: 84%; background: var(--lime); transition-delay: 0.05s">8<b>Ana</b></span>
+              <span class="dot" style="left: 92%; background: var(--lime); transition-delay: 0.12s">9<b>Ben</b></span>
+              <span class="dot" style="left: 68%; background: var(--gold); transition-delay: 0.19s">7<b>Cara</b></span>
+              <span class="dot" style="left: 46%; background: var(--coral); transition-delay: 0.26s">4<b>Dev</b></span>
+              <span class="dot" style="left: 76%; background: var(--lime); transition-delay: 0.33s">8<b>Ida</b></span>
+
+              <span class="tick" style="left: 0%">1</span>
+              <span class="tick" style="left: 50%">5</span>
+              <span class="tick" style="left: 100%">10</span>
+            </div>
+
+            <div class="swap">
+              <div class="blind-copy">
+                <p class="data" style="margin-bottom: 0.5rem">The headline</p>
+                <p class="verdict-line" style="color: var(--muted)">
+                  <span class="lock">Sealed too.</span> Which category you agreed
+                  on, and which one split you, lands with the scores.
+                </p>
+              </div>
+              <div class="verdict">
+              <p class="data" style="margin-bottom: 0.5rem">The headline</p>
+              <p class="verdict-line">
+                United on <span class="u">Acting</span>. Split over
+                <span class="c">Pacing</span>.
+              </p>
+              <p style="color: var(--muted); margin-top: 0.7rem; font-size: 0.95rem">
+                Dev sat 3.4 below the group on Pacing. That is the argument
+                worth having, and it is the first thing the app tells you.
+              </p>
+              </div>
+            </div>
+
+            <label class="rv-btn" for="reveal">
+              <span class="off">Everyone has locked. Reveal &rarr;</span>
+              <span class="on">Revealed. That is the whole product.</span>
+            </label>
+          </div>
         </div>
-        <p class="headline-demo">
-          United on <span class="u">Story</span>. Split over
-          <span class="c">Pacing</span>.
-        </p>
       </section>
 
-      <footer>
-        <p>© Mash Potato</p>
-        <!-- Clean URLs, which is what Pages canonicalises to. Linking the
-             .html form just earns a 308 on every click. -->
-        <nav>
-          <a href="/privacy">Privacy</a>
-          <a href="/support">Support</a>
-          <a href="https://app.mashpotato.app">Open the app</a>
-        </nav>
-      </footer>
+      <!-- ============ THE MOAT ============ -->
+      <div class="band">
+        <section class="shell">
+          <div class="head" style="max-width: 54ch">
+            <h2 class="display">The disagreement is the feature.</h2>
+            <p>
+              Letterboxd is a diary: one person, one opinion, a stream of them.
+              Mash Potato only makes sense with other people in the room. It
+              keeps track of what your group agrees on, so after a few nights it
+              can tell you who you actually share taste with, and it never ranks
+              anybody against anybody.
+            </p>
+          </div>
+
+          <div class="more">
+            <div>
+              <h3 class="display">One number, not an average of strangers</h3>
+              <p>Mashed is your group's weighted result. A film can be a 4.1 in one group and an 8.6 in another, and both are correct.</p>
+            </div>
+            <div>
+              <h3 class="display">Taste twins</h3>
+              <p>After three nights it can say who you line up with and where you reliably part ways. No leaderboard, ever.</p>
+            </div>
+            <div>
+              <h3 class="display">Where to watch</h3>
+              <p>Streaming availability sits where the decision happens: on the film you are about to start a round on.</p>
+            </div>
+            <div>
+              <h3 class="display">Pick the film first</h3>
+              <p>Open a vote with a few options, everyone gets one switchable ballot, and the winner rolls straight into a round.</p>
+            </div>
+            <div>
+              <h3 class="display">Say it in one sentence</h3>
+              <p>A one-line take rides along with your card and unseals with it, so nobody writes their review after reading yours.</p>
+            </div>
+            <div>
+              <h3 class="display">Postable</h3>
+              <p>A Reveal exports as an image carrying the score, the spread and the headline. Never names, never anyone's individual number.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ============ CLOSE ============ -->
+      <section class="shell close">
+        <h2 class="display">Settle it properly this time.</h2>
+        <p class="lede">
+          Make a group, pick something nobody agrees about, and see what the
+          number says.
+        </p>
+        <a class="cta" href="https://app.mashpotato.app">Open Mash Potato</a>
+        <p class="hero-note" style="margin-top: 1.2rem">
+          Works in any browser. The iPhone app is in TestFlight.
+        </p>
+      </section>
     </main>
+
+    <footer>
+      <div class="shell">
+        <div class="foot">
+          <div>
+            <a class="mark" href="/"><span aria-hidden="true"></span>Mash Potato</a>
+            <p class="legal" style="margin-top: 0.55rem">
+              Built by one person. Not a company, not yet.
+            </p>
+          </div>
+          <!-- Clean URLs, which is what Pages canonicalises to. Linking the
+               .html form just earns a 308 on every click. -->
+          <nav>
+            <a href="https://app.mashpotato.app">Open the app</a>
+            <a href="/privacy">Privacy</a>
+            <a href="/support">Support</a>
+          </nav>
+        </div>
+        <div class="ramp" aria-hidden="true"></div>
+      </div>
+    </footer>
   </body>
 </html>
