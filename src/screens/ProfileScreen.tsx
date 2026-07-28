@@ -976,10 +976,10 @@ export function ProfileScreen({
         <p className="mt-4 px-2 text-center text-[12px] leading-snug text-muted">
           Questions, reports, or feedback:{' '}
           <a
-            href="mailto:alexanderlukasland@gmail.com?subject=Mash%20Potato%20support"
+            href="mailto:support@mashpotato.app?subject=Mash%20Potato%20support"
             className="text-teal"
           >
-            alexanderlukasland@gmail.com
+            support@mashpotato.app
           </a>
         </p>
 

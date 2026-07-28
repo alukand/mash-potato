@@ -73,7 +73,7 @@ ships the required kit; declare it when submitting:
   content is actioned within 24 hours (remove + eject via the
   `profiles.banned` switch in the Supabase dashboard).
 - Support contact is published in-app (Profile) and must also be on the
-  App Store listing: alexanderlukasland@gmail.com.
+  App Store listing: support@mashpotato.app.
 - Review reports in the Supabase dashboard: `comment_reports` joined to
   `title_comments`; set `removed = true` to take content down, flip
   `profiles.banned` to eject an account, extend `banned_terms` as needed.

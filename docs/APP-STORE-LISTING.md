@@ -137,7 +137,6 @@ both refused. **Do not resize by hand**; run:
 
 ```
 powershell -File scripts\shots.ps1 -In "C:\Users\thede\Desktop\shots"
-aw\screenshots"
 ```
 
 It scales to fit (never crops), centres on the app's own #15121B background so
