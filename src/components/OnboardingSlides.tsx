@@ -279,11 +279,14 @@ function StartMock({ active }: { active: boolean }) {
         }`}
         style={{ animationDelay: '300ms' }}
       >
-        {['Home', 'Discover', 'Rate', 'Profile'].map((label, i) => (
+        {/* Must match the real bar: five destinations, and Rate wears GOLD.
+            This drifted the day More was added and the Rate skin went gold —
+            the first screen a new user sees was describing the old nav. */}
+        {['Home', 'Discover', 'Rate', 'Profile', 'More'].map((label, i) => (
           <span
             key={label}
-            className={`rounded-full px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] ${
-              i === 2 ? 'bg-teal/10 text-teal' : 'text-muted'
+            className={`rounded-full px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${
+              i === 2 ? 'bg-gold/10 text-gold' : 'text-muted'
             }`}
           >
             {label}
