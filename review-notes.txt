@@ -1,0 +1,28 @@
+Sign in with the credentials above. Use password sign-in; no email code is required.
+
+The account is a member of one group, "Movie Night", with three rounds already scored and revealed.
+
+WHAT TO LOOK AT
+
+1. The app opens on Home: the group, recent activity, and a saved list.
+2. Tap Rate. The most recent round (Severance) is already revealed and shows the core of the app: one combined "Mashed" score of 8.9, each member's individual score, and a headline naming the category the group agreed on and the one that split them ("United on Story. Split over Pacing.").
+3. Scroll down for the per-category breakdown, each member plotted against the group mean, and an expandable explanation of how the weighted score is calculated.
+4. Tap any night in the group log to reopen that round's Reveal.
+
+ABOUT BLIND SCORING
+
+Scores stay hidden until every member locks their card. This is enforced by database row-level security, not by the interface.
+
+You can see it directly: tap "Start the next round", pick any title, score the categories and tap Lock. Your scores are saved and nobody else's are visible. Revealing that new round would need the group's second member to lock a card too, so please use the three already-revealed rounds to see the revealed state.
+
+USER-GENERATED CONTENT CONTROLS (guideline 1.2)
+
+- A filtered wordlist is applied to every comment and message.
+- Reporting: the menu on any message or comment.
+- Blocking: the thread menu in Messages. Blocked people can be unblocked from Profile.
+- Users agree to house rules before their first post.
+- Reports go to a moderator queue that flags anything older than 24 hours.
+- Account deletion: Profile, settings gear, Danger zone.
+
+Support: support@mashpotato.app
+Privacy policy: https://mashpotato.app/privacy

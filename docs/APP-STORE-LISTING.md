@@ -105,19 +105,20 @@ until version 2.
 
 ## 8. App Review Information → Notes
 
-```
-Sign in with the credentials above. Use password sign-in; no email code is needed.
+Paste `review-notes.txt` (repo root). 1771 / 4000.
 
-1. The app opens on Home with recent activity.
-2. Tap Rate to see the group and its most recent Reveal: one combined "Mashed" score, every member's score on a scale, and a headline naming the category the group agreed on and the one that split them.
-3. Tap "Start the next round", pick any film, score the categories, then Lock. Scores stay hidden until every member locks. That is the core idea of the app.
-4. Tap Reveal to open the round.
-5. Reporting and blocking are in the message thread menu and on comments. Account deletion is in Profile under the settings gear, in the Danger zone.
+**Why it does not tell the reviewer to reveal a round themselves.** The quorum
+is `least(2, greatest(eligible, 1))`. When the demo group had one member, a
+lone reviewer could reveal a fresh round on one locked card. Adding the second
+member changed that: a new round counts them as eligible for 24 hours, so
+revealing now needs TWO locked cards and a reviewer following "score, lock,
+reveal" would hit *"the reveal needs a second locked scorecard"* and read it as
+a bug. The notes route around it — they point at the three rounds that are
+already revealed, and explain that locking a new round demonstrates the blind
+state without needing a reveal.
 
-A round can be revealed by a single member, so no second account is needed to see the full flow.
-
-User-generated content controls: a filtered wordlist on all posts and messages, per-item reporting, user blocking, an agreement to house rules before a first post, and a moderator queue that flags anything older than 24 hours.
-```
+Keep those two facts in sync: **if the demo group's membership changes, re-read
+this.**
 
 ---
 
