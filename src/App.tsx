@@ -522,6 +522,16 @@ function App() {
                 userId={userId}
                 discussGroupId={top.discussGroupId ?? null}
                 discussSeed={top.discussSeed ?? null}
+                onOpenSession={(groupId, sessionId) => {
+                  // Same door GroupLog and GroupHistory open: the Reveal lives
+                  // on the Rate tab, where late scoring and backfill also are.
+                  switchGroup(groupId)
+                  setOpenSessionId(sessionId)
+                  setStack([])
+                  setTab('rate')
+                  storeTab('rate')
+                  window.scrollTo(0, 0)
+                }}
                 onBack={popView}
                 onStartedSession={(groupId) => {
                   switchGroup(groupId)

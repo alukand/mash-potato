@@ -53,6 +53,8 @@ interface TitleDetailScreenProps {
   userId: string | null
   /** Signed out, account actions become one sign-in invitation. */
   onSignIn?: () => void
+  /** Reopen a past night's Reveal from the group verdicts list. */
+  onOpenSession?: (groupId: string, sessionId: string) => void
   /** Deep link: open the discussion on this group's thread. */
   discussGroupId?: string | null
   /** Deep link: composer placeholder (the reveal's clash headline). */
@@ -87,6 +89,7 @@ export function TitleDetailScreen({
   groups,
   userId,
   onSignIn,
+  onOpenSession,
   discussGroupId = null,
   discussSeed = null,
   onBack,
@@ -1035,9 +1038,18 @@ export function TitleDetailScreen({
                   .slice(0, i)
                   .some((h) => h.groupId === entry.groupId)
                 return (
-                  <div key={entry.sessionId} className="flex items-center justify-between px-5 py-3.5">
+                  <button
+                    key={entry.sessionId}
+                    type="button"
+                    onClick={() => onOpenSession?.(entry.groupId, entry.sessionId)}
+                    // A verdict is a night that happened: tapping it reopens
+                    // THAT Reveal, the same door GroupLog rows open.
+                    className="group flex w-full items-center justify-between px-5 py-3.5 text-left"
+                  >
                     <div className="min-w-0">
-                      <p className="truncate text-[14px] font-semibold">{entry.groupName}</p>
+                      <p className="truncate text-[14px] font-semibold transition-colors group-hover:text-teal">
+                        {entry.groupName}
+                      </p>
                       <p className="font-mono text-[10px] text-muted">
                         {formatRevealed(entry.revealedAt)}
                         {rerated ? ' · an earlier round' : ''}
@@ -1066,7 +1078,7 @@ export function TitleDetailScreen({
                         </>
                       )}
                     </div>
-                  </div>
+                  </button>
                 )
               })}
             </div>

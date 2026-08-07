@@ -60,6 +60,41 @@ html {
   color: var(--color-text);
 }
 
+/* iOS AUTO-ZOOM ON FOCUS — the "it randomly zooms in and the frame is off,
+   I have to restart the app" bug.
+   WKWebView zooms the page in whenever a focused field's text is under 16px,
+   and it does NOT reliably zoom back out on blur: the app then sits at the
+   wrong scale, content overflows sideways and the fixed bottom nav is cut off,
+   until the app is killed. Our fields are 13-14px by design, so this fired on
+   every search box, composer and code entry.
+   The fix belongs on the CONTROLS, not the viewport: `maximum-scale=1` /
+   `user-scalable=no` would also stop it, but it disables pinch-zoom for
+   everyone, and this ships to browsers too (see index.html). 16px is the
+   threshold iOS actually honours, and it is applied only where the pointer is
+   coarse, so the desktop/web look is untouched.
+   !important because Tailwind's `text-[14px]` on the element would otherwise
+   win on specificity. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Double-tap-to-zoom is the OTHER way a tap silently rescales the app (and it
+   adds a 300ms delay to every tap). Interactive elements opt out; the page
+   itself stays pinch-zoomable. */
+button,
+a,
+input,
+textarea,
+select,
+label,
+[role='button'] {
+  touch-action: manipulation;
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
