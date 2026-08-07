@@ -49,7 +49,10 @@ interface TitleDetailScreenProps {
   tmdbId: number
   mediaType: 'movie' | 'tv'
   groups: GroupInfo[]
-  userId: string
+  /** null = signed out: only the public TMDB surface loads (guideline 5.1.1(v)). */
+  userId: string | null
+  /** Signed out, account actions become one sign-in invitation. */
+  onSignIn?: () => void
   /** Deep link: open the discussion on this group's thread. */
   discussGroupId?: string | null
   /** Deep link: composer placeholder (the reveal's clash headline). */
@@ -83,6 +86,7 @@ export function TitleDetailScreen({
   mediaType,
   groups,
   userId,
+  onSignIn,
   discussGroupId = null,
   discussSeed = null,
   onBack,
@@ -121,7 +125,11 @@ export function TitleDetailScreen({
   // Where the new list lives: personal (null) or one of your groups.
   const [newListGroupId, setNewListGroupId] = useState<string | null>(null)
 
+  // Every handler below writes on your behalf, so each is unreachable signed
+  // out (the controls that call them are gated). The guards make that a fact
+  // the compiler checks rather than an assumption.
   async function refreshLists() {
+    if (userId === null) return
     const [lists, holds] = await Promise.all([
       // personal playlists + every group's shared watchlists
       fetchAddablePlaylists(userId),
@@ -181,7 +189,7 @@ export function TitleDetailScreen({
   async function handleCreateListWithTitle() {
     // Enter in the name field lands here too; the busy check is the guard
     // the disabled button can't provide.
-    if (!detail || listBusyId !== null) return
+    if (!detail || userId === null || listBusyId !== null) return
     const name = newListName.trim()
     if (name.length === 0) return
     setListBusyId('new')
@@ -213,6 +221,30 @@ export function TitleDetailScreen({
     setListsOpen(false)
     setMyLists(null)
     setHistFilter('all')
+    // Signed out, every account-scoped read would 401 and reject the whole
+    // Promise.all — so browsing loads ONLY the public TMDB surface.
+    if (userId === null) {
+      Promise.all([
+        fetchTitleDetail(tmdbId, mediaType),
+        fetchWatchProviders(tmdbId, mediaType).catch(() => null),
+      ])
+        .then(([d, providers]) => {
+          if (cancelled) return
+          setDetail(d)
+          setNotFound(d === null)
+          setWatch(providers)
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setDetail(null)
+            setError(err instanceof Error ? err.message : 'Could not load this title')
+          }
+        })
+      return () => {
+        cancelled = true
+      }
+    }
+
     Promise.all([
       fetchTitleDetail(tmdbId, mediaType),
       fetchSavedTitleId(userId, tmdbId, mediaType),
@@ -251,7 +283,7 @@ export function TitleDetailScreen({
   }, [tmdbId, mediaType, userId])
 
   async function toggleSave() {
-    if (!detail) return
+    if (!detail || userId === null) return
     setSaving(true)
     setError(null)
     try {
@@ -318,7 +350,7 @@ export function TitleDetailScreen({
   }
 
   async function handleSaveRating() {
-    if (!detail) return
+    if (!detail || userId === null) return
     setSavingRating(true)
     setError(null)
     try {
@@ -351,6 +383,7 @@ export function TitleDetailScreen({
   }
 
   async function handleRemoveRating() {
+    if (userId === null) return
     setSavingRating(true)
     setError(null)
     try {
@@ -492,7 +525,21 @@ export function TitleDetailScreen({
 
         {error && <p role="alert" className="mt-4 text-[13px] leading-snug text-coral">{error}</p>}
 
+        {/* ---- signed out: one honest invitation, no dead controls ---- */}
+        {userId === null && (
+          <div className="mt-4">
+            <CtaButton onClick={onSignIn} className="w-full py-3.5 text-[14px]">
+              Sign in to rate it
+            </CtaButton>
+            <p className="mt-2.5 text-center text-[13px] leading-snug text-muted">
+              Rating, saving, and scoring a title with your group need an account. Browsing
+              does not.
+            </p>
+          </div>
+        )}
+
         {/* ---- actions first: inviting the group never hides below the fold ---- */}
+        {userId !== null && (
         <div className="mt-4 flex flex-col gap-3">
           <CtaButton
             onClick={() => setInviteOpen(true)}
@@ -714,6 +761,7 @@ export function TitleDetailScreen({
             </div>
           )}
         </div>
+        )}
 
         {detail.overview && (
           <p className="mt-5 text-[13px] leading-relaxed text-text/90">{detail.overview}</p>
@@ -742,6 +790,7 @@ export function TitleDetailScreen({
         )}
 
         {/* ---- community rating (both crowds, each on their own rubric) ---- */}
+        {userId !== null && (
         <section ref={communityRef} className="mt-7 scroll-mt-4">
           <div className="mb-2.5 flex items-baseline justify-between px-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
@@ -904,6 +953,7 @@ export function TitleDetailScreen({
             )}
           </div>
         </section>
+        )}
 
         {/* ---- cast ---- */}
         {detail.cast.length > 0 && (
@@ -934,6 +984,7 @@ export function TitleDetailScreen({
         )}
 
         {/* ---- cross-group Mashed history ---- */}
+        {userId !== null && (
         <section className="mt-7">
           <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
             Your groups’ verdicts
@@ -1025,22 +1076,25 @@ export function TitleDetailScreen({
             </p>
           )}
         </section>
+        )}
 
         {/* ---- discussion: group debriefs + everyone's takes ---- */}
-        <DiscussionSection
-          title={{
-            name: detail.name,
-            year: detail.year,
-            mediaType: detail.mediaType,
-            tmdbId: detail.tmdbId,
-            posterPath: detail.posterPath,
-          }}
-          groups={groups}
-          userId={userId}
-          initialGroupId={discussGroupId}
-          composerSeed={discussSeed}
-          refreshKey={discussionRefresh}
-        />
+        {userId !== null && (
+          <DiscussionSection
+            title={{
+              name: detail.name,
+              year: detail.year,
+              mediaType: detail.mediaType,
+              tmdbId: detail.tmdbId,
+              posterPath: detail.posterPath,
+            }}
+            groups={groups}
+            userId={userId}
+            initialGroupId={discussGroupId}
+            composerSeed={discussSeed}
+            refreshKey={discussionRefresh}
+          />
+        )}
       </div>
     </div>
   )

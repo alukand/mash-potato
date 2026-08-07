@@ -34,7 +34,7 @@ import { CtaButton, HEADER_ACTION_ID, MessagesButton } from './components/ui'
 import { MessagesScreen } from './screens/MessagesScreen'
 import { ThreadScreen } from './screens/ThreadScreen'
 import type { TabId } from './components/BottomNav'
-import { AuthScreen } from './screens/AuthScreen'
+import { SignedOutShell } from './screens/SignedOutShell'
 import { CreateGroupScreen } from './screens/CreateGroupScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { DiscoverScreen } from './screens/DiscoverScreen'
@@ -459,7 +459,11 @@ function App() {
   }
 
   if (session === undefined) return <Splash />
-  if (session === null) return <AuthScreen />
+  // Guideline 5.1.1(v): browsing is not account based, so signed-out visitors
+  // get the catalogue (Discover + title pages) and are asked to sign in only
+  // where a feature actually needs an account. SignedOutShell owns that whole
+  // surface; AuthScreen is reached from inside it.
+  if (session === null) return <SignedOutShell />
   if (groups === undefined) return <Splash note="loading your groups" />
   if (!group) {
     // First run: the slides explain the app, then the user chooses their way

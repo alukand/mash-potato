@@ -22,7 +22,13 @@ type Mode = 'signin' | 'signup' | 'confirm' | 'forgot' | 'code'
 
 const codeFieldClass = `${fieldClass} text-center font-mono text-[18px] tracking-[0.4em]`
 
-export function AuthScreen() {
+interface AuthScreenProps {
+  /** Present when sign-in was opened FROM browsing (guideline 5.1.1(v)):
+   *  a signed-out visitor must be able to back out and keep looking around. */
+  onBack?: () => void
+}
+
+export function AuthScreen({ onBack }: AuthScreenProps = {}) {
   const [mode, setMode] = useState<Mode>('signin')
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
@@ -140,6 +146,18 @@ export function AuthScreen() {
   return (
     <div className="flex min-h-dvh flex-col justify-center px-5 py-10">
       <div className="mx-auto w-full max-w-[400px]">
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mp-rise mb-4 flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m15 5-7 7 7 7" />
+            </svg>
+            Keep browsing
+          </button>
+        )}
         <header className="mp-rise mb-8 flex flex-col items-center text-center">
           <Logo className="h-14 w-14" />
           <h1 className="mt-4 font-display text-[34px] font-semibold leading-none tracking-tight">

@@ -1,3 +1,17 @@
+NO ACCOUNT IS NEEDED TO USE THE APP (guideline 5.1.1(v))
+
+Launch the app and tap nothing: it opens straight into Discover, with no sign-in
+wall. Without an account you can browse the full film and TV catalogue, search it,
+filter it, and open any title to read its synopsis, cast, runtime, rating and where
+to stream it. Nothing about that requires registering.
+
+An account is asked for only where the feature is genuinely account based: rating
+a title, saving it, scoring it blind with a group, messaging, and your profile.
+Tapping "Sign in to rate it" on any title page is how you get there, and "Keep
+browsing" on the sign-in screen takes you straight back out.
+
+TO REVIEW THE ACCOUNT FEATURES
+
 Sign in with the credentials above. Use password sign-in; no email code is required.
 
 The account is a member of one group, "Movie Night", with three rounds already scored and revealed.

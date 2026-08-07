@@ -38,7 +38,7 @@ locked score — it also grows the session's rubric snapshot append-only).
 Any schema change touching this needs both test suites updated and passing:
 
 - `npx supabase test db` — pgTAP, `supabase/tests/blind_read_test.sql`
-  (246 assertions across 12 files as of 2026-07-26)
+  (304 assertions across 14 files as of 2026-08-07)
 - `powershell -File scripts\verify-rls.ps1` — portable-Postgres twin
   (see `scripts/verify-rls/README.md`)
 - `powershell -File scripts\check-grants.ps1` — the GRANTS LAW text lint
@@ -78,6 +78,28 @@ migration, probe hosted directly — an anon-key POST to
 control (e.g. `public_profile`) confirms the probe itself is sound. The
 twin's `20-grants.sql` mirrors the internals list; `account_test.sql` +
 the twin's 98 file assert the local posture.
+
+## BROWSING IS NOT BEHIND AN ACCOUNT (App Store 5.1.1(v))
+
+**Apple REJECTED 1.0 (34) on 2026-08-06** for exactly this: the app returned
+`<AuthScreen />` for every signed-out visitor, so features that are not account
+based sat behind registration. Do not re-gate them.
+
+Signed out, `App.tsx` renders `SignedOutShell` (its own file, the whole
+signed-out surface): Discover — the full TMDB lineup, search, filters — plus
+title pages with synopsis, cast, runtime, rating and where-to-watch. It is
+deliberately SELF-CONTAINED: the signed-in shell assumes a session everywhere
+(groups, members, URL sync, push routing, tour), and threading `null` through it
+would scatter sign-in branches across dozens of call sites.
+
+The rule for any new feature: if it does not read or write *this user's* data,
+it must work signed out. `DiscoverScreen` and `TitleDetailScreen` take
+`userId: string | null` and, when null, fetch ONLY the public TMDB surface —
+every account-scoped read would 401 and reject the whole `Promise.all`.
+Account sections render behind `userId !== null`; every write handler carries a
+`userId === null` guard so the compiler proves it. Verified signed out: the app
+issues NO `/rest/v1/` calls at all, only `tmdb-search` (which the anon key may
+call — `verify_jwt` accepts it, confirmed against hosted).
 
 ## Commands
 
@@ -535,14 +557,15 @@ the twin's 98 file assert the local posture.
   test suite can catch a missing `anon` revoke); migrations at or before
   20260725120000 are grandfathered.
 
-## Current state (2026-07-08)
+## Current state (2026-08-07)
 
 - Live on TestFlight (internal testing): repo on GitHub (alukand/mash-potato),
   Codemagic `ios-testflight` workflow builds + uploads (see `codemagic.yaml`
   + `docs/TESTFLIGHT.md`). App record Apple ID 6788610092.
 - Hosted Supabase project ref: `lvmcwvhlfijvegxbqipc` (MCP config in
-  `.mcp.json`) — all migrations applied (through 20260727190000
-  anon_write_revoke; moderation + the anon revoke deployed 2026-07-27,
+  `.mcp.json`) — all migrations applied (through 20260727200000
+  moderation_log_target_user, verified 2026-08-07 with `migration list`;
+  moderation + the anon revoke deployed 2026-07-27,
   messaging + cancel 2026-07-26, all via
   `npx supabase db push --linked`, which works here even though
   `supabase login` needs a TTY. Note db push ends with a pg-delta
@@ -558,8 +581,7 @@ the twin's 98 file assert the local posture.
   discover/recommendations/providers — providers = where-to-watch, JustWatch
   data, attribution shown in the UI; v12 browse feeds also top_rated/
   now_playing/upcoming, discover filters also yearFrom/To, sortBy,
-  min/maxVotes, minRating; v13 adds language — Anime = 16 + 'ja'). Auth email-confirmation is OFF (no
-  deep-link handling yet).
+  min/maxVotes, minRating; v13 adds language — Anime = 16 + 'ja').
   `send-push` deployed + `notification_config` seeded on hosted. **PUSH IS
   LIVE** (verified 2026-07-27): all four APNs secrets hold real values,
   `PUSH_SHARED_SECRET` matches `notification_config.secret` (compared as

@@ -17,7 +17,9 @@ import { PosterShelf } from '../components/PosterShelf'
 import { PosterResultGrid } from '../components/PosterResultGrid'
 
 interface DiscoverScreenProps {
-  userId: string
+  /** null = signed out. Browsing is public; only the "Because you rated"
+   *  seeds need an account (guideline 5.1.1(v)). */
+  userId: string | null
   onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
 }
 
@@ -343,6 +345,7 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
   useEffect(() => {
     let cancelled = false
     setRecSeeds([])
+    if (userId === null) return
     Promise.all([
       fetchMyGlobalRatings(userId).catch(() => []),
       fetchMyReviewedTitles(userId).catch(() => []),
