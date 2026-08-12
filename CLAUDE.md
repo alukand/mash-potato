@@ -79,6 +79,38 @@ control (e.g. `public_profile`) confirms the probe itself is sound. The
 twin's `20-grants.sql` mirrors the internals list; `account_test.sql` +
 the twin's 98 file assert the local posture.
 
+## UGC PRECAUTIONS ARE LOAD-BEARING (App Store 1.2)
+
+**Apple REJECTED 1.0 (36) on 2026-08-12** under guideline 1.2. Five
+precautions are required, and each maps to something that must not be quietly
+removed or moved:
+
+1. **Terms/EULA with an explicit zero-tolerance clause, shown BEFORE
+   registering or logging in.** This is what was missing: the agreement was
+   gated at first POST (`profiles.accepted_terms_at`), not before the account
+   existed. `TermsGate` (components/) now fronts `AuthScreen` — you cannot
+   reach the sign-in or create-account form without agreeing — and the
+   agreement is restated under the CTA on both forms. Remembered per device as
+   `mp.termsAgreed`. It must gate the AUTH FORM and never the app: putting it
+   on launch would re-break 5.1.1(v) below. The first-post gate stays as a
+   second layer. Full EULA at `web/terms.html` (`/terms`).
+2. **Filtering** — the `banned_terms` wordlist, at post time, server side.
+3. **Flagging** — comment + message reports.
+4. **Blocking, which must ALSO notify the developer and remove content from
+   the user's feed instantly.** Hiding was always instant; notifying was not.
+   `block_user(p_user_id, p_conversation_id, p_reason)` (20260812120000) files
+   a `message_reports` row for the blocked person's latest message in that
+   conversation, so a block lands in `moderation_queue` under the same 24-hour
+   clock. Membership is checked first — that is what stops it becoming a way
+   to report messages you could never see. Callers must pass the conversation
+   (ThreadScreen does).
+5. **Acting within 24 hours** — the moderation queue, oldest first, overdue
+   flagged.
+
+`review-notes.txt` names where each one lives, in tap order. Keep it true: it
+is the first thing the reviewer reads, and a path that does not match the
+build is worse than no note at all.
+
 ## BROWSING IS NOT BEHIND AN ACCOUNT (App Store 5.1.1(v))
 
 **Apple REJECTED 1.0 (34) on 2026-08-06** for exactly this: the app returned

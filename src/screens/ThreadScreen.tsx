@@ -345,7 +345,10 @@ export function ThreadScreen({
                 setConfirmBlock(false)
                 if (!other) return
                 void run('Could not block them', async () => {
-                  await blockUserRpc(other)
+                  // Pass the conversation so the block files a report for
+                  // their latest message: blocking has to reach us, not just
+                  // hide them (guideline 1.2).
+                  await blockUserRpc(other, conversationId)
                   onBack()
                 })
               }}

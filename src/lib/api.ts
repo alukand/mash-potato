@@ -2841,8 +2841,22 @@ export async function fetchMyBlocks(): Promise<BlockedUser[]> {
 }
 
 /** Blocking also declines any pending request from them. */
-export async function blockUserRpc(userId: string): Promise<void> {
-  const { error } = await supabase.rpc('block_user', { p_user_id: userId })
+/**
+ * Block, and tell us why. Passing the conversation lets the RPC file a report
+ * for that person's latest message in it, so a block reaches the moderation
+ * queue under the same 24-hour clock as any other report (guideline 1.2:
+ * "blocking should also notify the developer of the inappropriate content").
+ */
+export async function blockUserRpc(
+  userId: string,
+  conversationId?: string,
+  reason?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('block_user', {
+    p_user_id: userId,
+    p_conversation_id: conversationId ?? undefined,
+    p_reason: reason ?? undefined,
+  })
   if (error) throw new Error(error.message)
 }
 

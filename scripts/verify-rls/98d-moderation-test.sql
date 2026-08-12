@@ -240,5 +240,73 @@ begin
   raise notice 'PASS 9: unbanning is recorded, and clock_timestamp keeps the order true';
 end $$;
 
+-- PASS 10: blocking notifies us (guideline 1.2). A block used to write
+-- user_blocks and stop there, so the strongest signal a user can send about
+-- someone reached nobody who could act on it. It now files a report for the
+-- blocked person's latest message, which puts it in the same queue under the
+-- same 24-hour clock.
+reset role;
+insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
+values ('dddddddd-dddd-dddd-dddd-dddddddddddd', '00000000-0000-0000-0000-000000000000',
+        'authenticated', 'authenticated', 'dan@test.dev', '{"display_name":"Dan"}', now(), now())
+on conflict do nothing;
+
+-- Ben is banned by this point in the file, so the pair is Cara and Dan.
+insert into public.groups (id, name, owner_id)
+values ('99999999-9999-9999-9999-999999999999', 'Block Test Crew',
+        'cccccccc-cccc-cccc-cccc-cccccccccccc')
+on conflict do nothing;
+insert into public.group_members (group_id, user_id, role)
+values ('99999999-9999-9999-9999-999999999999',
+        'dddddddd-dddd-dddd-dddd-dddddddddddd', 'member')
+on conflict do nothing;
+update public.profiles set accepted_terms_at = now()
+ where id in ('cccccccc-cccc-cccc-cccc-cccccccccccc',
+              'dddddddd-dddd-dddd-dddd-dddddddddddd');
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+do $$
+declare v_dm uuid;
+begin
+  v_dm := public.start_dm('cccccccc-cccc-cccc-cccc-cccccccccccc');
+  perform public.send_message(v_dm, 'something vile');
+end $$;
+
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+do $$
+declare v_dm uuid; c int; r text;
+begin
+  select id into v_dm from public.conversations
+   where kind = 'dm'
+     and (dm_user_a = 'cccccccc-cccc-cccc-cccc-cccccccccccc'
+       or dm_user_b = 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+  perform public.block_user('dddddddd-dddd-dddd-dddd-dddddddddddd', v_dm, 'harassment');
+
+  select count(*), max(reason) into c, r from public.message_reports
+   where reporter_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  if c <> 1 then
+    raise exception 'FAIL 10: a block filed % reports (want 1)', c;
+  end if;
+  if r not like '%via block%' then
+    raise exception 'FAIL 10: the report does not say it came from a block (%)', r;
+  end if;
+  raise notice 'PASS 10: blocking files a report so the developer is notified';
+end $$;
+
+-- PASS 11: and blocking without a conversation still works (Profile has no
+-- thread context), it simply files nothing.
+do $$
+declare c int;
+begin
+  perform public.block_user('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  select count(*) into c from public.message_reports
+   where reporter_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  if c <> 1 then
+    raise exception 'FAIL 11: a contextless block filed a report (total=%)', c;
+  end if;
+  raise notice 'PASS 11: a block with no conversation still blocks, and reports nothing';
+end $$;
+
 reset role;
 rollback;

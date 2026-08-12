@@ -1,42 +1,98 @@
-NO ACCOUNT IS NEEDED TO USE THE APP (guideline 5.1.1(v))
+Thank you for the review. This build answers both prior rejections directly.
 
-Launch the app and tap nothing: it opens straight into Discover, with no sign-in
-wall. Without an account you can browse the full film and TV catalogue, search it,
-filter it, and open any title to read its synopsis, cast, runtime, rating and where
-to stream it. Nothing about that requires registering.
+=====================================================================
+1. GUIDELINE 1.2 - USER-GENERATED CONTENT
+=====================================================================
 
-An account is asked for only where the feature is genuinely account based: rating
-a title, saving it, scoring it blind with a group, messaging, and your profile.
-Tapping "Sign in to rate it" on any title page is how you get there, and "Keep
-browsing" on the sign-in screen takes you straight back out.
+All five required precautions are implemented. Here is exactly where to find
+each one.
 
-TO REVIEW THE ACCOUNT FEATURES
+(a) TERMS / EULA WITH ZERO TOLERANCE, SHOWN BEFORE REGISTERING OR LOGGING IN
+    Launch the app and tap "Sign in" (top right). Before the sign-in form
+    appears you get a full-screen agreement headed "Before you join", stating
+    in bold that there is NO TOLERANCE FOR OBJECTIONABLE CONTENT OR ABUSIVE
+    USERS, and that offending content is removed and the account ejected. You
+    cannot reach the sign-in or create-account form without tapping "I agree
+    to these rules".
+    The agreement links to the full Terms of Use at
+    https://mashpotato.app/terms, and the same agreement is restated under the
+    button on both the Sign in and Create account forms.
+    (In the previous build this agreement appeared before a user's first post
+    rather than before registration. That is what changed.)
 
-Sign in with the credentials above. Use password sign-in; no email code is required.
+(b) FILTERING OF OBJECTIONABLE CONTENT
+    Every comment and message is checked against a blocked-term list on the
+    server before it is stored; a match is refused and never posts. To see it,
+    sign in, open any title, and post a take containing an obvious slur: the
+    post is rejected.
 
-The account is a member of one group, "Movie Night", with three rounds already scored and revealed.
+(c) FLAGGING OBJECTIONABLE CONTENT
+    Messages: More (bottom right) > Messages > open a conversation > tap any
+    message bubble from the other person > "Report" in the sheet that opens.
+    Comments: open any title > Discussion > tap the menu on any comment that
+    is not yours > "Report".
+    Content that draws three reports is hidden automatically while it waits
+    for review.
+
+(d) BLOCKING ABUSIVE USERS
+    More > Messages > open a conversation > the menu in the top right >
+    "Block". It is a two-step confirm.
+    Blocking takes effect instantly: the person disappears from your view of
+    the app, and they can no longer message you. Blocking ALSO notifies us -
+    it files a report on that person's most recent message, which lands in the
+    same moderator queue as any other report.
+    Unblocking: Profile > settings gear > Blocked people.
+
+(e) ACTING ON REPORTS WITHIN 24 HOURS
+    Reports go to a moderator queue, ordered oldest first, which flags
+    anything older than 24 hours. Acting on an item removes the content and
+    can eject the account that posted it, and every action is written to an
+    append-only audit log. The queue is reachable in-app for moderator
+    accounts (More > Reports); it is not visible to ordinary users.
+
+=====================================================================
+2. GUIDELINE 5.1.1(v) - NO ACCOUNT NEEDED FOR NON-ACCOUNT FEATURES
+=====================================================================
+
+Launch the app and tap nothing: it opens straight into Discover, with no
+sign-in wall. Without an account you can browse the full film and TV
+catalogue, search it, filter it, and open any title for its synopsis, cast,
+runtime, rating and where to stream it.
+
+An account is required only where the feature is genuinely account based:
+rating, saving, scoring a title with a group, messaging, and your profile.
+Tapping "Sign in to rate it" on a title page is how you get there, and "Keep
+browsing" returns you to the catalogue.
+
+=====================================================================
+3. SIGNING IN TO REVIEW THE ACCOUNT FEATURES
+=====================================================================
+
+Use the credentials above with password sign-in; no email code is required.
+
+The account is in one group, "Movie Night", with three rounds already scored
+and revealed, and it has a conversation containing a message from another
+member so that reporting and blocking can be demonstrated immediately.
 
 WHAT TO LOOK AT
-
 1. The app opens on Home: the group, recent activity, and a saved list.
-2. Tap Rate. The most recent round (Severance) is already revealed and shows the core of the app: one combined "Mashed" score of 8.9, each member's individual score, and a headline naming the category the group agreed on and the one that split them ("United on Story. Split over Pacing.").
-3. Scroll down for the per-category breakdown, each member plotted against the group mean, and an expandable explanation of how the weighted score is calculated.
+2. Tap Rate. The most recent round is revealed and shows the core of the app:
+   one combined "Mashed" score, each member's individual score, and a headline
+   naming the category the group agreed on and the one that split them.
+3. Scroll for the per-category breakdown and an explanation of the weighting.
 4. Tap any night in the group log to reopen that round's Reveal.
 
 ABOUT BLIND SCORING
+Scores stay hidden until every member locks their card. This is enforced by
+database row-level security, not by the interface. You can verify it: tap
+"Start the next round", pick a title, score it and tap Lock - your scores save
+and nobody else's become visible. Revealing a NEW round needs the group's
+second member to lock a card too, so please use the three already-revealed
+rounds to see the revealed state.
 
-Scores stay hidden until every member locks their card. This is enforced by database row-level security, not by the interface.
-
-You can see it directly: tap "Start the next round", pick any title, score the categories and tap Lock. Your scores are saved and nobody else's are visible. Revealing that new round would need the group's second member to lock a card too, so please use the three already-revealed rounds to see the revealed state.
-
-USER-GENERATED CONTENT CONTROLS (guideline 1.2)
-
-- A filtered wordlist is applied to every comment and message.
-- Reporting: the menu on any message or comment.
-- Blocking: the thread menu in Messages. Blocked people can be unblocked from Profile.
-- Users agree to house rules before their first post.
-- Reports go to a moderator queue that flags anything older than 24 hours.
-- Account deletion: Profile, settings gear, Danger zone.
+ACCOUNT DELETION
+Profile > settings gear > Danger zone.
 
 Support: support@mashpotato.app
+Terms of Use: https://mashpotato.app/terms
 Privacy policy: https://mashpotato.app/privacy

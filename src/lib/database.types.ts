@@ -1310,16 +1310,19 @@ export type Database = {
           blocked_id: string
           blocker_id: string
           created_at: string
+          reason: string | null
         }
         Insert: {
           blocked_id: string
           blocker_id: string
           created_at?: string
+          reason?: string | null
         }
         Update: {
           blocked_id?: string
           blocker_id?: string
           created_at?: string
+          reason?: string | null
         }
         Relationships: [
           {
@@ -1394,7 +1397,14 @@ export type Database = {
         Args: { p_category_key: string; p_score: number; p_session_id: string }
         Returns: undefined
       }
-      block_user: { Args: { p_user_id: string }; Returns: undefined }
+      block_user: {
+        Args: {
+          p_conversation_id?: string
+          p_reason?: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       can_message_directly: { Args: { p_user_id: string }; Returns: boolean }
       can_read_conversation: {
         Args: { p_conversation_id: string }

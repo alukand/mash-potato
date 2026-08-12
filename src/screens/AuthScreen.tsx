@@ -12,6 +12,28 @@ import {
 } from '../lib/api'
 import { Logo } from '../components/Logo'
 import { CtaButton, fieldClass } from '../components/ui'
+import { TermsGate, TERMS_URL, PRIVACY_URL } from '../components/TermsGate'
+
+// Guideline 1.2: the terms + zero-tolerance agreement must be shown BEFORE
+// registering or logging in. Remembered per device so it is a one-time step,
+// and re-affirmed by the line under the CTA on every visit.
+const TERMS_KEY = 'mp.termsAgreed'
+
+function readTermsAgreed(): boolean {
+  try {
+    return localStorage.getItem(TERMS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function storeTermsAgreed() {
+  try {
+    localStorage.setItem(TERMS_KEY, '1')
+  } catch {
+    // private mode: the gate simply shows again next launch
+  }
+}
 
 // Email + password auth against local/hosted Supabase. On success the
 // onAuthStateChange listener in App flips the screen — no navigation here.
@@ -29,6 +51,7 @@ interface AuthScreenProps {
 }
 
 export function AuthScreen({ onBack }: AuthScreenProps = {}) {
+  const [termsAgreed, setTermsAgreed] = useState(readTermsAgreed)
   const [mode, setMode] = useState<Mode>('signin')
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
@@ -142,6 +165,20 @@ export function AuthScreen({ onBack }: AuthScreenProps = {}) {
             : forgotStage === 'request'
               ? 'Send me a code'
               : 'Set new password'
+
+  // Guideline 1.2: agreement comes BEFORE the account exists, so it gates the
+  // form rather than sitting beside it.
+  if (!termsAgreed) {
+    return (
+      <TermsGate
+        onBack={onBack}
+        onAgree={() => {
+          storeTermsAgreed()
+          setTermsAgreed(true)
+        }}
+      />
+    )
+  }
 
   return (
     <div className="flex min-h-dvh flex-col justify-center px-5 py-10">
@@ -305,6 +342,22 @@ export function AuthScreen({ onBack }: AuthScreenProps = {}) {
           <CtaButton type="submit" disabled={busy} className="mt-5 w-full py-3.5 text-[14px]">
             {ctaLabel}
           </CtaButton>
+
+          {/* Guideline 1.2: the agreement is re-stated at the point of signing
+              in or registering, not only on the gate before it. */}
+          {(mode === 'signin' || mode === 'signup') && (
+            <p className="mt-3 text-center text-[12px] leading-snug text-muted">
+              By continuing you agree to the{' '}
+              <a href={TERMS_URL} target="_blank" rel="noreferrer" className="text-teal underline">
+                Terms of Use
+              </a>{' '}
+              and{' '}
+              <a href={PRIVACY_URL} target="_blank" rel="noreferrer" className="text-teal underline">
+                Privacy Policy
+              </a>
+              , including zero tolerance for objectionable content or abusive users.
+            </p>
+          )}
 
           {mode === 'signin' && (
             <>

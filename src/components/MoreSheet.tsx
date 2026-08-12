@@ -134,6 +134,17 @@ export function MoreSheet({
 
         <div className="mt-2 flex items-center justify-center gap-4 border-t border-line/60 px-3 pb-3 pt-3.5">
           <a
+            href="https://mashpotato.app/terms"
+            target="_blank"
+            rel="noreferrer"
+            className="text-[12px] text-muted transition-colors hover:text-text"
+          >
+            Terms
+          </a>
+          <span className="text-line" aria-hidden>
+            ·
+          </span>
+          <a
             href="https://mashpotato.app/privacy"
             target="_blank"
             rel="noreferrer"

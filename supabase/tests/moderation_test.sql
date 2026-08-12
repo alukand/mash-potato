@@ -11,7 +11,7 @@
 create extension if not exists pgtap with schema extensions;
 
 begin;
-select plan(34);
+select plan(38);
 
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
 values
@@ -20,7 +20,12 @@ values
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '00000000-0000-0000-0000-000000000000',
    'authenticated', 'authenticated', 'ben@test.dev', '{"display_name":"Ben"}', now(), now()),
   ('cccccccc-cccc-cccc-cccc-cccccccccccc', '00000000-0000-0000-0000-000000000000',
-   'authenticated', 'authenticated', 'cara@test.dev', '{"display_name":"Cara"}', now(), now());
+   'authenticated', 'authenticated', 'cara@test.dev', '{"display_name":"Cara"}', now(), now()),
+  -- Dan exists only for the blocking section: Ben is BANNED by the time it
+  -- runs (the queue assertions above eject him), and a banned account cannot
+  -- send the message a block would report.
+  ('dddddddd-dddd-dddd-dddd-dddddddddddd', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'dan@test.dev', '{"display_name":"Dan"}', now(), now());
 
 -- Ana is the moderator, and the ONLY way to become one is this: a write from
 -- outside the app. There is no RPC that grants it.
@@ -239,6 +244,62 @@ select results_eq(
        from public.moderation_log(1) $$,
   $$ values ('comment'::text, true, true) $$,
   'moderation_log: a ban from the queue names the CONTENT and the PERSON separately');
+
+-- ================= blocking notifies us (guideline 1.2) =================
+-- "blocking should also notify the developer of the inappropriate content".
+-- A block used to write user_blocks and stop there, so the strongest signal a
+-- user can send about someone reached nobody who could act on it.
+
+-- Ben and Cara share a group, so a DM between them opens accepted.
+-- Seeded as the superuser: group_members inserts are owner-only under RLS,
+-- and this is fixture setup, not the thing under test.
+reset role;
+insert into public.groups (id, name, owner_id)
+values ('99999999-9999-9999-9999-999999999999', 'Block Test Crew',
+        'cccccccc-cccc-cccc-cccc-cccccccccccc')
+on conflict do nothing;
+insert into public.group_members (group_id, user_id, role)
+values ('99999999-9999-9999-9999-999999999999',
+        'dddddddd-dddd-dddd-dddd-dddddddddddd', 'member')
+on conflict do nothing;
+-- send_message refuses until the poster has accepted the community terms.
+update public.profiles set accepted_terms_at = now()
+ where id in ('cccccccc-cccc-cccc-cccc-cccccccccccc',
+              'dddddddd-dddd-dddd-dddd-dddddddddddd');
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"dddddddd-dddd-dddd-dddd-dddddddddddd","role":"authenticated"}';
+select public.start_dm('cccccccc-cccc-cccc-cccc-cccccccccccc') as dm_id \gset
+select public.send_message(:'dm_id', 'something vile') as msg_id \gset
+
+-- Cara blocks Dan from that thread.
+set local request.jwt.claims to '{"sub":"cccccccc-cccc-cccc-cccc-cccccccccccc","role":"authenticated"}';
+select lives_ok(
+  $$ select public.block_user('dddddddd-dddd-dddd-dddd-dddddddddddd',
+                              (select id from public.conversations where kind = 'dm'
+                                and (dm_user_a = 'cccccccc-cccc-cccc-cccc-cccccccccccc'
+                                  or dm_user_b = 'cccccccc-cccc-cccc-cccc-cccccccccccc')),
+                              'harassment') $$,
+  'block: succeeds with a conversation and a reason');
+
+-- 36: the block filed a report on their latest message
+select is(
+  (select count(*)::int from public.message_reports
+    where reporter_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'),
+  1,
+  'block: files a report for the blocked user''s latest message');
+
+-- 37: and it names the block as the source, so triage can tell them apart
+select ok(
+  (select reason like '%via block%' from public.message_reports
+    where reporter_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'),
+  'block: the report says it came from a block');
+
+-- 38: the report reaches the moderator queue, under the same 24h clock
+set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
+select ok(
+  exists (select 1 from public.moderation_queue() q where q.kind = 'message'),
+  'block: the resulting report is visible in the moderation queue');
 
 reset role;
 select * from finish();
