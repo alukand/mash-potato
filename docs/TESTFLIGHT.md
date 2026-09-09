@@ -12,6 +12,22 @@ together**, and the **Apple / Codemagic account steps** only you can do.
 - Branded icon source at `resources/icon.svg` (see `resources/README.md`).
 - `.env.production` points at the hosted Supabase project.
 
+## Release versions (2026-09-08)
+
+The next iOS release is **1.1.0**, set as `MARKETING_VERSION` in both Debug and
+Release in `ios/App/App.xcodeproj/project.pbxproj`. `Info.plist` reads that value
+through `CFBundleShortVersionString`. Codemagic separately sets the build number
+(`CFBundleVersion`) from `BUILD_NUMBER`; increasing that number does not increase
+the app's release version.
+
+Apple rejected the post-1.0 upload with error 90062 because 1.0 was already
+approved. Before each subsequent App Store release, raise `MARKETING_VERSION`
+in both configurations and commit it. Start a **new build of the latest master**
+in Codemagic; retrying an older commit can package the old version again. For
+App Store submission, create the matching version in App Store Connect and
+select its uploaded build. TestFlight upload and App Store submission are
+separate steps.
+
 ## Hosted backend — 1 step you do, then I finish
 The TestFlight app talks to the **hosted** project, which needs the current
 `tmdb-search` Edge Function (search / browse / detail / genres / person /

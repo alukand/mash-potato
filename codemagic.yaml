@@ -74,6 +74,9 @@ workflows:
           xcode-project use-profiles
       - name: Set build number to the Codemagic build index
         script: |
+          # This increments CFBundleVersion only. Before a new App Store
+          # release, also bump MARKETING_VERSION in both Xcode configurations.
+          # An approved marketing version cannot accept another release upload.
           cd ios/App
           agvtool new-version -all "$BUILD_NUMBER"
       - name: Build the signed .ipa
