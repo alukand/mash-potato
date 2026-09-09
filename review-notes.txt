@@ -8,7 +8,7 @@ All five required precautions are implemented. Here is exactly where to find
 each one.
 
 (a) TERMS / EULA WITH ZERO TOLERANCE, SHOWN BEFORE REGISTERING OR LOGGING IN
-    Launch the app and tap "Sign in" (top right). Before the sign-in form
+    Launch the app and tap the gold "Get started" button (top right). Before the sign-in form
     appears you get a full-screen agreement headed "Before you join", stating
     in bold that there is NO TOLERANCE FOR OBJECTIONABLE CONTENT OR ABUSIVE
     USERS, and that offending content is removed and the account ejected. You
@@ -16,7 +16,7 @@ each one.
     to these rules".
     The agreement links to the full Terms of Use at
     https://mashpotato.app/terms, and the same agreement is restated under the
-    button on both the Sign in and Create account forms.
+    button on the email sign-in/create-account form and password form.
     (In the previous build this agreement appeared before a user's first post
     rather than before registration. That is what changed.)
 
@@ -68,7 +68,10 @@ browsing" returns you to the catalogue.
 3. SIGNING IN TO REVIEW THE ACCOUNT FEATURES
 =====================================================================
 
-Use the credentials above with password sign-in; no email code is required.
+Tap "Get started", accept the terms, then "Sign in with a password instead".
+Use the credentials above; no email code is required. Existing accounts
+keep their normal landing page. New accounts set up their rubric and join
+Test Group 1 automatically before entering the main app.
 
 The account is in one group, "Movie Night", with three rounds already scored
 and revealed, and it has a conversation containing a message from another

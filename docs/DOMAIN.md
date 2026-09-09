@@ -150,3 +150,36 @@ stop applying.
   AASA file above would live.
 - **support@mashpotato.app**: registrar-level email forwarding to the
   current support inbox, when you want the branded address in the app.
+
+
+## Onboarding release — 2026-09-09
+
+Passwordless email is now the default for both new and returning users.
+Templates `magic_link.html` and `confirmation.html` contain ConfirmationURL
+plus Token. Hosted templates and the exact redirect allowlist must match:
+`https://app.mashpotato.app/auth/callback` and
+`com.mashpotato.app://auth/callback`. Both were applied through a narrow Auth
+Management API patch on this release; existing SMTP/security settings were
+preserved. Do not push the whole local config.toml to production.
+
+The client uses PKCE, validates callback origin/path, and exchanges each code
+once. A link must open on the device/browser that requested it; the email code
+is the fallback. iOS/Android register the native scheme, and @capacitor/app
+handles both appUrlOpen and cold-start getLaunchUrl.
+
+Migration 20260909142308 adds account-scoped setup and the public group catalog.
+It must be deployed before the web/native bundle. Test Group 1 is a separate
+Cinephile group owned by Alex, with searchable=true and suggested=true; other
+groups are not suggested. Directory provisioning is live data, not a migration
+that embeds production account IDs. Signed-out browsing calls only TMDB until
+the visitor explicitly opens Browse groups, which calls the public metadata RPC.
+
+For an existing-account demo: Profile > Settings > Walk through rubric and
+group setup. This opens the same real setup flow without resetting server
+history. "Show me around the tabs" remains the separate navigation tour.
+
+Release verification: production web build, 144 unit tests, source lint,
+LunaCraft static checks, portable RLS suite, and 333 pgTAP assertions passed.
+Docker was unavailable locally, so the pgTAP SQL ran against the portable
+PostgreSQL harness with its pg_net request stub. Hosted anon probes confirmed
+the directory responds 200 and all new account/write RPCs respond 401.

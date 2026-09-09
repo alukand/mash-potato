@@ -281,19 +281,23 @@ is enforced by shape, not by care: `renderRevealCard` takes a
 scorecard to the image. Any future share surface must be built the same way —
 never by screenshotting a DOM that has personal data in it.
 
-**Onboarding (2026-07-18):** first-run is two beats. (1) The slides teach
-with LIVE MINIATURES of the product, not icons: the avatar trio mashing
-into an 8.2 pill, blind slider fills growing under a "Locked, hidden from
-the group" chip, the signature beat — a real ScoreRing counting up under
-"United on Story. Split over Pacing.", a What's-next vote tally, and a
-mini tab bar on the closer. Mockups replay on slide activation (keyed
-remount; keyframes mp-grow-x / mp-pop, transform-only, killed by the
-reduced-motion guard). (2) After the first signed-in landing,
-FirstRunTour dims the app (nav stays lit above the scrim), pulses each
-tab with a gold ring (mp-tour-pulse) while SWITCHING to that real screen,
-four beats, skippable, once per device (mp.toured). Group-less users get
-slides first, then the tour; users who arrive with groups skip straight
-to the tour.
+**Onboarding (2026-09-09):** signed-out Discover stays open, with a gold
+Get started button and a visible sign-in/create-account action. The terms
+agreement precedes the single email form. Email links use PKCE and retain a
+six-digit code fallback; password sign-in remains secondary.
+
+New accounts get two real actions, persisted per account: choose a name and
+save a favorite rubric, then automatically join the suggested starter group
+and see a joined confirmation. Only the curated Test Group 1 is suggested.
+Saving comes before joining so the favorite seeds the member's group rubric.
+Skipping customization uses defaults and still joins the starter group.
+Existing accounts keep their normal landing page. The tab tour remains
+available on Profile; it no longer interrupts the first signed-in screen.
+
+Group owners can make a group searchable in Rate > Settings. Only the group
+name, taste mode and member count are public. Joining is immediate for signed-in
+users; private groups stay invite-only. Owner removal prevents self-rejoining.
+This never changes the per-member blind Reveal boundary.
 
 ## Taste modes (Normies and Cinephiles, 2026-07-24)
 

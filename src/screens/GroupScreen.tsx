@@ -50,6 +50,7 @@ import { SessionPanel } from '../components/SessionPanel'
 import { StartRound } from '../components/StartRound'
 import { AddGroupMembers } from '../components/AddGroupMembers'
 import { RubricRowsEditor } from '../components/RubricRowsEditor'
+import { GroupDiscoverySettings } from '../components/GroupDiscoverySettings'
 
 interface GroupScreenProps {
   group: GroupInfo
@@ -615,6 +616,7 @@ export function GroupScreen({
       {/* ---- the settings cluster: rubric + members + manage (gear-gated) ---- */}
       {settingsOpen && (
       <div ref={settingsRef} className="order-[-1] mb-7 scroll-mt-4">
+      {isOwner && <GroupDiscoverySettings key={group.id} groupId={group.id} />}
       {/* ---- How this group scores (the mode) ---- */}
       <section id={isCasual ? 'group-rubric-editor' : undefined} className="mp-rise scroll-mt-5" style={{ animationDelay: '100ms' }}>
         <div className="mb-3 flex items-baseline justify-between px-1">

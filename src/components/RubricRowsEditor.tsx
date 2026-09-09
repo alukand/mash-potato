@@ -4,10 +4,11 @@ import type { GroupRubricRow } from '../lib/api'
 import { DEFAULT_WEIGHTS, RUBRIC_CATALOG } from '../lib/rubricCatalog'
 
 /** One category editor for saved presets and your contribution to a group. */
-export function RubricRowsEditor({ rows, onChange, disabled = false }: {
+export function RubricRowsEditor({ rows, onChange, disabled = false, reorder = true }: {
   rows: GroupRubricRow[]
   onChange: (rows: GroupRubricRow[]) => void
   disabled?: boolean
+  reorder?: boolean
 }) {
   const [addOpen, setAddOpen] = useState(false)
   const sorted = [...rows].sort((a, b) => a.sort - b.sort)
@@ -26,7 +27,7 @@ export function RubricRowsEditor({ rows, onChange, disabled = false }: {
   }
   return (
     <div>
-      <p className="mb-3 text-[13px] leading-snug text-muted">Give more weight to what matters most. Turn categories on or off and use the arrows to reorder them.</p>
+      <p className="mb-3 text-[13px] leading-snug text-muted">Give more weight to what matters most. Turn categories on or off.{reorder && ' Use the arrows to reorder them.'}</p>
       <div className="divide-y divide-line/50">
         {sorted.map((row, index) => (
           <div key={row.key} className="py-3">
@@ -35,7 +36,7 @@ export function RubricRowsEditor({ rows, onChange, disabled = false }: {
                 <input type="checkbox" checked={row.enabled} disabled={disabled || (row.enabled && enabled.length <= 1)} onChange={(e) => update(row.key, { enabled: e.target.checked })} className="h-5 w-5 shrink-0 accent-teal" />
                 <span className={row.enabled ? '' : 'text-muted'}>{row.label}</span>
               </label>
-              {([-1, 1] as const).map((delta) => (
+              {reorder && ([-1, 1] as const).map((delta) => (
                 <button key={delta} type="button" disabled={disabled || (delta === -1 ? index === 0 : index === sorted.length - 1)} onClick={() => move(index, delta)} aria-label={`Move ${row.label} ${delta === -1 ? 'up' : 'down'}`} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:text-text disabled:opacity-30">{delta === -1 ? '↑' : '↓'}</button>
               ))}
             </div>

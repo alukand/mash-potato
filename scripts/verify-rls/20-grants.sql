@@ -71,6 +71,13 @@ begin
   end loop;
 end $$;
 -- security hardening: trigger-only internals are not an API, even signed in
+-- Discovery/onboarding tables are RPC-only, including after blanket grants.
+revoke all on public.group_discovery, public.onboarding_progress, public.group_join_blocks from public, anon, authenticated;
+revoke all on function public.remember_group_removal() from public, anon, authenticated;
+-- browse_open_groups is the deliberate public, metadata-only catalogue.
+grant execute on function public.browse_open_groups(text, boolean) to anon, authenticated;
+
+-- security hardening: trigger-only internals are not an API, even signed in
 -- (mirrors 20260717160000_security_hardening.sql, which the blanket function
 -- grant above would otherwise undo).
 do $$

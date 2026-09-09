@@ -45,6 +45,7 @@ import { PlaylistCard } from '../components/PlaylistCard'
 import { PosterGrid } from '../components/PosterGrid'
 import { AddGroupMembers } from '../components/AddGroupMembers'
 import { PersonalRubrics } from '../components/PersonalRubrics'
+import { OpenGroups } from '../components/OpenGroups'
 import { colorForUser } from '../lib/palette'
 import { AVATAR_CATALOG, Avatar } from '../components/avatars'
 import { TASTE_MODES } from '../lib/rubricCatalog'
@@ -72,6 +73,7 @@ interface ProfileScreenProps {
   onGroupsChanged: () => Promise<void>
   /** Run the first-run walkthrough again (it is otherwise once per device). */
   onReplayTour: () => void
+  onRestartSetup: () => void
   /** Open the report queue. Only ever shown to moderators. */
   onOpenModeration: () => void
   /** Scroll to this section on arrival (a Home stat tile sent you here). */
@@ -100,6 +102,7 @@ export function ProfileScreen({
   onNameChanged,
   onGroupsChanged,
   onReplayTour,
+  onRestartSetup,
   onOpenModeration,
   focusSection = null,
   onFocusHandled,
@@ -114,6 +117,7 @@ export function ProfileScreen({
   const [addFriendsOpen, setAddFriendsOpen] = useState(false)
   const [friendGroupId, setFriendGroupId] = useState('')
   const [rubricsOpen, setRubricsOpen] = useState(false)
+  const [findGroupsOpen, setFindGroupsOpen] = useState(false)
   const ownedGroups = groups.filter((g) => g.role === 'owner')
   const friendGroup = ownedGroups.find((g) => g.id === friendGroupId) ?? ownedGroups[0]
 
@@ -611,6 +615,8 @@ export function ProfileScreen({
 
       {/* ---- groups ---- */}
       <section id="profile-groups" className="mp-rise mt-7 scroll-mt-5" style={{ animationDelay: '80ms' }}>
+        <button type="button" onClick={() => setFindGroupsOpen((v) => !v)} aria-expanded={findGroupsOpen} className="mb-4 min-h-11 w-full rounded-full border border-teal/40 px-4 text-[13px] font-semibold text-teal">{findGroupsOpen ? 'Close group search' : 'Find groups to join'}</button>
+        {findGroupsOpen && <div className="mp-rise mb-5"><OpenGroups userId={userId} joinedIds={groups.map((g) => g.id)} onJoined={async () => { await onGroupsChanged(); setFriends(await fetchMyFriends(userId)) }} /></div>}
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
           Your groups
         </p>
@@ -1082,14 +1088,15 @@ export function ProfileScreen({
           )}
         </div>
 
-        {/* The tour is once-per-device and had no reset, so nobody could see
-            it twice, on purpose or to test it. */}
+        <button type="button" onClick={onRestartSetup} className="mt-5 min-h-11 w-full rounded-full border border-gold/40 px-4 text-[13px] font-semibold text-gold">
+          Walk through rubric and group setup
+        </button>
         <button
           type="button"
           onClick={onReplayTour}
-          className="mt-5 w-full rounded-full border border-line py-2.5 text-[13px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+          className="mt-2 min-h-11 w-full rounded-full border border-line py-2.5 text-[13px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
         >
-          Replay the walkthrough
+          Show me around the tabs
         </button>
 
         <button

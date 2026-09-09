@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -400,6 +405,62 @@ export type Database = {
           },
           {
             foreignKeyName: "global_ratings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_discovery: {
+        Row: {
+          group_id: string
+          searchable: boolean
+          suggested: boolean
+        }
+        Insert: {
+          group_id: string
+          searchable?: boolean
+          suggested?: boolean
+        }
+        Update: {
+          group_id?: string
+          searchable?: boolean
+          suggested?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_discovery_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: true
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_join_blocks: {
+        Row: {
+          group_id: string
+          user_id: string
+        }
+        Insert: {
+          group_id: string
+          user_id: string
+        }
+        Update: {
+          group_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_join_blocks_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_join_blocks_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -865,6 +926,39 @@ export type Database = {
           singleton?: boolean
         }
         Relationships: []
+      }
+      onboarding_progress: {
+        Row: {
+          completed_at: string | null
+          rubric_id: string | null
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          rubric_id?: string | null
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          rubric_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_progress_rubric_id_fkey"
+            columns: ["rubric_id"]
+            isOneToOne: false
+            referencedRelation: "user_rubrics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_progress_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       playlist_items: {
         Row: {
@@ -1405,6 +1499,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      browse_open_groups: {
+        Args: { p_query?: string; p_suggested_only?: boolean }
+        Returns: {
+          id: string
+          member_count: number
+          name: string
+          taste_mode: string
+        }[]
+      }
       can_message_directly: { Args: { p_user_id: string }; Returns: boolean }
       can_read_conversation: {
         Args: { p_conversation_id: string }
@@ -1416,6 +1519,7 @@ export type Database = {
         Args: { p_group_id: string; p_title_id: string }
         Returns: boolean
       }
+      complete_onboarding: { Args: { p_group_id?: string }; Returns: undefined }
       consume_rate_limit: {
         Args: { p_bucket: string; p_limit: number; p_window_seconds: number }
         Returns: undefined
@@ -1472,6 +1576,10 @@ export type Database = {
           user_id: string
         }[]
       }
+      group_discovery_settings: {
+        Args: { p_group_id: string }
+        Returns: boolean
+      }
       has_locked_scorecard: { Args: { p_session_id: string }; Returns: boolean }
       has_rated_title: { Args: { p_title_id: string }; Returns: boolean }
       is_blocked_pair: { Args: { p_a: string; p_b: string }; Returns: boolean }
@@ -1482,6 +1590,7 @@ export type Database = {
       is_group_member: { Args: { p_group_id: string }; Returns: boolean }
       is_group_owner: { Args: { p_group_id: string }; Returns: boolean }
       is_moderator: { Args: never; Returns: boolean }
+      join_open_group: { Args: { p_group_id: string }; Returns: string }
       late_score_session: {
         Args: { p_one_liner?: string; p_scores: Json; p_session_id: string }
         Returns: undefined
@@ -1557,6 +1666,7 @@ export type Database = {
           unread_count: number
         }[]
       }
+      my_onboarding: { Args: never; Returns: Json }
       poll_group_id: { Args: { p_poll_id: string }; Returns: string }
       poll_is_open: { Args: { p_poll_id: string }; Returns: boolean }
       post_comment: {
@@ -1610,6 +1720,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      save_onboarding_rubric: {
+        Args: { p_display_name: string; p_rows: Json }
+        Returns: string
+      }
       search_my_messages: {
         Args: { p_before?: string; p_limit?: number; p_query: string }
         Returns: {
@@ -1647,6 +1761,10 @@ export type Database = {
           p_conversation_id: string
           p_muted?: boolean
         }
+        Returns: undefined
+      }
+      set_group_discoverable: {
+        Args: { p_enabled: boolean; p_group_id: string }
         Returns: undefined
       }
       set_group_visibility: {
@@ -1722,12 +1840,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1751,11 +1869,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1776,11 +1894,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1801,11 +1919,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1818,11 +1936,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1843,4 +1961,3 @@ export const Constants = {
     },
   },
 } as const
-

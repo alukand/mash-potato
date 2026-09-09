@@ -3,6 +3,8 @@
 // only ever holds the anon key + the user's JWT.
 
 import { supabase } from './supabase'
+import { Capacitor } from '@capacitor/core'
+import { NATIVE_AUTH_REDIRECT } from './authCallback'
 import type { CategoryScores, MemberScorecard } from './scoring'
 import { mashedScore } from './scoring'
 import { rubricFromJson, scorecardFromRow, scoresFromJson, weightsFromRubric } from './mapping'
@@ -33,6 +35,47 @@ export interface MemberInfo {
   /** Picked movie-archetype avatar; null = the classic initial circle. */
   avatarKey: string | null
   role: 'owner' | 'member'
+}
+
+export interface OpenGroup { id: string; name: string; tasteMode: TasteMode; memberCount: number }
+export interface OnboardingProgress { completed: boolean; displayName: string; rubricId: string | null; rows: GroupRubricRow[] | null }
+
+export async function browseOpenGroups(query = '', suggestedOnly = false): Promise<OpenGroup[]> {
+  const { data, error } = await supabase.rpc('browse_open_groups', { p_query: query, p_suggested_only: suggestedOnly })
+  if (error) throw new Error('Groups could not load. Please try again.')
+  return (data ?? []).map((g) => ({ id: g.id, name: g.name, tasteMode: g.taste_mode === 'casual' ? 'casual' : 'buff', memberCount: g.member_count }))
+}
+
+export async function joinOpenGroup(groupId: string): Promise<void> {
+  const { error } = await supabase.rpc('join_open_group', { p_group_id: groupId })
+  if (error) throw new Error(error.message)
+}
+
+export async function fetchGroupDiscoverable(groupId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('group_discovery_settings', { p_group_id: groupId })
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function setGroupDiscoverable(groupId: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase.rpc('set_group_discoverable', { p_group_id: groupId, p_enabled: enabled })
+  if (error) throw new Error(error.message)
+}
+
+export async function fetchOnboarding(): Promise<OnboardingProgress> {
+  const { data, error } = await supabase.rpc('my_onboarding')
+  if (error || !data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Could not load your setup. Please try again.')
+  return { completed: data.completed === true, displayName: typeof data.displayName === 'string' ? data.displayName : '', rubricId: typeof data.rubricId === 'string' ? data.rubricId : null, rows: Array.isArray(data.rows) ? presetRowsFromJson(data.rows) : null }
+}
+
+export async function saveOnboardingRubric(displayName: string, rows: GroupRubricRow[]): Promise<void> {
+  const { error } = await supabase.rpc('save_onboarding_rubric', { p_display_name: displayName.trim(), p_rows: rows.map((r) => ({ ...r })) })
+  if (error) throw new Error(error.message)
+}
+
+export async function completeOnboarding(groupId?: string): Promise<void> {
+  const { error } = await supabase.rpc('complete_onboarding', groupId ? { p_group_id: groupId } : {})
+  if (error) throw new Error(error.message)
 }
 
 // ---- auth -------------------------------------------------------------
@@ -94,20 +137,17 @@ export async function requestPasswordReset(email: string) {
   if (error) throw new Error(error.message)
 }
 
-/** Passwordless sign-in, step 1: email a 6-digit code to an EXISTING
- *  account (signup stays its own flow so display names get collected). */
+/** One email entry for new and returning users. The terms gate precedes
+ * this call; new users choose their display name in GuidedSetup. */
 export async function requestSignInCode(email: string) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: false },
+    options: {
+      shouldCreateUser: true,
+      emailRedirectTo: Capacitor.isNativePlatform() ? NATIVE_AUTH_REDIRECT : `${window.location.origin}/auth/callback`,
+    },
   })
-  if (error) {
-    throw new Error(
-      /signups not allowed|user not found/i.test(error.message)
-        ? 'No account with that email yet. Create one first.'
-        : error.message,
-    )
-  }
+  if (error) throw new Error(error.message)
 }
 
 /** Passwordless sign-in, step 2: the code from the email. */

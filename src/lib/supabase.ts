@@ -14,4 +14,11 @@ if (!url || !anonKey) {
 // The anon key is safe to ship in the client binary — RLS is what protects the
 // data. NEVER put the service_role key or the TMDB key here; proxy those through
 // a Supabase Edge Function.
-export const supabase = createClient<Database>(url, anonKey)
+export const supabase = createClient<Database>(url, anonKey, {
+  auth: {
+    flowType: 'pkce',
+    // The callback is validated and exchanged once by authLinks.ts before
+    // navigation can replace its URL. Never accept URL-fragment sessions.
+    detectSessionInUrl: false,
+  },
+})

@@ -6,19 +6,15 @@ import {
   fetchMyGroups,
   fetchMembers,
   onInboxChange,
-  updateMyTasteMode,
+  fetchOnboarding,
 } from './lib/api'
-import type { GroupInfo, MemberInfo } from './lib/api'
-import type { TasteMode } from './lib/rubricCatalog'
+import type { GroupInfo, MemberInfo, OnboardingProgress } from './lib/api'
 import {
   clearToured,
   pickActiveGroup,
-  readOnboarded,
   readStoredGroupId,
   readStoredTab,
-  readToured,
   storeGroupId,
-  storeOnboarded,
   storeTab,
   storeToured,
   touchRecentGroup,
@@ -29,7 +25,7 @@ import type { StackView } from './lib/urlState'
 import { Logo } from './components/Logo'
 import { BottomNav } from './components/BottomNav'
 import { FirstRunTour } from './components/FirstRunTour'
-import { OnboardingSlides } from './components/OnboardingSlides'
+import { GuidedSetup } from './components/GuidedSetup'
 import { CtaButton, HEADER_ACTION_ID, MessagesButton } from './components/ui'
 import { MessagesScreen } from './screens/MessagesScreen'
 import { ThreadScreen } from './screens/ThreadScreen'
@@ -145,11 +141,8 @@ function App() {
     /** A message tap: land in the thread. Carries no group at all for a DM. */
     conversationId: string | null
   } | null>(null)
-  // First run: the slides show once per device, then the app opens group-less.
-  const [onboarded, setOnboarded] = useState(() => readOnboarded())
-  const [showCreateGroup, setShowCreateGroup] = useState(false)
-  // What the onboarding picker chose, handed straight to CreateGroupScreen.
-  const [pickedTasteMode, setPickedTasteMode] = useState<TasteMode | null>(null)
+  const [setup, setSetup] = useState<OnboardingProgress | undefined>(undefined)
+  const [setupUid, setSetupUid] = useState<string | null>(null)
 
   // The active group: the stored/selected one, else the oldest, else null.
   const group =
@@ -206,6 +199,7 @@ function App() {
   useEffect(() => {
     if (!uid) {
       setGroups(undefined)
+      setSetup(undefined)
       setActiveGroupId(null)
       setMembers([])
       setLoadError(null)
@@ -213,10 +207,14 @@ function App() {
     }
     let cancelled = false
     setGroups(undefined)
-    fetchMyGroups(uid)
-      .then((gs) => {
+    setSetup(undefined)
+    setLoadError(null)
+    Promise.all([fetchMyGroups(uid), fetchOnboarding()])
+      .then(([gs, progress]) => {
         if (cancelled) return
         setGroups(gs)
+        setSetup(progress)
+        setSetupUid(uid)
         setActiveGroupId(pickActiveGroup(gs, readStoredGroupId())?.id ?? null)
       })
       .catch((err) => {
@@ -231,8 +229,8 @@ function App() {
   // Native only (no-op in the browser): register this device for pushes once
   // signed in. Permission prompt fires here on first run.
   useEffect(() => {
-    if (uid) void enablePush()
-  }, [uid])
+    if (uid && setup?.completed) void enablePush()
+  }, [uid, setup?.completed])
 
   // Unread total for the header envelope. Realtime keeps it honest without a
   // poll; a failure just leaves the dot off rather than breaking the shell.
@@ -259,17 +257,7 @@ function App() {
     }
   }, [uid])
 
-  // The first signed-in landing gets the tab walkthrough, once per device.
-  // Group-less first-timers see the slides first (onboarded flips after).
-  useEffect(() => {
-    if (!uid || groups === undefined || showCreateGroup) return
-    if (tourActive || readToured()) return
-    if (!onboarded && groups.length === 0) return
-    setTourActive(true)
-    setTourTab('home')
-    setStack([])
-    setTab('home')
-  }, [uid, groups, onboarded, showCreateGroup, tourActive])
+  // First-run setup uses real actions. The tab tour is now replay-only.
 
   // Notification taps land on the group's round/reveal: the tap handler binds
   // at mount (cold-start taps included) and parks the group id until the
@@ -465,48 +453,24 @@ function App() {
   // surface; AuthScreen is reached from inside it.
   if (session === null) return <SignedOutShell />
   if (groups === undefined) return <Splash note="loading your groups" />
-  if (!group) {
-    // First run: the slides explain the app, then the user chooses their way
-    // in. The app itself opens group-less; Rate and Group teach the next step.
-    if (!onboarded) {
-      return (
-        <OnboardingSlides
-          onDone={(createGroup, tasteMode) => {
-            // fire and forget: the picker's state (preselected casual) becomes
-            // the profile's mode; a failure just leaves the column default.
-            // The pick is ALSO held in state and handed to the create-group
-            // screen, which would otherwise race this write and preselect the
-            // stale mode.
-            void updateMyTasteMode(session.user.id, tasteMode).catch(() => {})
-            setPickedTasteMode(tasteMode)
-            storeOnboarded()
-            setOnboarded(true)
-            setShowCreateGroup(createGroup)
-          }}
-        />
-      )
-    }
-    if (showCreateGroup) {
-      return (
-        <CreateGroupScreen
-          userId={session.user.id}
-          initialTasteMode={pickedTasteMode}
-          onBack={() => setShowCreateGroup(false)}
-          onCreated={(g) => {
-            setGroups([g])
-            setActiveGroupId(g.id)
-            storeGroupId(g.id)
-            setShowCreateGroup(false)
-          }}
-        />
-      )
-    }
-    // fall through: the tabbed app with no active group
+  if (setup === undefined || setupUid !== uid) return <Splash note="loading your setup" />
+  if (!setup.completed) {
+    return <GuidedSetup key={session.user.id} userId={session.user.id} progress={setup} onDone={async (joinedGroupId) => {
+      const [, progress] = await Promise.all([refreshGroups(), fetchOnboarding()])
+      if (lastUidRef.current !== session.user.id) return
+      setSetup(progress)
+      if (joinedGroupId) {
+        switchGroup(joinedGroupId)
+        setTab('rate')
+        storeTab('rate')
+      }
+      window.scrollTo(0, 0)
+    }} />
   }
 
   const userId = session.user.id
   const me = members.find((m) => m.userId === userId)
-  const myName = me?.displayName ?? 'You'
+  const myName = me?.displayName ?? setup.displayName ?? 'You'
   const top = stack[stack.length - 1]
 
   return (
@@ -697,6 +661,11 @@ function App() {
                 onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
                 onNameChanged={refreshMembers}
                 onGroupsChanged={refreshGroups}
+                onRestartSetup={() => {
+                  setStack([])
+                  setSetup({ ...setup, completed: false, rubricId: null })
+                  window.scrollTo(0, 0)
+                }}
                 onReplayTour={() => {
                   clearToured()
                   setStack([])

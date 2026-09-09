@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Logo } from '../components/Logo'
 import { AuthScreen } from './AuthScreen'
 import { DiscoverScreen } from './DiscoverScreen'
 import { TitleDetailScreen } from './TitleDetailScreen'
+import { OpenGroups } from '../components/OpenGroups'
+import { CtaButton } from '../components/ui'
+import { getAuthLinkError } from '../lib/authLinks'
 
 // App Store guideline 5.1.1(v): an app may require an account for
 // account-based features, but NOT for the rest. Browsing the catalogue is not
@@ -16,11 +19,17 @@ import { TitleDetailScreen } from './TitleDetailScreen'
 // `null` through it would put a sign-in branch in dozens of places. This is
 // the whole signed-out surface in one file.
 
-type View = { kind: 'discover' } | { kind: 'title'; tmdbId: number; mediaType: 'movie' | 'tv' }
+type View = { kind: 'discover' } | { kind: 'groups' } | { kind: 'title'; tmdbId: number; mediaType: 'movie' | 'tv' }
 
 export function SignedOutShell() {
-  const [authOpen, setAuthOpen] = useState(false)
+  const [authOpen, setAuthOpen] = useState(() => getAuthLinkError() !== null)
   const [view, setView] = useState<View>({ kind: 'discover' })
+
+  useEffect(() => {
+    const onError = () => setAuthOpen(true)
+    window.addEventListener('mp:auth-link-error', onError)
+    return () => window.removeEventListener('mp:auth-link-error', onError)
+  }, [])
 
   if (authOpen) return <AuthScreen onBack={() => setAuthOpen(false)} />
 
@@ -35,14 +44,22 @@ export function SignedOutShell() {
           <button
             type="button"
             onClick={() => setAuthOpen(true)}
-            className="ml-auto shrink-0 rounded-full border border-teal/40 bg-teal/10 px-4 py-2 text-[13px] font-semibold text-teal transition-colors hover:bg-teal/20"
+            aria-label="Sign in or create an account"
+            className="ml-auto flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-gold px-4 text-[13px] font-bold text-bg ring-2 ring-gold/30 ring-offset-2 ring-offset-bg transition-transform active:scale-95"
           >
-            Sign in
+            <svg aria-hidden width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 21v-2a8 8 0 0 1 16 0v2" /></svg>
+            Get started
           </button>
         </header>
 
-        {view.kind === 'discover' ? (
+        {view.kind === 'groups' ? <main><button type="button" onClick={() => setView({ kind: 'discover' })} className="mb-4 min-h-11 text-[13px] text-muted">← Back to browsing</button><h2 className="mb-5 font-display text-[28px] font-semibold">Find your movie-night group</h2><OpenGroups userId={null} onSignIn={() => setAuthOpen(true)} /></main> : view.kind === 'discover' ? (
           <main key="discover">
+            <section className="mp-rise mb-6">
+              <h2 className="font-display text-[28px] font-semibold leading-tight">Your taste. Your people.</h2>
+              <p className="mt-2 text-[14px] leading-relaxed text-muted">Create your rubric, find a group, and compare your takes after the Reveal.</p>
+              <CtaButton onClick={() => setAuthOpen(true)} className="mt-4 min-h-12 w-full px-4 text-[14px]">Sign in or create an account</CtaButton>
+              <div className="mt-2 flex items-center justify-between gap-3"><p className="text-[12px] text-muted">Or keep browsing below.</p><button type="button" onClick={() => setView({ kind: 'groups' })} className="min-h-11 text-[13px] font-semibold text-teal">Browse groups →</button></div>
+            </section>
             <DiscoverScreen
               userId={null}
               onOpenTitle={(tmdbId, mediaType) => {
