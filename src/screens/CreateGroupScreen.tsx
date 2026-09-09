@@ -81,7 +81,9 @@ export function CreateGroupScreen({
           className="mp-rise mp-card rounded-[26px] p-6"
           style={{ animationDelay: '80ms' }}
         >
+          <label htmlFor="new-group-name" className="mb-2 block text-[13px] font-semibold">Group name</label>
           <input
+            id="new-group-name"
             type="text"
             required
             maxLength={80}
@@ -112,6 +114,7 @@ export function CreateGroupScreen({
           >
             {busy ? 'Creating…' : 'Create the group'}
           </CtaButton>
+          <p className="mt-3 text-[13px] leading-snug text-muted">Next, choose Add friends in your group to find people by their display name.</p>
         </form>
 
         {!onBack && (

@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
 import {
-  addMember,
   deleteGroup,
-  deleteRubricPreset,
   createPlaylist,
   fetchGroupCred,
   fetchGroupLog,
@@ -14,9 +11,7 @@ import {
   removeMember,
   renameGroup,
   saveMyRubric,
-  saveRubricPreset,
-  searchProfiles,
-  setFavoriteRubricPreset,
+  savePersonalRubric,
   setGroupTasteMode,
 } from '../lib/api'
 import type {
@@ -27,11 +22,8 @@ import type {
   PlaylistSummary,
   TmdbResult,
   UserRubricPreset,
-  UserSearchResult,
 } from '../lib/api'
 import {
-  DEFAULT_WEIGHTS,
-  RUBRIC_CATALOG,
   TASTE_MODES,
   defaultRubricRows,
   mashRubrics,
@@ -47,7 +39,6 @@ import {
   HeaderAction,
   SettingsButton,
   TasteModePicker,
-  fieldClass,
   fieldClassSm,
 } from '../components/ui'
 import { CategoryLegend } from '../components/CategoryLegend'
@@ -57,6 +48,8 @@ import { PlaylistCard } from '../components/PlaylistCard'
 import { PosterShelf } from '../components/PosterShelf'
 import { SessionPanel } from '../components/SessionPanel'
 import { StartRound } from '../components/StartRound'
+import { AddGroupMembers } from '../components/AddGroupMembers'
+import { RubricRowsEditor } from '../components/RubricRowsEditor'
 
 interface GroupScreenProps {
   group: GroupInfo
@@ -156,7 +149,6 @@ export function GroupScreen({
   const [editOpen, setEditOpen] = useState(false)
   // Two-step guards for the edits that used to fire instantly.
   const [confirmReset, setConfirmReset] = useState(false)
-  const [confirmDeletePreset, setConfirmDeletePreset] = useState<string | null>(null)
   /** Preset id awaiting "yes, replace my unsaved sliders". */
   const [confirmApplyPreset, setConfirmApplyPreset] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -171,11 +163,6 @@ export function GroupScreen({
 
   // ---- add members (owner) ----
   const [showAdd, setShowAdd] = useState(false)
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<UserSearchResult[]>([])
-  const [searching, setSearching] = useState(false)
-  const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
-
   // ---- manage group (rename / remove / leave / delete) ----
   const [manageOpen, setManageOpen] = useState(false)
   const manageRef = useRef<HTMLElement | null>(null)
@@ -187,7 +174,6 @@ export function GroupScreen({
   const [manageError, setManageError] = useState<string | null>(null)
   const [renamed, setRenamed] = useState(false)
 
-  const memberIds = members.map((m) => m.userId)
 
   useEffect(() => {
     let cancelled = false
@@ -265,11 +251,11 @@ export function GroupScreen({
   }, [openSessionId, onSessionOpened])
 
   async function handleSavePreset() {
-    if (rows === null || presetName.trim().length === 0) return
+    if (presetBusy || busy || rows === null || presetName.trim().length === 0 || !rows.some((row) => row.enabled && row.weight > 0)) return
     setPresetBusy(true)
     setError(null)
     try {
-      await saveRubricPreset(userId, presetName.trim(), rows)
+      await savePersonalRubric(userId, null, presetName.trim(), rows)
       setPresets(await fetchMyRubricPresets(userId))
       setPresetName('')
       setShowSavePreset(false)
@@ -277,72 +263,6 @@ export function GroupScreen({
       setError(err instanceof Error ? err.message : 'Could not save the preset')
     } finally {
       setPresetBusy(false)
-    }
-  }
-
-  async function handleToggleFavorite(preset: UserRubricPreset) {
-    setPresetBusy(true)
-    setError(null)
-    try {
-      await setFavoriteRubricPreset(userId, preset.isFavorite ? null : preset.id)
-      setPresets(await fetchMyRubricPresets(userId))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update the favorite')
-    } finally {
-      setPresetBusy(false)
-    }
-  }
-
-  async function handleDeletePreset(preset: UserRubricPreset) {
-    setPresetBusy(true)
-    setError(null)
-    try {
-      await deleteRubricPreset(userId, preset.id)
-      setPresets((prev) => prev.filter((p) => p.id !== preset.id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete the preset')
-    } finally {
-      setPresetBusy(false)
-    }
-  }
-
-  useEffect(() => {
-    const q = query.trim()
-    if (q.length < 2) {
-      setResults([])
-      setSearching(false)
-      return
-    }
-    setSearching(true)
-    let stale = false
-    const timer = setTimeout(() => {
-      searchProfiles(q, memberIds)
-        .then((r) => !stale && setResults(r))
-        .catch(() => !stale && setResults([]))
-        .finally(() => !stale && setSearching(false))
-    }, 350)
-    return () => {
-      stale = true
-      clearTimeout(timer)
-    }
-    // memberIds derives from members (stable per load); intentionally omitted
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, members])
-
-  async function handleAdd(user: UserSearchResult) {
-    setError(null)
-    setAddedIds((prev) => new Set(prev).add(user.userId))
-    try {
-      await addMember(group.id, user.userId)
-      onMembersChanged()
-      setResults((prev) => prev.filter((r) => r.userId !== user.userId))
-    } catch (err) {
-      setAddedIds((prev) => {
-        const next = new Set(prev)
-        next.delete(user.userId)
-        return next
-      })
-      setError(err instanceof Error ? err.message : 'Could not add that person')
     }
   }
 
@@ -437,13 +357,6 @@ export function GroupScreen({
   const dirty = rows !== null && saved !== null && JSON.stringify(rows) !== JSON.stringify(saved)
   const enabledRows = (rows ?? []).filter((r) => r.enabled)
   const total = enabledRows.reduce((sum, r) => sum + r.weight, 0)
-  // Anything you don't already carry is addable, base categories included: a
-  // member seeded from an old preset may be missing a base row entirely, and
-  // this is their only non-destructive way back in.
-  const addable = RUBRIC_CATALOG.filter(
-    (c) => !(rows ?? []).some((r) => r.key === c.key),
-  )
-
   // Live preview: the group's mashed rubric with YOUR current (unsaved) edits.
   const effective =
     rows === null ? [] : mashRubrics([...others, { userId, rows }])
@@ -453,25 +366,6 @@ export function GroupScreen({
     rows === null
       ? null
       : new Map(rows.filter((r) => r.enabled).map((r) => [r.key, r.weight]))
-
-  function updateRow(key: string, patch: Partial<GroupRubricRow>) {
-    setRows((prev) =>
-      prev === null ? prev : prev.map((r) => (r.key === key ? { ...r, ...patch } : r)),
-    )
-  }
-
-  function addCategory(key: string) {
-    const cat = RUBRIC_CATALOG.find((c) => c.key === key)
-    if (!cat) return
-    setRows((prev) => {
-      if (prev === null) return prev
-      const nextSort = Math.max(0, ...prev.map((r) => r.sort)) + 1
-      return [
-        ...prev,
-        { key: cat.key, label: cat.label, weight: DEFAULT_WEIGHTS[cat.key] ?? 20, enabled: true, sort: nextSort },
-      ]
-    })
-  }
 
   // Confirmed switch: the DB trigger re-seeds every member's rubric for this
   // group, so tuned weights go. Past rounds keep their own snapshots.
@@ -497,7 +391,7 @@ export function GroupScreen({
   }
 
   async function handleSave() {
-    if (rows === null) return
+    if (busy || rows === null) return
     setBusy(true)
     setError(null)
     try {
@@ -547,10 +441,27 @@ export function GroupScreen({
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
               <path d="M12 5v14M5 12h14" />
             </svg>
-            New
+            New group
           </button>
         </div>
       </div>
+
+      <section className="order-[-2] mb-5">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+          <p className="min-w-0 break-words text-[15px] font-semibold">{group.name}</p>
+          <span className="text-[12px] text-muted">{members.length ? `${members.length} ${members.length === 1 ? 'member' : 'members'}` : 'Loading members…'}</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {isOwner && <button type="button" aria-expanded={showAdd} aria-controls="group-add-friends" onClick={() => setShowAdd((open) => !open)} className="min-h-11 rounded-full border border-teal/40 px-4 text-[13px] font-semibold text-teal">{showAdd ? 'Close add friends' : '+ Add friends'}</button>}
+          <button type="button" onClick={() => {
+            setSettingsOpen(true)
+            if (!isCasual) setEditOpen(true)
+            requestAnimationFrame(() => document.getElementById('group-rubric-editor')?.scrollIntoView({ block: 'start', behavior: 'auto' }))
+          }} className="min-h-11 rounded-full border border-line px-4 text-[13px] font-semibold text-muted hover:text-text">{isCasual ? 'How this group scores' : 'Edit my rubric'}{dirty && <span className="ml-2 text-gold">Unsaved</span>}</button>
+        </div>
+        {!isOwner && <p className="mt-2 px-1 text-[12px] text-muted">Ask {members.find((m) => m.role === 'owner')?.displayName ?? 'the group owner'} to add friends.</p>}
+        {showAdd && isOwner && <div id="group-add-friends" className="mp-card mt-3 rounded-[22px] p-4"><AddGroupMembers key={group.id} group={group} userId={userId} onAdded={onMembersChanged} /></div>}
+      </section>
 
       {/* The settings control lives in the app header's top-right slot, the
           same place on every screen. It used to be an unlabelled cog pinned
@@ -705,7 +616,7 @@ export function GroupScreen({
       {settingsOpen && (
       <div ref={settingsRef} className="order-[-1] mb-7 scroll-mt-4">
       {/* ---- How this group scores (the mode) ---- */}
-      <section className="mp-rise" style={{ animationDelay: '100ms' }}>
+      <section id={isCasual ? 'group-rubric-editor' : undefined} className="mp-rise scroll-mt-5" style={{ animationDelay: '100ms' }}>
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
             How this group scores
@@ -851,7 +762,7 @@ export function GroupScreen({
             aria-expanded={editOpen}
             className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-2.5 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
           >
-            {editOpen ? 'Done editing' : 'Edit your weights'}
+            {editOpen ? 'Hide editor' : 'Edit my rubric'}
             {!editOpen && dirty && <span className="text-gold">unsaved</span>}
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 transition-transform ${editOpen ? 'rotate-180' : ''}`} aria-hidden>
               <path d="m6 9 6 6 6-6" />
@@ -862,149 +773,23 @@ export function GroupScreen({
 
       {/* ---- Your rubric (Cinephile groups only; collapsed by default) ---- */}
       {editOpen && !isCasual && (
-      <section className="mp-rise mt-5">
+      <section id="group-rubric-editor" className="mp-rise mt-5 scroll-mt-5">
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-            Your rubric
+            My weights for this group
           </p>
           <p className="tabular font-mono text-[10px] text-muted">
             total <span className={total === 0 ? 'text-coral' : 'text-text'}>{total}</span>
           </p>
         </div>
 
-        <div className="mp-card rounded-[26px] px-5 py-1">
-          {rows === null ? (
-            <p className="py-4 text-[13px] text-muted">Loading rubric…</p>
-          ) : (
-            [...rows]
-              .sort((a, b) => a.sort - b.sort)
-              .map((row, i) => (
-                <div
-                  key={row.key}
-                  className={`py-3.5 ${i > 0 ? 'border-t border-line/50' : ''} ${
-                    row.enabled ? '' : 'opacity-45'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="min-w-0 truncate text-[13px] font-medium">{row.label}</p>
-                    <div className="flex shrink-0 items-center gap-2.5">
-                      {/* Shown even when off, so turning a row back on doesn't
-                          feel like the number was thrown away. */}
-                      <span
-                        className={`tabular font-mono text-[13px] font-semibold ${
-                          row.enabled ? 'text-teal' : 'text-muted'
-                        }`}
-                      >
-                        {row.weight}
-                      </span>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={row.enabled}
-                        aria-label={`${row.label} enabled`}
-                        disabled={busy || (row.enabled && enabledRows.length <= 1)}
-                        onClick={() => updateRow(row.key, { enabled: !row.enabled })}
-                        className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-50 ${
-                          row.enabled ? 'bg-teal/70' : 'bg-line'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 h-4 w-4 rounded-full bg-bg transition-all ${
-                            row.enabled ? 'left-[18px]' : 'left-0.5'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                  {row.enabled && (
-                    <>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={5}
-                        value={row.weight}
-                        disabled={busy}
-                        aria-label={`${row.label} weight`}
-                        onChange={(e) => updateRow(row.key, { weight: Number(e.target.value) })}
-                        className="mp-slider mt-1"
-                        style={
-                          {
-                            '--thumb': 'var(--color-teal)',
-                            '--fill': row.weight,
-                          } as CSSProperties
-                        }
-                      />
-                      {/* End caps: the rail had no scale at all, which is part
-                          of why the numbers read as percentages. */}
-                      <div className="mt-0.5 flex justify-between font-mono text-[9px] text-muted/70">
-                        <span>barely counts</span>
-                        <span>counts most</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))
-          )}
-        </div>
-
-        {rows !== null && addable.length > 0 && (
-          <div className="mt-4">
-            <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
-              Add categories
-            </p>
-            {/* Rows, not chips: the definition used to be a title= tooltip,
-                which a touch device never shows. This is the one place a
-                category most needs explaining. */}
-            <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
-              {addable.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => addCategory(c.key)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2 disabled:opacity-50"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline gap-1.5">
-                      <span className="truncate text-[13px] font-medium">{c.label}</span>
-                      {c.kind === 'genre' && (
-                        <span className="shrink-0 font-mono text-[9px] uppercase tracking-wide text-teal">
-                          genre night
-                        </span>
-                      )}
-                    </span>
-                    <span className="mt-0.5 block text-[12px] leading-snug text-muted">
-                      {c.blurb}
-                    </span>
-                  </span>
-                  <span
-                    aria-hidden
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-line text-muted"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {error && (
-          <p role="alert" className="mt-3 px-2 text-[13px] leading-snug text-coral">
-            {error}
-          </p>
-        )}
-
-        {/* ---- start from a saved set (replaces every slider above) ---- */}
+        {/* ---- pick a saved starting point before editing the sliders ---- */}
         <div className="mt-4">
           <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
-            Start from a saved set
+            Load a saved rubric
           </p>
           <p className="mb-2 px-1 text-[12px] leading-snug text-muted">
-            Replaces every slider above. Nothing is saved until you tap Save.
+            Loads categories and weights into this editor. Tap Save group weights to apply them to future rounds.
           </p>
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5">
@@ -1083,78 +868,35 @@ export function GroupScreen({
                       ? setConfirmApplyPreset(p.id)
                       : setRows(p.rows.map((r) => ({ ...r })))
                   }
-                  className="min-w-0 flex-1 truncate rounded-xl border border-line bg-surface-2 px-3 py-2 text-left text-[12px] font-semibold transition-colors hover:border-teal/50 active:bg-surface disabled:opacity-50"
+                  className="min-h-11 min-w-0 flex-1 truncate rounded-xl border border-line bg-surface-2 px-3 py-2 text-left text-[12px] font-semibold transition-colors hover:border-teal/50 active:bg-surface disabled:opacity-50"
                 >
-                  {p.name}
+                  Load {p.name}
                 </button>
-                <button
-                  type="button"
-                  disabled={presetBusy}
-                  onClick={() => void handleToggleFavorite(p)}
-                  aria-label={p.isFavorite ? `Unfavorite ${p.name}` : `Favorite ${p.name}`}
-                  title={
-                    p.isFavorite
-                      ? 'Your favorite: the rubric you bring to new groups'
-                      : 'Make this your favorite'
-                  }
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-50 ${
-                    p.isFavorite
-                      ? 'border-gold/40 bg-gold/10 text-gold'
-                      : 'border-line text-muted hover:text-gold'
-                  }`}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill={p.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5Z" />
-                  </svg>
-                </button>
-                {/* two-tap delete: the ✕ used to erase a preset instantly.
-                    It also needs a way OUT — every other confirm in this file
-                    pairs the destructive button with a Keep. */}
-                {confirmDeletePreset === p.id ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDeletePreset(null)}
-                      className="shrink-0 rounded-full px-2 py-1.5 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-text"
-                    >
-                      Keep
-                    </button>
-                    <button
-                      type="button"
-                      disabled={presetBusy}
-                      onClick={() => {
-                        setConfirmDeletePreset(null)
-                        void handleDeletePreset(p)
-                      }}
-                      className="shrink-0 rounded-full bg-coral/90 px-2.5 py-1.5 text-[11px] font-bold text-bg disabled:opacity-50"
-                    >
-                      Delete?
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={presetBusy}
-                    onClick={() => setConfirmDeletePreset(p.id)}
-                    aria-label={`Delete ${p.name}`}
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:text-coral disabled:opacity-50"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-                      <path d="M6 6l12 12M18 6 6 18" />
-                    </svg>
-                  </button>
-                )}
               </div>
               ),
             )}
           </div>
 
+        </div>
+
+        <div className="mp-card mt-4 rounded-[26px] p-5">
+          {rows === null ? <p className="text-[13px] text-muted">Loading rubric…</p> : <RubricRowsEditor rows={rows} onChange={setRows} disabled={busy} />}
+        </div>
+
+        {error && (
+          <p role="alert" className="mt-3 px-2 text-[13px] leading-snug text-coral">
+            {error}
+          </p>
+        )}
+
+        <div className="mt-4">
           {showSavePreset ? (
             <div className="mt-2 flex items-center gap-1.5">
               <input
                 type="text"
                 autoFocus
                 maxLength={40}
+                aria-label="Name for your personal rubric copy"
                 placeholder="Preset name…"
                 value={presetName}
                 onChange={(e) => setPresetName(e.target.value)}
@@ -1162,7 +904,7 @@ export function GroupScreen({
               />
               <button
                 type="button"
-                disabled={presetBusy || presetName.trim().length === 0}
+                disabled={presetBusy || busy || presetName.trim().length === 0 || total === 0}
                 onClick={() => void handleSavePreset()}
                 className="shrink-0 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-[12px] font-semibold text-teal disabled:opacity-50"
               >
@@ -1170,6 +912,7 @@ export function GroupScreen({
               </button>
               <button
                 type="button"
+                aria-label="Cancel saving a personal rubric copy"
                 onClick={() => {
                   setShowSavePreset(false)
                   setPresetName('')
@@ -1182,15 +925,15 @@ export function GroupScreen({
           ) : (
             <button
               type="button"
-              disabled={rows === null}
+              disabled={rows === null || busy || total === 0}
               onClick={() => setShowSavePreset(true)}
               className="mt-2 w-full rounded-xl border border-dashed border-line px-3 py-2 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text disabled:opacity-50"
             >
-              + Save current as a preset
+              + Save a copy to personal rubrics
             </button>
           )}
           <p className="mt-2 px-1 text-[12px] leading-snug text-muted">
-            Your ★ favorite is the rubric you bring when you join or create a group.
+            Your ★ favorite is used when you join or create a {TASTE_MODES.buff.plural} group. Edit, rename, and organize saved rubrics on Profile → Personal rubrics.
           </p>
         </div>
 
@@ -1205,7 +948,7 @@ export function GroupScreen({
             onClick={() => void handleSave()}
             className="mt-3 w-full py-3 text-[13px] disabled:opacity-45"
           >
-            {busy ? 'Saving…' : 'Save your rubric'}
+            {busy ? 'Saving…' : 'Save group weights'}
           </CtaButton>
         )}
         <p className="mt-3 px-2 text-[13px] leading-snug text-muted">
@@ -1330,79 +1073,6 @@ export function GroupScreen({
             )}
           </ul>
         </div>
-
-        {isOwner && (
-          <div className="mt-3">
-            {!showAdd ? (
-              <button
-                type="button"
-                onClick={() => setShowAdd(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-full border border-line py-2.5 text-[13px] font-semibold text-teal transition-colors hover:border-teal/50"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M19 8v6M22 11h-6" />
-                </svg>
-                Add friends
-              </button>
-            ) : (
-              <div className="mp-card rounded-2xl p-4">
-                <input
-                  type="text"
-                  autoFocus
-                  maxLength={60}
-                  placeholder="Search by name…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className={fieldClass}
-                />
-                {searching && (
-                  <p className="mt-2 px-1 font-mono text-[10px] text-muted">searching…</p>
-                )}
-                {results.length > 0 && (
-                  <ul className="mt-2 overflow-hidden rounded-xl border border-line bg-surface-2">
-                    {results.map((u, i) => (
-                      <li key={u.userId}>
-                        <button
-                          type="button"
-                          // handleAdd only removes the row AFTER its await, so
-                          // without this a fast double tap fired two inserts.
-                          disabled={addedIds.has(u.userId)}
-                          onClick={() => void handleAdd(u)}
-                          className={`group flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors active:bg-surface disabled:opacity-50 ${
-                            i > 0 ? 'border-t border-line/50' : ''
-                          }`}
-                        >
-                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-line font-mono text-[12px] font-bold text-bg transition-transform group-active:scale-95">
-                            {u.displayName.charAt(0).toUpperCase()}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium transition-colors group-hover:text-teal">
-                            {u.displayName}
-                          </span>
-                          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-teal">
-                            Add
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {query.trim().length >= 2 && !searching && results.length === 0 && (
-                  <p className="mt-2 px-1 text-[13px] leading-snug text-muted">
-                    Nobody by that name yet. They need a Mash Potato account first: have them
-                    sign up, then search again.
-                  </p>
-                )}
-                {addedIds.size > 0 && (
-                  <p className="mt-2 px-1 text-[12px] text-teal">
-                    Added ✓ They start with the default rubric and can tune it here.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ---- manage panel: rename (owner), leave / delete ---- */}
         {manageOpen && (

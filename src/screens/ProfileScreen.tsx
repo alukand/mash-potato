@@ -43,6 +43,8 @@ import {
 } from '../components/ui'
 import { PlaylistCard } from '../components/PlaylistCard'
 import { PosterGrid } from '../components/PosterGrid'
+import { AddGroupMembers } from '../components/AddGroupMembers'
+import { PersonalRubrics } from '../components/PersonalRubrics'
 import { colorForUser } from '../lib/palette'
 import { AVATAR_CATALOG, Avatar } from '../components/avatars'
 import { TASTE_MODES } from '../lib/rubricCatalog'
@@ -109,6 +111,15 @@ export function ProfileScreen({
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([])
   const [friends, setFriends] = useState<FriendInfo[]>([])
   const [loading, setLoading] = useState(true)
+  const [addFriendsOpen, setAddFriendsOpen] = useState(false)
+  const [friendGroupId, setFriendGroupId] = useState('')
+  const [rubricsOpen, setRubricsOpen] = useState(false)
+  const ownedGroups = groups.filter((g) => g.role === 'owner')
+  const friendGroup = ownedGroups.find((g) => g.id === friendGroupId) ?? ownedGroups[0]
+
+  function openProfileSection(id: string) {
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: 'auto', block: 'start' }))
+  }
 
   // ---- new playlist + per-group visibility ----
   const [newListOpen, setNewListOpen] = useState(false)
@@ -583,6 +594,21 @@ export function ProfileScreen({
       </section>
       )}
 
+      <nav aria-label="Profile shortcuts" className="mt-5 flex flex-wrap gap-2">
+        <button type="button" onClick={() => { setAddFriendsOpen(true); openProfileSection('profile-friends') }} className="min-h-11 rounded-full border border-teal/40 px-4 text-[13px] font-semibold text-teal">+ Add friends</button>
+        <button type="button" onClick={() => { setRubricsOpen(true); openProfileSection('profile-rubrics') }} className="min-h-11 rounded-full border border-line px-4 text-[13px] font-semibold text-gold">Personal rubrics</button>
+      </nav>
+
+      <section id="profile-rubrics" className="mp-rise mt-7 scroll-mt-5">
+        <button type="button" aria-expanded={rubricsOpen} aria-controls="personal-rubrics-content" onClick={() => setRubricsOpen((open) => !open)} className="flex min-h-11 w-full items-center justify-between gap-3 text-left">
+          <span><span className="block text-[15px] font-semibold">Personal rubrics</span><span className="mt-1 block text-[13px] text-muted">Create, edit, and organize your saved weights.</span></span>
+          <span className="shrink-0 text-[13px] font-semibold text-gold">{rubricsOpen ? 'Hide' : 'Manage'}</span>
+        </button>
+        <div id="personal-rubrics-content" hidden={!rubricsOpen} className="mp-card mp-rise mt-3 rounded-[22px] p-4">
+          <PersonalRubrics userId={userId} groups={groups} onOpenGroup={onSwitchGroup} />
+        </div>
+      </section>
+
       {/* ---- groups ---- */}
       <section id="profile-groups" className="mp-rise mt-7 scroll-mt-5" style={{ animationDelay: '80ms' }}>
         <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
@@ -630,7 +656,7 @@ export function ProfileScreen({
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-active:scale-90" aria-hidden>
               <path d="M12 5v14M5 12h14" />
             </svg>
-            <span className="text-[14px]">Create another group</span>
+            <span className="text-[14px]">{groups.length ? 'Create another group' : 'Create your first group'}</span>
           </button>
         </div>
         <p className="mt-2 px-2 text-[12px] leading-snug text-muted">
@@ -709,14 +735,25 @@ export function ProfileScreen({
       </section>
 
       {/* ---- friends: everyone you share a group with ---- */}
-      <section className="mp-rise mt-7" style={{ animationDelay: '140ms' }}>
-        <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-          Friends
-        </p>
-        {friends.length === 0 ? (
+      <section id="profile-friends" className="mp-rise mt-7 scroll-mt-5" style={{ animationDelay: '140ms' }}>
+        <div className="mb-2.5 flex items-center justify-between gap-3 px-1">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">Friends <span className="ml-1 font-mono">{friends.length || ''}</span></h2>
+          <button type="button" aria-expanded={addFriendsOpen} aria-controls="profile-add-friends" onClick={() => setAddFriendsOpen((open) => !open)} className="min-h-11 rounded-full border border-teal/40 px-3 text-[13px] font-semibold text-teal">{addFriendsOpen ? 'Close' : '+ Add friends'}</button>
+        </div>
+        <p className="mb-3 px-1 text-[13px] text-muted">Your friends are the people you share a group with.</p>
+        {addFriendsOpen && <div id="profile-add-friends" className="mp-card mp-rise mb-4 rounded-[22px] p-4">
+          {friendGroup ? <>
+            <label htmlFor="friend-destination" className="mb-1.5 block text-[13px] font-semibold">Add friends to</label>
+            <select id="friend-destination" value={friendGroup.id} onChange={(e) => setFriendGroupId(e.target.value)} className={`mb-4 ${fieldClassSm}`}>
+              {ownedGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+            <AddGroupMembers key={friendGroup.id} group={friendGroup} userId={userId} onAdded={() => { void fetchMyFriends(userId).then(setFriends).catch(() => {}); onNameChanged() }} />
+          </> : <p className="text-[13px] leading-snug text-muted">{groups.length ? 'Only group owners can add people. Ask your group owner, or start a group of your own.' : 'Start a group, then add friends by their display name. They will appear here automatically.'}</p>}
+          <button type="button" onClick={onCreateGroup} className="mt-3 min-h-11 w-full rounded-full border border-line px-3 text-[13px] font-semibold text-teal">{friendGroup ? 'Create a new group instead' : 'Create a group with friends'}</button>
+        </div>}
+        {loading ? <p className="text-[13px] text-muted">Loading friends…</p> : friends.length === 0 ? (
           <p className="px-1 text-[13px] leading-snug text-muted">
-            Friends are the people in your groups. Add someone to a group and they show
-            up here.
+            No friends here yet. Choose Add friends to get a group together.
           </p>
         ) : (
           <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">

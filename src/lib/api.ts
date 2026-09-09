@@ -1218,6 +1218,27 @@ export async function saveRubricPreset(
   return data.id
 }
 
+/** Create or edit a saved rubric by identity, without overwriting namesakes. */
+export async function savePersonalRubric(
+  userId: string,
+  presetId: string | null,
+  name: string,
+  rows: GroupRubricRow[],
+): Promise<string> {
+  const values = { name: name.trim(), rows: rows.map((row) => ({ ...row })) }
+  // Editing keeps the id and favorite flag. Creating never overwrites a
+  // same-named rubric; the unique constraint returns a recoverable error.
+  const query = presetId === null
+    ? supabase.from('user_rubrics').insert({ ...values, user_id: userId })
+    : supabase.from('user_rubrics').update(values).eq('user_id', userId).eq('id', presetId)
+  const { data, error } = await query.select('id').single()
+  if (error) {
+    if (error.code === '23505') throw new Error('You already have a rubric with that name. Choose another name.')
+    throw new Error(error.message)
+  }
+  return data.id
+}
+
 /** Star one preset as my favorite (or pass null to clear). One favorite max. */
 export async function setFavoriteRubricPreset(
   userId: string,

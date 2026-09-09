@@ -1,6 +1,6 @@
 # Mash Potato — DESIGN.md
 
-last-verified: 2026-07-12
+last-verified: 2026-09-08
 register: product (mobile app UI; design serves the task)
 
 The audience scene: a friend group on their couches, phones in hand, scoring a
@@ -100,8 +100,23 @@ top highlight, deep ambient shadow). Poster tiles add `.mp-poster-grain`.
   (mashed rubric + collapsed personal editor) → the admin corner (members +
   Manage: rename, remove w/ inline confirm, leave/delete w/ inline confirm).
   No account actions here.
-- **Profile** — identity (editable display name) → groups → poster grids
-  (Reviewed / Rated / Saved) → Your data (JSON export) → sign out (header).
+- **Profile** — identity → Add friends / Personal rubrics shortcuts → personal
+  rubric library → groups → playlists → friends → poster grids. Account, export,
+  and sign-out stay in header Settings. Friends explains shared-group membership
+  and offers an inline owner-group picker with search; no owned group offers
+  create-group or asks the existing owner.
+- **Group shortcuts** — Add friends (owner only) and Edit my rubric sit directly
+  below the group switcher. Add friends opens in place outside Settings, with
+  existing friends as suggestions and display-name search. Non-owners see who
+  can add people. Simple groups show How this group scores instead of an editor.
+- **Personal rubrics** — Profile owns create, rename, edit, copy, favorite, and
+  confirmed delete, favorite first then A–Z. The same `RubricRowsEditor` handles
+  category toggles, weights, and accessible up/down reordering in both Profile
+  and Group. A preset is a reusable starting point for Cinephile groups, never
+  the solo card. Editing one preserves its id and favorite; a copy never
+  overwrites a namesake. Group offers Load a saved rubric before the sliders,
+  Save group weights for future rounds, and Save a copy to personal rubrics.
+  Hiding Profile's library preserves its draft while the screen stays mounted.
 - Management always happens inline (disclosures, inline confirms), never on
   detour pages. Destructive confirms are two-step, in place, coral-framed.
 
@@ -394,6 +409,13 @@ baseline function grant, which is exactly how an open endpoint shipped on
 2026-07-25.
 
 ## Changelog
+
+- 2026-09-08 (friends and rubric discoverability): visible Add friends actions
+  on Profile and Rate, a shared member picker with existing-friend suggestions,
+  and a Profile library for editing, renaming, copying, and favoriting personal
+  rubrics. One category editor adds touch-friendly reordering and weight shares.
+  Group loading and saving explicitly distinguish presets from group weights.
+  No schema, scoring, blind-read, or signed-out access changes.
 
 - 2026-07-27 (the landing page becomes a marketing page): `web/index.html`
   rebuilt from a one-screen pitch into a six-movement page. **Register note:
