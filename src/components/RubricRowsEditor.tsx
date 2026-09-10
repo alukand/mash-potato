@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { GroupRubricRow } from '../lib/api'
 import { DEFAULT_WEIGHTS, RUBRIC_CATALOG } from '../lib/rubricCatalog'
+import { RubricMix } from './RubricMix'
 
 /** One category editor for saved presets and your contribution to a group. */
 export function RubricRowsEditor({ rows, onChange, disabled = false, reorder = true }: {
@@ -28,6 +29,7 @@ export function RubricRowsEditor({ rows, onChange, disabled = false, reorder = t
   return (
     <div>
       <p className="mb-3 text-[13px] leading-snug text-muted">Give more weight to what matters most. Turn categories on or off.{reorder && ' Use the arrows to reorder them.'}</p>
+      <RubricMix rows={rows} />
       <div className="divide-y divide-line/50">
         {sorted.map((row, index) => (
           <div key={row.key} className="py-3">

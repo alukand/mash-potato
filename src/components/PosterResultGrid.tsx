@@ -18,15 +18,15 @@ export function PosterResultGrid({ results, onOpenTitle }: PosterResultGridProps
           key={`${r.mediaType}:${r.tmdbId}`}
           type="button"
           onClick={() => onOpenTitle(r.tmdbId, r.mediaType)}
-          className="group text-left"
+          className="mp-poster-button self-start text-left"
         >
-          <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-line/60 bg-surface-2">
+          <div className="mp-poster-art relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-line/60 bg-surface-2">
             {r.posterPath ? (
               <img
                 src={posterUrl(r.posterPath, 'w342')}
                 alt=""
                 loading="lazy"
-                className="h-full w-full object-cover transition-transform group-active:scale-95"
+                className="h-full w-full object-cover"
               />
             ) : (
               <span
@@ -38,7 +38,7 @@ export function PosterResultGrid({ results, onOpenTitle }: PosterResultGridProps
               </span>
             )}
           </div>
-          <p className="mt-1.5 truncate text-[12px] font-medium leading-tight">{r.name}</p>
+          <p className="mp-poster-title mt-2 line-clamp-2 text-[12px] font-medium leading-snug">{r.name}</p>
           <p className="font-mono text-[10px] text-muted">{r.year ?? '—'}</p>
         </button>
       ))}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { formatScore } from '../lib/scoring'
 
 interface ScoreRingProps {
@@ -20,6 +20,8 @@ export function ScoreRing({
   size = 188,
   stroke = 13,
 }: ScoreRingProps) {
+  const gradientId = useId()
+  const currentValue = useRef(0)
   const radius = (size - stroke) / 2
   const circumference = 2 * Math.PI * radius
   const fraction = Math.max(0, Math.min(1, (value ?? 0) / max))
@@ -32,33 +34,46 @@ export function ScoreRing({
     return () => cancelAnimationFrame(id)
   }, [target])
 
-  // Number: count up 0 -> value in sync with the arc.
+  // Count from the currently displayed value, including live updates.
   const [shown, setShown] = useState<number | null>(value === null ? null : 0)
   useEffect(() => {
     if (value === null) {
+      currentValue.current = 0
       setShown(null)
       return
     }
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
+    if (motion.matches) {
+      currentValue.current = value
       setShown(value)
       return
     }
+    const from = currentValue.current
     const start = performance.now()
     const duration = 1100
     let raf = 0
     const tick = (now: number) => {
       const p = Math.min(1, (now - start) / duration)
       const eased = 1 - Math.pow(1 - p, 3)
-      setShown(value * eased)
+      currentValue.current = from + (value - from) * eased
+      setShown(currentValue.current)
       if (p < 1) raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     // Guarantee the final value even if rAF is throttled (e.g. a backgrounded
     // tab never fires the frames) — the number must never freeze mid-count.
-    const settle = setTimeout(() => setShown(value), duration + 100)
+    const finish = () => {
+      cancelAnimationFrame(raf)
+      currentValue.current = value
+      setShown(value)
+    }
+    const onMotionChange = () => { if (motion.matches) finish() }
+    motion.addEventListener('change', onMotionChange)
+    const settle = setTimeout(finish, duration + 100)
     return () => {
       cancelAnimationFrame(raf)
       clearTimeout(settle)
+      motion.removeEventListener('change', onMotionChange)
     }
   }, [value])
 
@@ -67,7 +82,7 @@ export function ScoreRing({
       className="relative grid place-items-center"
       style={{ width: size, height: size }}
       role="img"
-      aria-label={`Mashed score ${formatScore(value)} out of ${max}`}
+      aria-label={value === null ? `${label} score is not available yet` : `${label} score ${formatScore(value)} out of ${max}`}
     >
       {/* soft glow behind the arc */}
       <span
@@ -77,7 +92,7 @@ export function ScoreRing({
       />
       <svg width={size} height={size} className="relative -rotate-90">
         <defs>
-          <linearGradient id="mp-ring" x1="0" y1="0" x2="1" y2="1">
+          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
             <stop offset="0" stopColor="#6FE3DB" />
             <stop offset="1" stopColor="#3FA9A2" />
           </linearGradient>
@@ -95,7 +110,7 @@ export function ScoreRing({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="url(#mp-ring)"
+          stroke={`url(#${gradientId})`}
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={circumference}

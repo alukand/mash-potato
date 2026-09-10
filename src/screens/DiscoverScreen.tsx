@@ -192,16 +192,17 @@ function LazyShelf({
   }, [visible])
 
   if (items && items.length === 0) return null
+  const skeletonClass = visible ? 'mp-skeleton' : 'bg-surface-2'
   return (
     <div ref={hostRef} className="mp-rise">
       {items ? (
         <PosterShelf heading={heading} items={items} onPick={onPick} />
       ) : (
         <section aria-hidden>
-          <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+          <p className="mb-1 flex min-h-11 items-center px-1 font-display text-[19px] font-semibold">
             {heading}
           </p>
-          <div className="h-[190px] animate-pulse rounded-xl border border-line/40 bg-surface-2/50" />
+          <div className="flex gap-3 overflow-hidden pb-3 pt-2">{[0, 1, 2, 3].map((i) => <div key={i} className="w-[104px] shrink-0"><div className={`${skeletonClass} h-[156px] rounded-xl`} /><div className={`${skeletonClass} mt-2 h-4 w-4/5 rounded-full`} /><div className={`${skeletonClass} mt-2 h-3 w-2/5 rounded-full`} /></div>)}</div>
         </section>
       )}
     </div>
@@ -392,8 +393,10 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
   return (
     <div className="flex flex-col gap-6">
       <section className="mp-rise">
+        <h1 className="mb-4 font-display text-[30px] font-semibold leading-tight">Find your next watch.</h1>
         <input
-          type="text"
+          type="search"
+          aria-label="Search films and shows"
           maxLength={200}
           placeholder="Search films and shows…"
           value={query}
@@ -406,27 +409,29 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
           <button
             type="button"
             onClick={() => setShowFilters((s) => !s)}
-            className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
+            aria-expanded={showFilters}
+            aria-controls="discover-filters"
+            className={`flex min-h-11 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold transition-colors ${showFilters || activeFilterCount > 0 ? 'border-teal/40 bg-teal/10 text-teal' : 'border-line text-muted hover:text-text'}`}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 5h18M6 12h12M10 19h4" />
             </svg>
             Filters
             {activeFilterCount > 0 && (
-              <span className="tabular text-teal">{activeFilterCount}</span>
+              <span className="tabular grid h-5 min-w-5 place-items-center rounded-full bg-teal/15 px-1 font-mono text-[10px] text-teal">{activeFilterCount}</span>
             )}
           </button>
           {activeFilterCount > 0 && (
             <button
               type="button"
               onClick={clearFilters}
-              className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-coral"
+              className="min-h-11 px-3 text-[13px] text-muted transition-colors hover:text-coral"
             >
               Clear
             </button>
           )}
         </div>
-        {searching && <p className="mt-1 px-1 font-mono text-[10px] text-muted">searching…</p>}
+        {searching && <p role="status" className="mt-2 px-1 text-[13px] text-muted">Finding matching titles…</p>}
         {textActive && hasFilters && (
           <p className="mt-1 px-1 text-[12px] leading-snug text-muted">
             Showing text matches. Clear the search box to browse by filters.
@@ -435,7 +440,7 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
 
         {/* filter panel */}
         {showFilters && (
-          <div className="mp-card mt-3 flex flex-col gap-4 rounded-2xl p-4">
+          <div id="discover-filters" className="mp-card mp-view-enter mt-3 flex flex-col gap-4 rounded-2xl p-4">
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
                 Type
@@ -452,7 +457,8 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
                     key={value}
                     type="button"
                     onClick={() => setTypeFilter(value)}
-                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
+                    aria-pressed={typeFilter === value}
+                    className={`min-h-11 rounded-full border px-4 py-1 text-[13px] font-semibold transition-colors ${
                       typeFilter === value
                         ? 'border-teal/40 bg-teal/10 text-teal'
                         : 'border-line text-muted hover:text-text'
@@ -476,7 +482,8 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
                       key={g.id}
                       type="button"
                       onClick={() => toggleGenre(g.id)}
-                      className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                      aria-pressed={on}
+                      className={`min-h-11 rounded-full border px-3 py-1 text-[12px] transition-colors ${
                         on
                           ? 'border-teal/40 bg-teal/10 text-teal'
                           : 'border-line text-muted hover:text-text'
@@ -509,7 +516,7 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
                       setSelectedPerson(null)
                       setPersonQuery('')
                     }}
-                    className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-muted hover:text-coral"
+                    className="min-h-11 shrink-0 px-2 text-[12px] text-muted hover:text-coral"
                   >
                     Remove
                   </button>
@@ -520,6 +527,7 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
                     type="text"
                     maxLength={100}
                     placeholder="e.g. Christopher Nolan"
+                    aria-label="Filter by actor or director"
                     value={personQuery}
                     onChange={(e) => setPersonQuery(e.target.value)}
                     className={fieldClass}
@@ -562,6 +570,7 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
                 min={1870}
                 max={2100}
                 placeholder="e.g. 2014"
+                aria-label="Filter by release year"
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
                 className={fieldClass}

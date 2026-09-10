@@ -4,6 +4,8 @@ import type { GroupInfo, GroupRubricRow, UserRubricPreset } from '../lib/api'
 import { defaultRubricRows, TASTE_MODES } from '../lib/rubricCatalog'
 import { CtaButton, fieldClass } from './ui'
 import { RubricRowsEditor } from './RubricRowsEditor'
+import { RubricMix } from './RubricMix'
+import { SuccessMark } from './Moments'
 
 interface Draft { id: string | null; name: string; rows: GroupRubricRow[] }
 
@@ -70,7 +72,7 @@ export function PersonalRubrics({ userId, groups, onOpenGroup }: {
     <div>
       <p className="mb-4 text-[13px] leading-snug text-muted">Save your own sets of categories and weights for {TASTE_MODES.buff.plural} groups. Your favorite is used when you create or join one. These do not change your solo card.</p>
       {error && <div role="alert" className="mb-3 text-[13px] text-coral">{error}{presets === null && <button type="button" onClick={() => setRetry((n) => n + 1)} className="min-h-11 px-2 underline">Try again</button>}</div>}
-      {notice && <p role="status" className="mb-3 text-[13px] text-teal">{notice}</p>}
+      {notice && <div role="status" className="mb-4 flex items-center gap-3 rounded-2xl bg-teal/10 p-3 text-[13px] text-teal"><SuccessMark size={28} /><p>{notice}</p></div>}
       {draft ? (
         <form className="mp-rise" onSubmit={(e) => { e.preventDefault(); void save() }}>
           <fieldset disabled={busy}>
@@ -91,6 +93,7 @@ export function PersonalRubrics({ userId, groups, onOpenGroup }: {
               {[...presets].sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite) || a.name.localeCompare(b.name)).map((p) => (
                 <div key={p.id} className="py-3">
                   <p className="break-words text-[15px] font-semibold">{p.name}</p>
+                  <RubricMix rows={p.rows} compact />
                   <p className="mt-1 text-[12px] text-muted">{p.rows.filter((r) => r.enabled).length} categories{p.isFavorite && <span className="ml-2 text-gold">★ Favorite for new groups</span>}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button type="button" disabled={busy} onClick={() => edit(p)} aria-label={`Edit ${p.name}`} className="min-h-11 rounded-full border border-line px-4 text-[13px] font-semibold text-teal disabled:opacity-50">Edit</button>

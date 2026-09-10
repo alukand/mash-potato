@@ -19,6 +19,7 @@ import type { GroupInfo, MemberInfo, SavedTitle, SessionInfo, TmdbResult } from 
 import { participation, formatWindow } from '../lib/rsvp'
 import { PosterShelf } from '../components/PosterShelf'
 import { Logo } from '../components/Logo'
+import { LoadingCards } from '../components/Moments'
 import { CtaButton, GroupMark } from '../components/ui'
 import type { ProfileSection } from './ProfileScreen'
 
@@ -174,7 +175,7 @@ export function HomeScreen({
     )
   }
   if (pulses === undefined) {
-    return <p className="mp-rise py-10 text-center text-[13px] text-muted">Loading…</p>
+    return <LoadingCards label="Getting your movie nights ready…" />
   }
 
   const live = pulses.filter((p) => p.session?.state === 'blind')
@@ -189,9 +190,14 @@ export function HomeScreen({
 
   return (
     <div className="flex flex-col gap-7">
+      <header className="mp-view-enter px-1">
+        <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">Your movie night</p>
+        <h1 className="font-display text-[32px] font-semibold leading-[1.05]">{live.length > 0 ? 'The next take is yours.' : 'What’s worth watching?'}</h1>
+        <p className="mt-3 text-[14px] leading-relaxed text-muted">{live.length > 0 ? `${live.length === 1 ? 'A round is' : `${live.length} rounds are`} live. Rate it your way, then see where you land together.` : 'Find your next watch. Bring your own opinion.'}</p>
+      </header>
       {/* ---- your numbers at a glance ---- */}
       {showStats && (
-        <section className="mp-rise grid grid-cols-3 gap-2">
+        <section aria-label="Your collection" className="grid grid-cols-3 divide-x divide-line/60 rounded-2xl border border-line/60 bg-surface/60 py-1">
           {(
             [
               ['groups', groups.length, groups.length === 1 ? 'Group' : 'Groups'],
@@ -206,8 +212,8 @@ export function HomeScreen({
               key={label}
               type="button"
               onClick={() => onOpenList(section)}
-              aria-label={`${n} ${label.toLowerCase()} — open the list`}
-              className="mp-card rounded-2xl px-3 py-3 text-center transition-colors hover:border-teal/40 active:bg-surface-2"
+              aria-label={`${n} ${label.toLowerCase()}, open the list`}
+              className="rounded-xl px-3 py-3 text-center transition-colors hover:text-teal active:bg-surface-2"
             >
               <p className="tabular font-display text-[24px] font-semibold leading-none">{n}</p>
               <p className="mt-1 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
@@ -276,9 +282,9 @@ export function HomeScreen({
                   </div>
 
                   {iLocked ? (
-                    <p className="mt-3.5 rounded-full border border-teal/30 bg-teal/10 py-2.5 text-center text-[12px] font-semibold text-teal">
-                      You're locked in, waiting on the reveal
-                    </p>
+                    <button type="button" onClick={() => onOpenGroup(group.id, 'rate')} className="mt-3.5 min-h-11 w-full rounded-full border border-teal/30 bg-teal/10 px-3 py-2.5 text-center text-[12px] font-semibold text-teal hover:bg-teal/15">
+                      Scores sealed. Open the round →
+                    </button>
                   ) : mine === 'invited' ? (
                     <div className="mt-3.5 flex items-center gap-2">
                       <CtaButton
@@ -397,7 +403,7 @@ export function HomeScreen({
         <section className="mp-rise mp-card rounded-[26px] p-7 text-center">
           <Logo className="mx-auto h-12 w-12" />
           <h2 className="mt-4 font-display text-[22px] font-semibold leading-tight">
-            Nothing live right now
+            Pick the next great debate.
           </h2>
           <p className="mx-auto mt-2 max-w-[280px] text-[13px] leading-snug text-muted">
             Find something worth arguing about: rate it solo, or invite a group and score it

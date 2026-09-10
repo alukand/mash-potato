@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Sheet } from './Sheet'
 import { fetchGroupmates, fetchInbox, sendMessage } from '../lib/api'
 import type { GroupmateInfo, InboxEntry } from '../lib/api'
 import { colorForGroup, colorForUser } from '../lib/palette'
@@ -73,103 +74,93 @@ export function ShareToChatSheet({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-bg/70 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-label="Send to a chat"
-        className="mp-card max-h-[85dvh] w-full max-w-[480px] overflow-y-auto rounded-t-[26px] px-5 pb-safe pt-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="font-display text-[20px] font-semibold leading-tight">
-              Send to a chat
-            </h2>
-            <p className="mt-0.5 truncate text-[13px] leading-snug text-muted">{label}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:text-text active:bg-surface-2"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-              <path d="M6 6l12 12M18 6 6 18" />
-            </svg>
-          </button>
+    <Sheet label="Send to a chat" onClose={onClose}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-display text-[20px] font-semibold leading-tight">
+            Send to a chat
+          </h2>
+          <p className="mt-0.5 truncate text-[13px] leading-snug text-muted">{label}</p>
         </div>
-
-        <input
-          type="text"
-          value={note}
-          maxLength={280}
-          onChange={(e) => setNote(e.target.value)}
-          aria-label="Say something with it"
-          placeholder="Say something with it (optional)"
-          className="mt-4 w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-text placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60"
-        />
-
-        {error && (
-          <p role="alert" className="mt-3 text-[13px] leading-snug text-coral">
-            {error}
-          </p>
-        )}
-
-        {entries === undefined ? (
-          <p className="py-6 text-center text-[13px] text-muted">Loading your chats…</p>
-        ) : entries.length === 0 ? (
-          <p className="py-6 text-[13px] leading-snug text-muted">
-            No chats yet. Every group you are in has one, and you can message
-            anyone you share a group with.
-          </p>
-        ) : (
-          <ul className="mt-3 divide-y divide-line/50">
-            {entries.map((e) => {
-              const name = nameFor(e)
-              return (
-                <li key={e.conversationId}>
-                  <button
-                    type="button"
-                    disabled={busyId !== null}
-                    onClick={() => void share(e)}
-                    className="group flex w-full items-center gap-3 py-3 text-left transition-colors active:bg-surface-2 disabled:opacity-50"
-                  >
-                    {e.kind === 'group' && e.groupId ? (
-                      <GroupMark groupId={e.groupId} name={name} size={34} />
-                    ) : e.kind === 'custom' ? (
-                      <span
-                        aria-hidden
-                        className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full font-display text-[14px] font-semibold text-bg"
-                        style={{ backgroundColor: colorForGroup(e.conversationId) }}
-                      >
-                        {name.charAt(0).toUpperCase()}
-                      </span>
-                    ) : (
-                      <Avatar
-                        avatarKey={
-                          e.otherUserId ? (people.get(e.otherUserId)?.avatarKey ?? null) : null
-                        }
-                        displayName={name}
-                        color={colorForUser(e.otherUserId ?? e.conversationId)}
-                        size={34}
-                      />
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">
-                      {name}
-                    </span>
-                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-teal">
-                      {busyId === e.conversationId ? 'Sending…' : 'Send'}
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
+        <button
+          type="button"
+          data-sheet-close
+          aria-label="Close"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:text-text active:bg-surface-2"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
       </div>
-    </div>
+
+      <input
+        type="text"
+        value={note}
+        maxLength={280}
+        onChange={(e) => setNote(e.target.value)}
+        aria-label="Say something with it"
+        placeholder="Say something with it (optional)"
+        className="mt-4 w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-text placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60"
+      />
+
+      {error && (
+        <p role="alert" className="mt-3 text-[13px] leading-snug text-coral">
+          {error}
+        </p>
+      )}
+
+      {entries === undefined ? (
+        <p className="py-6 text-center text-[13px] text-muted">Loading your chats…</p>
+      ) : entries.length === 0 ? (
+        <p className="py-6 text-[13px] leading-snug text-muted">
+          No chats yet. Every group you are in has one, and you can message
+          anyone you share a group with.
+        </p>
+      ) : (
+        <ul className="mt-3 divide-y divide-line/50">
+          {entries.map((e) => {
+            const name = nameFor(e)
+            return (
+              <li key={e.conversationId}>
+                <button
+                  type="button"
+                  disabled={busyId !== null}
+                  onClick={() => void share(e)}
+                  className="group flex w-full items-center gap-3 py-3 text-left transition-colors active:bg-surface-2 disabled:opacity-50"
+                >
+                  {e.kind === 'group' && e.groupId ? (
+                    <GroupMark groupId={e.groupId} name={name} size={34} />
+                  ) : e.kind === 'custom' ? (
+                    <span
+                      aria-hidden
+                      className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full font-display text-[14px] font-semibold text-bg"
+                      style={{ backgroundColor: colorForGroup(e.conversationId) }}
+                    >
+                      {name.charAt(0).toUpperCase()}
+                    </span>
+                  ) : (
+                    <Avatar
+                      avatarKey={
+                        e.otherUserId ? (people.get(e.otherUserId)?.avatarKey ?? null) : null
+                      }
+                      displayName={name}
+                      color={colorForUser(e.otherUserId ?? e.conversationId)}
+                      size={34}
+                    />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+                    {name}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-teal">
+                    {busyId === e.conversationId ? 'Sending…' : 'Send'}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </Sheet>
   )
 }

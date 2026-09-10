@@ -156,7 +156,7 @@ body::after {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 24px; /* generous touch target */
+  height: 44px; /* Touch target is larger than the visible 6px track. */
   background: transparent;
   cursor: pointer;
 }
@@ -229,11 +229,108 @@ body::after {
   font-variant-numeric: tabular-nums;
 }
 
+/* Interaction rhythm: fast controls; the Reveal earns the longer beat. */
+:root { --mp-ease: cubic-bezier(.22, 1, .36, 1); }
+button:not(:disabled), a { -webkit-user-select: none; }
+button:focus-visible, a:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--color-teal);
+  outline-offset: 4px;
+}
+.mp-field:focus { box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-teal) 12%, transparent); }
+.mp-cta {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  min-height: 44px;
+  transition: transform 180ms var(--mp-ease), filter 180ms, box-shadow 180ms;
+}
+.mp-cta::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, color-mix(in oklab, var(--color-text) 24%, transparent) 48%, transparent 65%);
+  transform: translateX(-120%);
+}
+.mp-cta:focus-visible::after { animation: mp-button-sweep 650ms var(--mp-ease); }
+@media (hover: hover) {
+  .mp-cta:not(:disabled):hover { transform: translateY(-2px); filter: brightness(1.055); }
+  .mp-cta:not(:disabled):hover::after { animation: mp-button-sweep 650ms var(--mp-ease); }
+  .mp-poster-button:not(:disabled):hover .mp-poster-art { transform: translateY(-3px); box-shadow: 0 10px 24px -12px var(--color-bg); border-color: var(--color-muted); }
+  .mp-poster-button:not(:disabled):hover .mp-poster-title { color: var(--color-teal); }
+}
+.mp-poster-art { transition: transform 220ms var(--mp-ease), box-shadow 220ms, border-color 220ms; }
+.mp-poster-button:not(:disabled):active .mp-poster-art { transform: scale(.965); }
+.mp-poster-button:focus-visible { border-radius: 12px; }
+.mp-poster-button:focus-visible .mp-poster-title { color: var(--color-teal); }
+.mp-poster-title { transition: color 180ms; }
+.mp-cta:not(:disabled):active { transform: translateY(1px) scale(.98); filter: brightness(.96); }
+.mp-slider::-webkit-slider-thumb { transition: transform 150ms var(--mp-ease), box-shadow 150ms; }
+.mp-slider::-moz-range-thumb { transition: transform 150ms var(--mp-ease), box-shadow 150ms; }
+.mp-slider:not(:disabled):active::-webkit-slider-thumb { transform: scale(1.2); box-shadow: 0 0 0 6px color-mix(in oklab, var(--thumb) 15%, transparent); }
+.mp-slider:not(:disabled):active::-moz-range-thumb { transform: scale(1.2); box-shadow: 0 0 0 6px color-mix(in oklab, var(--thumb) 15%, transparent); }
+.mp-score-feedback { animation: mp-score-feedback 180ms var(--mp-ease); }
+.mp-nav-marker {
+  position: absolute; top: 8px; bottom: 8px; left: 8px;
+  width: calc((100% - 16px) / 5); border-radius: 20px;
+  background: color-mix(in oklab, var(--nav-tone) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--nav-tone) 28%, transparent);
+  transition: transform 240ms var(--mp-ease), background-color 200ms, box-shadow 200ms;
+  pointer-events: none;
+}
+.mp-nav-item svg { transition: transform 180ms var(--mp-ease); }
+.mp-nav-item:active svg { transform: scale(.85); }
+.mp-nav-item[aria-current='page'] svg { animation: mp-nav-select 220ms var(--mp-ease); }
+.mp-view-enter { animation: mp-fade 180ms ease-out; }
+.mp-sheet {
+  position: fixed; inset: auto 0 0; margin: 0 auto;
+  width: 100%; max-width: 480px; max-height: 90dvh;
+  padding: 12px 20px max(24px, env(safe-area-inset-bottom));
+  border-radius: 28px 28px 0 0; color: var(--color-text);
+  overflow-y: auto; overscroll-behavior: contain;
+  animation: mp-sheet-enter 260ms var(--mp-ease) backwards;
+}
+.mp-sheet::backdrop { background: color-mix(in oklab, var(--color-bg) 76%, transparent); animation: mp-backdrop 200ms ease-out; }
+.mp-sheet-closing { pointer-events: none; animation: mp-sheet-exit 180ms ease-in forwards; }
+.mp-sheet-closing::backdrop { animation: mp-backdrop 180ms ease-in reverse forwards; }
+.mp-sheet [aria-label='Close'] { width: 44px; height: 44px; }
+.mp-success-mark { animation: mp-confirm 300ms var(--mp-ease) backwards; box-shadow: 0 0 24px -8px color-mix(in oklab, var(--color-teal) 40%, transparent); }
+.mp-save-confirm { animation: mp-save-confirm 360ms var(--mp-ease); }
+.mp-check-draw { stroke-dasharray: 1; stroke-dashoffset: 0; animation: mp-check 360ms var(--mp-ease) backwards; }
+.mp-skeleton { position: relative; overflow: hidden; background: var(--color-surface-2); }
+.mp-skeleton::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent, color-mix(in oklab, var(--color-muted) 12%, transparent), transparent); animation: mp-button-sweep 1400ms ease-in-out infinite; }
+.mp-mix-segment { background: var(--color-gold); opacity: var(--mix-opacity); min-width: 2px; }
+.mp-reveal-spark { position: absolute; left: 50%; top: 50%; width: 4px; height: 9px; border-radius: 2px; background: var(--spark); opacity: 0; animation: mp-spark 850ms var(--mp-ease) var(--delay) both; }
+.mp-reveal-stage { position: relative; }
+.mp-reveal-stage::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 45px -20px var(--color-teal); opacity: 0; animation: mp-reveal-light 900ms ease-out; }
+@keyframes mp-button-sweep { from { transform: translateX(-120%); } to { transform: translateX(120%); } }
+@keyframes mp-fade { from { opacity: .25; } to { opacity: 1; } }
+@keyframes mp-backdrop { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mp-save-confirm { 40% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-teal) 15%, transparent); } }
+@keyframes mp-score-feedback { from { transform: translateY(3px) scale(.95); } to { transform: none; } }
+@keyframes mp-nav-select { from { transform: translateY(3px) scale(.92); } to { transform: none; } }
+@keyframes mp-sheet-enter { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes mp-sheet-exit { to { transform: translateY(24px); opacity: 0; } }
+@keyframes mp-confirm { from { transform: scale(.8); } to { transform: none; } }
+@keyframes mp-check { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes mp-spark { 0% { transform: rotate(var(--angle)) translateY(-30px) scale(.5); opacity: 0; } 15% { opacity: .85; } 100% { transform: rotate(var(--angle)) translateY(calc(-1 * var(--distance))) rotate(55deg) scale(.4); opacity: 0; } }
+@keyframes mp-reveal-light { 20% { opacity: .7; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .mp-reveal-burst, .mp-reveal-stage::before, .mp-skeleton::after, .mp-cta::after { display: none; }
+  .mp-sheet, .mp-sheet-closing, .mp-success-mark, .mp-score-feedback, .mp-save-confirm, .mp-nav-item svg { animation: none; }
+  .mp-sheet-closing { opacity: 1; }
+  .mp-cta:not(:disabled):hover, .mp-cta:not(:disabled):active,
+  .mp-poster-button:not(:disabled):hover .mp-poster-art, .mp-poster-button:not(:disabled):active .mp-poster-art { transform: none; }
+  .mp-nav-item:active svg { transform: none; }
+  .mp-slider:not(:disabled):active::-webkit-slider-thumb { transform: none; }
+  .mp-slider:not(:disabled):active::-moz-range-thumb { transform: none; }
+}
+
 /* Staggered entrance — neutralised for reduced-motion by the guard below. */
 @keyframes mp-rise {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -248,7 +345,7 @@ body::after {
    from-state through animation-delay, and the to-state equals the natural
    style, so releasing the fill is visually seamless. */
 .mp-rise {
-  animation: mp-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  animation: mp-rise 280ms var(--mp-ease) backwards;
 }
 
 /* Onboarding mockup beats: bars grow (transform-only), chips pop in. */

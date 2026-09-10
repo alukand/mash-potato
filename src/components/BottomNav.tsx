@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 export type TabId = 'home' | 'discover' | 'rate' | 'profile'
 
@@ -89,10 +89,7 @@ function Item({
   pulse?: boolean
   dot?: boolean
 }) {
-  const activeSkin =
-    tone === 'gold'
-      ? 'bg-gold/10 text-gold shadow-[inset_0_0_0_1px_rgba(231,178,78,0.25),0_0_16px_-6px_rgba(231,178,78,0.55)]'
-      : 'bg-teal/10 text-teal shadow-[inset_0_0_0_1px_rgba(81,197,190,0.25),0_0_16px_-6px_rgba(81,197,190,0.55)]'
+  const activeSkin = tone === 'gold' ? 'text-gold' : 'text-teal'
   return (
     <button
       type="button"
@@ -100,7 +97,7 @@ function Item({
       aria-current={active ? 'page' : undefined}
       // the first-run tour cuts its spotlight around these
       data-tour={tour}
-      className={`relative flex flex-1 flex-col items-center justify-center gap-1 rounded-[20px] px-0.5 py-2 transition-colors ${
+      className={`mp-nav-item relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-[20px] px-0.5 py-2 transition-colors ${
         pulse ? 'mp-tour-pulse' : ''
       } ${active ? activeSkin : 'text-muted hover:text-text'}`}
     >
@@ -121,12 +118,14 @@ function Item({
 export function BottomNav({ active, onSelect, onMore, unread = 0, highlight = null }: BottomNavProps) {
   return (
     <nav
-      className="fixed inset-x-4 z-20 mx-auto flex max-w-[420px] items-stretch gap-0.5 rounded-[30px] border border-line p-2 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.9)] backdrop-blur-xl"
+      aria-label="Main navigation"
+      className="fixed inset-x-4 z-20 mx-auto grid max-w-[420px] grid-cols-5 items-stretch rounded-[30px] border border-line p-2 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.9)] backdrop-blur-xl"
       style={{
         bottom: 'max(1rem, env(safe-area-inset-bottom))',
         backgroundColor: 'color-mix(in oklab, var(--color-surface) 88%, transparent)',
       }}
     >
+      <span aria-hidden className="mp-nav-marker" style={{ transform: `translateX(${TABS.findIndex((t) => t.id === active) * 100}%)`, '--nav-tone': active === 'rate' ? 'var(--color-gold)' : 'var(--color-teal)' } as CSSProperties} />
       {TABS.map((tab) => (
         <Item
           key={tab.id}

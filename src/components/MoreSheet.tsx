@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Sheet } from './Sheet'
 import type { ReactNode } from 'react'
 import { fetchAmModerator } from '../lib/api'
 
@@ -32,9 +33,9 @@ function Row({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-3.5 rounded-2xl px-3 py-3 text-left transition-colors active:bg-surface-2"
+      className="group flex w-full items-center gap-3.5 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-surface-2/60 active:bg-surface-2"
     >
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line/70 bg-surface-2/50 text-muted">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-line/70 bg-surface-2/50 text-teal transition-colors group-hover:border-teal/40 group-hover:bg-teal/10">
         {icon}
       </span>
       <span className="min-w-0 flex-1">
@@ -80,101 +81,84 @@ export function MoreSheet({
   }, [])
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-bg/70 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-label="More"
-        className="mp-card max-h-[85dvh] w-full max-w-[480px] overflow-y-auto rounded-t-[26px] px-4 pb-safe pt-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-line" aria-hidden />
+    <Sheet label="More" onClose={onClose}>
+      <div className="mb-3 px-3"><h2 className="font-display text-[25px] font-semibold">Keep the conversation going.</h2><p className="mt-1 text-[13px] text-muted">Your people, your groups, your next movie night.</p></div>
+      <Row
+        icon={
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="3" y="5" width="18" height="14" rx="2.5" />
+            <path d="m3.5 7 8.5 6 8.5-6" />
+          </svg>
+        }
+        label="Messages"
+        hint="Your inbox, group chats and requests"
+        badge={unread}
+        onClick={onMessages}
+      />
 
+      <Row
+        icon={
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="9" cy="8" r="3.4" />
+            <path d="M3 19a6 6 0 0 1 12 0" />
+            <path d="M18 7.5v6M15 10.5h6" />
+          </svg>
+        }
+        label="Start a new group"
+        hint="Pick a rubric and invite the people you watch with"
+        onClick={onNewGroup}
+      />
+
+      {/* A courtesy door, not a gate — every RPC behind it re-checks the role. */}
+      {amModerator && (
         <Row
           icon={
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <rect x="3" y="5" width="18" height="14" rx="2.5" />
-              <path d="m3.5 7 8.5 6 8.5-6" />
+              <path d="M5 21V4M5 4h11l-1.5 3.5L16 11H5" />
             </svg>
           }
-          label="Messages"
-          hint="Your inbox, group chats and requests"
-          badge={unread}
-          onClick={onMessages}
+          label="Reports"
+          hint="Reported comments and messages, and what was done about them"
+          onClick={onModeration}
         />
+      )}
 
-        <Row
-          icon={
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <circle cx="9" cy="8" r="3.4" />
-              <path d="M3 19a6 6 0 0 1 12 0" />
-              <path d="M18 7.5v6M15 10.5h6" />
-            </svg>
-          }
-          label="Start a new group"
-          hint="Pick a rubric and invite the people you watch with"
-          onClick={onNewGroup}
-        />
-
-        {/* A courtesy door, not a gate — every RPC behind it re-checks the role. */}
-        {amModerator && (
-          <Row
-            icon={
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M5 21V4M5 4h11l-1.5 3.5L16 11H5" />
-              </svg>
-            }
-            label="Reports"
-            hint="Reported comments and messages, and what was done about them"
-            onClick={onModeration}
-          />
-        )}
-
-        <div className="mt-2 flex items-center justify-center gap-4 border-t border-line/60 px-3 pb-3 pt-3.5">
-          <a
-            href="https://mashpotato.app/terms"
-            target="_blank"
-            rel="noreferrer"
-            className="text-[12px] text-muted transition-colors hover:text-text"
-          >
-            Terms
-          </a>
-          <span className="text-line" aria-hidden>
-            ·
-          </span>
-          <a
-            href="https://mashpotato.app/privacy"
-            target="_blank"
-            rel="noreferrer"
-            className="text-[12px] text-muted transition-colors hover:text-text"
-          >
-            Privacy
-          </a>
-          <span className="text-line" aria-hidden>
-            ·
-          </span>
-          <a
-            href="https://mashpotato.app/support"
-            target="_blank"
-            rel="noreferrer"
-            className="text-[12px] text-muted transition-colors hover:text-text"
-          >
-            Support
-          </a>
-          <span className="text-line" aria-hidden>
-            ·
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[12px] text-muted transition-colors hover:text-text"
-          >
-            Close
-          </button>
-        </div>
+      <div className="mt-2 flex items-center justify-center gap-4 border-t border-line/60 px-3 pb-3 pt-3.5">
+        <a
+          href="https://mashpotato.app/terms"
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-h-11 items-center text-[12px] text-muted transition-colors hover:text-text"
+        >
+          Terms
+        </a>
+        <span className="h-3 w-px bg-line" aria-hidden />
+        <a
+          href="https://mashpotato.app/privacy"
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-h-11 items-center text-[12px] text-muted transition-colors hover:text-text"
+        >
+          Privacy
+        </a>
+        <span className="h-3 w-px bg-line" aria-hidden />
+        <a
+          href="https://mashpotato.app/support"
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-h-11 items-center text-[12px] text-muted transition-colors hover:text-text"
+        >
+          Support
+        </a>
+        <span className="h-3 w-px bg-line" aria-hidden />
+        <button
+          type="button"
+          data-sheet-close
+          className="flex min-h-11 items-center text-[12px] text-muted transition-colors hover:text-text"
+        >
+          Close
+        </button>
       </div>
-    </div>
+    </Sheet>
   )
 }

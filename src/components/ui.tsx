@@ -13,12 +13,12 @@ import type { TasteMode } from '../lib/rubricCatalog'
 
 /** The app's one text-field recipe: raised surface, hairline border, teal focus. */
 export const fieldClass =
-  'w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
+  'mp-field w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] text-text ' +
   'placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60'
 
 /** Compact variant for inline forms (preset names, rename fields). */
 export const fieldClassSm =
-  'min-w-0 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-text ' +
+  'mp-field min-w-0 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[13px] text-text ' +
   'placeholder:text-muted/70 outline-none transition-colors focus:border-teal/60'
 
 const CTA_TONES = {
@@ -60,7 +60,7 @@ export function CtaButton({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-full font-bold text-bg transition-transform active:scale-[0.98] disabled:opacity-60 ${t.shadow} ${className}`}
+      className={`mp-cta rounded-full font-bold text-bg disabled:opacity-60 ${t.shadow} ${className}`}
       style={{ backgroundImage: t.gradient }}
     >
       {children}
@@ -95,16 +95,16 @@ export function ScoreSliderRow({
   const color = scoreColor(value)
   return (
     <div className={className}>
-      <div className="flex items-baseline justify-between">
-        <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-[14px] font-medium leading-tight">{label}</p>
           {sub}
         </div>
-        <span className="flex items-baseline gap-1.5">
+        <span className="flex shrink-0 items-baseline gap-1.5">
           <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
             {scoreWord(value)}
           </span>
-          <span className="tabular font-mono text-xl font-bold" style={{ color }}>
+          <span key={value} className="mp-score-feedback tabular inline-block font-mono text-xl font-bold" style={{ color }}>
             {value}
             <span className="text-[12px] font-semibold text-muted">/10</span>
           </span>
@@ -118,6 +118,7 @@ export function ScoreSliderRow({
         value={value}
         disabled={disabled}
         aria-label={`${label} score`}
+        aria-valuetext={`${value} out of 10, ${scoreWord(value)}`}
         onChange={(e) => onChange(Number(e.target.value))}
         className="mp-slider mt-1.5"
         style={{ '--thumb': color, '--fill': ((value - 1) / 9) * 100 } as CSSProperties}
@@ -330,7 +331,7 @@ export function ExtraCategoryChips({
               disabled={disabled}
               aria-pressed={on}
               onClick={() => onToggle(e.key)}
-              className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors active:scale-95 disabled:opacity-50 ${
+              className={`flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors disabled:opacity-50 ${
                 on
                   ? 'border-teal/40 bg-teal/10 text-teal'
                   : 'border-dashed border-line text-muted hover:text-text'

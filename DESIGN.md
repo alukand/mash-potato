@@ -1,6 +1,6 @@
 # Mash Potato — DESIGN.md
 
-last-verified: 2026-09-08
+last-verified: 2026-09-10
 register: product (mobile app UI; design serves the task)
 
 The audience scene: a friend group on their couches, phones in hand, scoring a
@@ -45,9 +45,9 @@ top highlight, deep ambient shadow). Poster tiles add `.mp-poster-grain`.
 ## Component recipes (one source: `src/components/ui.tsx`)
 
 - **Fields** — `fieldClass` / `fieldClassSm`: surface-2 fill, `border-line`,
-  teal focus border. Never re-declare per file.
+  teal focus border and a quiet focus ring. Never re-declare per file.
 - **Primary CTA** — `<CtaButton tone="gold|teal">`: gradient pill + lift
-  shadow + `active:scale-[0.98]`. Gold = act (start / score / lock);
+  shadow + `.mp-cta` press/hover feedback, 44px minimum height. Gold = act (start / score / lock);
   teal = the group's moment (reveal / save rubric / I'm in). Size and width
   are set at the call site.
 - **Quiet actions** — bordered pill (`border-line`, muted text) that brightens
@@ -65,10 +65,24 @@ top highlight, deep ambient shadow). Poster tiles add `.mp-poster-grain`.
   5.2); every portrait is from the movies, not from any movie. Picker lives
   on the Profile identity block.
 - **Sliders** — `.mp-slider` with per-instance `--thumb` (ramp color) and
-  `--fill`. Score sliders show the anchor word next to the value.
+  `--fill`, a 44px input around a 6px track, and thumb feedback on press.
+  Score sliders show and announce the anchor word next to the value.
 - **Section header** — 11px semibold uppercase `tracking-[0.2em]` muted label,
   optional quiet count as a mono span after the label (space only, no
   separator characters).
+- **Poster shelves** — 19px display headings, 44px previous/next controls
+  when the row overflows, native swipe and scroll snap. Poster titles wrap to
+  two lines. Shelf, search, and collection tiles share `.mp-poster-art`
+  feedback; scroll never advances on its own.
+- **Sheets** — `Sheet.tsx` uses a portalled native modal dialog for More,
+  group invites, Reveal sharing, and chat sharing. Browser focus containment,
+  inert background, Escape, deliberate backdrop tap, focus restoration, and
+  safe-area padding live in the one component. A drag from inside never
+  counts as a backdrop tap. No swipe-to-dismiss gesture competes with sliders.
+- **Rubric mix** — `RubricMix` shows enabled positive weights in their real
+  proportions, with readable text naming the largest share. It explains
+  weights without implying that they are ratings. Compact bars identify saved
+  presets; the full explanation appears while editing and in guided setup.
 - **List rows** — every tappable row carries `transition-colors
   active:bg-surface-2`, plus the finer touches: title brightens to teal on
   hover, poster/avatar scales on press (`group-active:scale-95`), and a
@@ -87,13 +101,17 @@ top highlight, deep ambient shadow). Poster tiles add `.mp-poster-grain`.
   type/color shift, or a `w-px` divider element.
 - Numbered labels only for true sequences (the MashMath walkthrough).
 - Voice: warm, direct, second person. Empty states teach the next step.
-- Motion: `mp-rise` staggered entrances; everything collapses under
-  `prefers-reduced-motion`. Ease-out only, 150–1100ms; the ScoreRing count-up
-  is the one long beat.
+- Motion: controls respond in 150–240ms, existing `mp-rise` entrances take
+  280ms, and sheets enter/exit in 260/180ms. The live Reveal earns an 850ms
+  particle accent and 1100ms ScoreRing count-up. Returning to old rounds does
+  not replay particles. Save and lock confirmations follow successful writes.
+  No idle decoration or scroll choreography. Reduced motion removes spatial
+  effects, shimmer, particles, and count-up; state and readable feedback remain.
 
 ## Screen composition
 
-- **Home** — cross-group dashboard: live rounds (inline RSVP) → latest
+- **Home** — current-night heading → compact collection counts → cross-group
+  live rounds (inline RSVP, sealed cards still open the round) → latest
   reveals → quiet/explore tail. Group-agnostic; no group chip in the header.
 - **Group** — the story order: switcher chips (GroupMark + name) → the round
   (SessionPanel) → the memory (GroupLog + avg/best strip) → the identity
@@ -117,6 +135,13 @@ top highlight, deep ambient shadow). Poster tiles add `.mp-poster-grain`.
   overwrites a namesake. Group offers Load a saved rubric before the sliders,
   Save group weights for future rounds, and Save a copy to personal rubrics.
   Hiding Profile's library preserves its draft while the screen stays mounted.
+- **Scoring** — after a successful lock, the sealed confirmation receives
+  focus and the own scorecard folds behind a review disclosure. Unlock remains
+  available until the Reveal. No other member's score is read to drive motion.
+- **Guided setup** — two visible steps: name and personal rubric, then the
+  suggested starter group. Joining Test Group 1 confirms membership and explains
+  rate → lock → Reveal before the first group opens. Magic-link entry and the
+  pre-auth terms gate remain separate from public browsing.
 - Management always happens inline (disclosures, inline confirms), never on
   detour pages. Destructive confirms are two-step, in place, coral-framed.
 
@@ -413,6 +438,42 @@ baseline function grant, which is exactly how an open endpoint shipped on
 2026-07-25.
 
 ## Changelog
+
+- 2026-09-10 (product-wide interaction and personality pass): clearer Home
+  and Discover hierarchy, compact collection counts, poster navigation and
+  wrapped titles, proportional rubric previews, guided-setup progress and
+  joined-group confirmation. Sealed scorecards collapse into a confirmation
+  with an explicit review control; Home's sealed round is now actionable.
+  Four sheets share native modal behavior, keyboard support, safe-area spacing,
+  and short enter/exit transitions. Save and lock feedback, a moving tab
+  marker, and a brief fresh-Reveal accent add personality to real actions.
+  Group selection ignores stale rubric responses; ScoreRing uses unique SVG
+  gradient ids and updates from its current value instead of counting from
+  zero again. No new dependency, schema, privacy boundary, scoring formula,
+  brand token, or font changes.
+  Requested/delivered magnitude: re-voice within the locked product identity.
+  Tried/rejected: continuous decorative motion and page-wide choreography;
+  they distract from reading scores and make a mobile utility feel slower.
+
+  **Animation check — app interactions**
+  Register: product
+
+  | Layer | Status | Evidence |
+  |---|---|---|
+  | Entrance | ✓ | `index.css`: `.mp-rise` 280ms; `Sheet.tsx` / `.mp-sheet` 260ms in, 180ms out |
+  | Hover | ✓ | `.mp-cta` lift, brightness, sweep; `.mp-poster-art` lift, shadow and border, `.mp-poster-title` color |
+  | State | ✓ | `BottomNav.tsx` moving `.mp-nav-marker`; `GuidedSetup.tsx` progress tracks; slider thumb feedback |
+  | Idle | N/A | Product surface; skeleton shimmer runs during loading, lazy shelves start it only near the viewport |
+  | Scroll | N/A | User-controlled poster scrolling and snap only, no reveal/parallax choreography |
+  | Micro-reward | ✓ | `Moments.tsx` teal success mark, glow, scale and drawn check; saved bookmark fill/glow; authorized fresh Reveal particles and ring |
+
+  Reduced motion: ✓ — `index.css` component overrides plus existing global
+  guard; `Sheet.tsx` dismisses immediately, `PosterShelf.tsx` scrolls instantly,
+  `ScoreRing.tsx` settles directly and observes preference changes.
+  Browser verified: skipped (not requested), code-level verification only.
+  Validation: production build, source lint, 144 unit tests, whitespace check,
+  and LunaCraft detector on all changed markup passed (zero findings).
+  DESIGN.md: updated to match the shared components and interaction rules.
 
 - 2026-09-08 (friends and rubric discoverability): visible Add friends actions
   on Profile and Rate, a shared member picker with existing-friend suggestions,

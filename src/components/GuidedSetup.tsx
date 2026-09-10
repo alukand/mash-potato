@@ -5,6 +5,8 @@ import { defaultRubricRows } from '../lib/rubricCatalog'
 import { RubricRowsEditor } from './RubricRowsEditor'
 import { Logo } from './Logo'
 import { CtaButton, fieldClass } from './ui'
+import { RubricMix } from './RubricMix'
+import { LoadingCards, SuccessMark } from './Moments'
 
 export function GuidedSetup({ userId, progress, onDone }: { userId: string; progress: OnboardingProgress; onDone: (groupId?: string) => Promise<void> }) {
   const [step, setStep] = useState<1 | 2>(progress.rubricId ? 2 : 1)
@@ -49,22 +51,34 @@ export function GuidedSetup({ userId, progress, onDone }: { userId: string; prog
   }
   return <main className="mx-auto min-h-dvh w-full max-w-[480px] px-5 pb-10 pt-safe">
     <header className="mb-7 flex items-center gap-3"><Logo className="h-10 w-10" /><span className="font-display text-[23px] font-semibold">Make it your movie night</span></header>
-    <ol aria-label="Getting started" className="mb-7 flex gap-4 text-[13px] font-semibold"><li aria-current={step === 1 ? 'step' : undefined} className={step === 1 ? 'text-gold' : 'text-teal'}>{step === 1 ? '1' : '✓'} Your rubric</li><li aria-current={step === 2 ? 'step' : undefined} className={step === 2 ? 'text-gold' : 'text-muted'}>2 Your group</li></ol>
+    <ol aria-label="Getting started" className="mb-7 grid grid-cols-2 gap-3 text-[13px] font-semibold">
+      {(['Your rubric', 'Your group'] as const).map((label, i) => <li key={label} aria-current={step === i + 1 ? 'step' : undefined} className={step > i + 1 ? 'text-teal' : step === i + 1 ? 'text-gold' : 'text-muted'}>
+        <span className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full border border-current font-mono text-[11px]">{step > i + 1 ? '✓' : i + 1}</span>{label}</span>
+        <span aria-hidden className="mt-3 block h-1 overflow-hidden rounded-full bg-line"><span className="block h-full origin-left rounded-full bg-current transition-transform duration-300" style={{ transform: `scaleX(${step > i + 1 ? 1 : step === i + 1 ? .5 : 0})` }} /></span>
+      </li>)}
+    </ol>
     {error && <p role="alert" className="mb-4 text-[13px] text-coral">{error}</p>}
     {step === 1 ? <section className="mp-rise">
       <h1 className="font-display text-[30px] font-semibold leading-tight">What makes a movie good to you?</h1>
       <p className="mb-5 mt-3 text-[15px] leading-relaxed text-muted">Your rubric tells the group what matters to you. Start with these seven categories, or change their weights. Next, we’ll add you to our starter group.</p>
       <form onSubmit={(e) => { e.preventDefault(); void save() }}><fieldset disabled={busy}>
         <label className="mb-5 block text-[13px] font-semibold">What should your group call you?<input required maxLength={60} autoComplete="nickname" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your display name" className={`mt-2 ${fieldClass}`} /></label>
-        <div className="mp-card rounded-[22px] p-5">{customize ? <RubricRowsEditor rows={rows} onChange={setRows} disabled={busy} reorder={false} /> : <ul className="divide-y divide-line/50">{rows.filter((r) => r.enabled).map((r) => <li key={r.key} className="flex items-center justify-between gap-3 py-2.5 text-[14px]"><span>{r.label}</span><span className="font-mono text-gold">{r.weight}</span></li>)}</ul>}
+        <div className="mp-card rounded-[22px] p-5">{customize ? <RubricRowsEditor rows={rows} onChange={setRows} disabled={busy} reorder={false} /> : <><RubricMix rows={rows} /><ul className="divide-y divide-line/50">{rows.filter((r) => r.enabled).map((r) => <li key={r.key} className="flex items-center justify-between gap-3 py-2.5 text-[14px]"><span>{r.label}</span><span className="font-mono text-gold">{r.weight}<span className="ml-1 font-sans text-[11px] text-muted">weight</span></span></li>)}</ul></>}
           <button type="button" onClick={() => setCustomize((v) => !v)} className="mt-3 min-h-11 w-full rounded-full border border-line px-4 text-[13px] font-semibold text-gold" aria-expanded={customize}>{customize ? 'Show my rubric summary' : 'Customize my weights'}</button>
         </div>
         <p className="mt-3 text-[13px] leading-snug text-muted">These numbers are weights: 40 counts twice as much as 20. You can edit them later in Profile → Personal rubrics.</p>
         <CtaButton type="submit" disabled={busy || !displayName.trim() || !rows.some((r) => r.enabled && r.weight > 0)} className="mt-5 min-h-12 w-full px-4 text-[14px]">{busy ? 'Saving your rubric…' : 'Save my rubric and join the starter group'}</CtaButton>
       </fieldset></form>
-    </section> : <section className="mp-rise">
-      <p className="mb-2 text-[13px] font-semibold text-teal">Your rubric is saved ✓</p><h1 className="font-display text-[30px] font-semibold leading-tight">{suggestion ? `You’re in ${suggestion.name}` : 'Meet your first movie-night group'}</h1>
-      {joining ? <p role="status" className="mt-5 text-[15px] text-muted">Joining your suggested group…</p> : suggestion ? <div className="mp-card mt-5 rounded-[22px] p-5"><p className="text-[13px] font-semibold text-teal">Suggested for new members · Joined ✓</p><h2 className="mt-2 font-display text-[24px] font-semibold">{suggestion.name}</h2><p className="mt-3 text-[15px] leading-relaxed text-muted">Your rubric came with you. Open the group to rate a movie or show together. Your scores stay hidden until the Reveal.</p><p className="mt-3 text-[13px] leading-snug text-muted">Chat and watchlists are ready to explore. You can leave the group from its Settings at any time.</p><CtaButton onClick={() => void finish(suggestion.id).catch(() => {})} disabled={busy} className="mt-5 min-h-12 w-full px-4 text-[14px]">{busy ? 'Opening your group…' : 'Let’s rate something'}</CtaButton></div> : <button type="button" onClick={() => setJoinRetry((n) => n + 1)} className="mt-4 min-h-11 w-full text-[14px] font-semibold text-teal">Try joining again</button>}
+    </section> : <section className="mp-view-enter">
+      <p className="mb-2 text-[13px] font-semibold text-teal">Your rubric is saved ✓</p>
+      <h1 className="font-display text-[32px] font-semibold leading-tight">{suggestion ? 'Good movies. Different opinions.' : 'Meet your first movie-night group'}</h1>
+      {joining ? <div className="mt-5"><LoadingCards label="Joining your suggested group…" /></div> : suggestion ? <div className="mp-card mt-6 rounded-[26px] p-6">
+        <div role="status" className="flex items-center gap-3"><SuccessMark size={48} /><div className="min-w-0"><p className="text-[12px] font-semibold text-teal">You’re in! Your first group</p><h2 className="mt-1 break-words font-display text-[26px] font-semibold leading-tight">{suggestion.name}</h2></div></div>
+        <p className="mt-5 text-[15px] leading-relaxed text-muted">Your rubric came with you. Now pick a movie or show and see where everyone stands.</p>
+        <ol className="mt-5 space-y-3 border-y border-line/60 py-4 text-[14px]">{['Rate each category your way.', 'Lock your scores. Everyone stays blind.', 'The Reveal drops your group’s Mashed score.'].map((line, i) => <li key={line} className="flex items-start gap-3"><span className="font-mono text-[12px] leading-5 text-teal">0{i + 1}</span><span>{line}</span></li>)}</ol>
+        <CtaButton onClick={() => void finish(suggestion.id).catch(() => {})} disabled={busy} className="mt-5 min-h-12 w-full px-4 text-[14px]">{busy ? 'Opening your group…' : 'Let’s rate something'}</CtaButton>
+        <p className="mt-4 text-center text-[12px] leading-relaxed text-muted">Chat and watchlists are ready, too. You can leave the group in its Settings at any time.</p>
+      </div> : <button type="button" onClick={() => setJoinRetry((n) => n + 1)} className="mt-4 min-h-11 w-full text-[14px] font-semibold text-teal">Try joining again</button>}
     </section>}
     <button type="button" disabled={busy || joining} onClick={() => void finish(suggestion?.id).catch(() => {})} className="mt-3 min-h-11 w-full text-[13px] text-muted hover:text-text">{step === 1 ? 'Use default weights and join the starter group' : 'Explore the app first'}</button>
   </main>

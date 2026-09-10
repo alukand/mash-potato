@@ -39,6 +39,7 @@ import { CommunityHistogram } from '../components/CommunityHistogram'
 import { DiscussionSection } from '../components/DiscussionSection'
 import { GroupInviteSheet } from '../components/GroupInviteSheet'
 import { ShareToChatSheet } from '../components/ShareToChatSheet'
+import { LoadingCards } from '../components/Moments'
 import { CtaButton, GroupMark, ScoreSliderRow, WhereToWatch, fieldClassSm } from '../components/ui'
 
 // Solo ratings follow YOUR taste mode: Normies score the enjoyment-heavy
@@ -98,6 +99,7 @@ export function TitleDetailScreen({
   const [detail, setDetail] = useState<TitleDetail | null | undefined>(undefined)
   const [notFound, setNotFound] = useState(false)
   const [savedTitleId, setSavedTitleId] = useState<string | null>(null)
+  const [celebrateSave, setCelebrateSave] = useState(false)
   // The invite flow always picks its group (recents + search) in this sheet.
   const [inviteOpen, setInviteOpen] = useState(false)
   /** "Send to a chat": pick a conversation and share this title as a card. */
@@ -288,6 +290,7 @@ export function TitleDetailScreen({
   async function toggleSave() {
     if (!detail || userId === null) return
     setSaving(true)
+    setCelebrateSave(false)
     setError(null)
     try {
       if (savedTitleId) {
@@ -302,6 +305,7 @@ export function TitleDetailScreen({
           posterPath: detail.posterPath,
         })
         setSavedTitleId(id)
+        setCelebrateSave(true)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update your list')
@@ -412,7 +416,7 @@ export function TitleDetailScreen({
     <button
       type="button"
       onClick={onBack}
-      className="grid h-9 w-9 place-items-center rounded-full border border-line/60 bg-bg/60 text-text backdrop-blur-md transition-colors hover:text-teal"
+      className="grid h-11 w-11 place-items-center rounded-full border border-line/60 bg-bg/60 text-text backdrop-blur-md transition-colors hover:text-teal"
       aria-label="Back"
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -425,7 +429,7 @@ export function TitleDetailScreen({
     return (
       <div className="px-5 pt-safe">
         <div className="mb-6">{BackButton}</div>
-        <p className="mp-rise py-10 text-center text-[13px] text-muted">Loading…</p>
+        <LoadingCards label="Finding the details…" />
       </div>
     )
   }
@@ -591,23 +595,25 @@ export function TitleDetailScreen({
                 <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5Z" />
               </svg>
               {myScores
-                ? `Solo ${formatScore(memberWeightedScore(myScores, soloWeights))} · Edit`
+                ? `Solo ${formatScore(memberWeightedScore(myScores, soloWeights))}, edit`
                 : 'Rate it solo'}
             </button>
             <button
               type="button"
               onClick={() => void toggleSave()}
               disabled={saving}
-              className={`flex flex-1 items-center justify-center gap-2 rounded-full border py-3 text-[13px] font-semibold transition-colors disabled:opacity-60 ${
+              aria-pressed={savedTitleId !== null}
+              aria-busy={saving}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-full border py-3 text-[13px] font-semibold transition-colors disabled:opacity-60 ${celebrateSave ? 'mp-save-confirm' : ''} ${
                 savedTitleId
                   ? 'border-teal/40 bg-teal/10 text-teal'
                   : 'border-line text-muted hover:border-teal/50 hover:text-text'
               }`}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill={savedTitleId ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg className={celebrateSave ? 'mp-score-feedback' : ''} width="15" height="15" viewBox="0 0 24 24" fill={savedTitleId ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M19 21 12 16.5 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z" />
               </svg>
-              {savedTitleId ? 'Saved' : 'Save'}
+              {saving ? 'Saving…' : savedTitleId ? 'Saved' : 'Save'}
             </button>
           </div>
 

@@ -40,9 +40,9 @@ export function PosterGrid({ items, onOpenTitle, badge, onRemove }: PosterGridPr
             type="button"
             disabled={it.tmdbId === null}
             onClick={() => it.tmdbId !== null && onOpenTitle(it.tmdbId, it.mediaType)}
-            className="group w-full text-left disabled:opacity-70"
+            className="mp-poster-button w-full text-left disabled:opacity-70"
           >
-            <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-line/60 bg-surface-2">
+            <div className="mp-poster-art relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-line/60 bg-surface-2">
               {badge && (
                 <span className="absolute left-1.5 top-1.5 z-10 rounded-full bg-bg/70 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wide text-teal backdrop-blur-sm">
                   {badge}
@@ -53,7 +53,7 @@ export function PosterGrid({ items, onOpenTitle, badge, onRemove }: PosterGridPr
                   src={posterUrl(it.posterPath, 'w342')}
                   alt=""
                   loading="lazy"
-                  className="h-full w-full object-cover transition-transform group-active:scale-95"
+                  className="h-full w-full object-cover"
                 />
               ) : (
                 <span
@@ -65,7 +65,7 @@ export function PosterGrid({ items, onOpenTitle, badge, onRemove }: PosterGridPr
                 </span>
               )}
             </div>
-            <p className="mt-1.5 truncate text-[12px] font-medium leading-tight">{it.name}</p>
+            <p className="mp-poster-title mt-2 line-clamp-2 text-[12px] font-medium leading-snug">{it.name}</p>
             <p className="font-mono text-[10px] text-muted">{it.year ?? '—'}</p>
           </button>
         </div>

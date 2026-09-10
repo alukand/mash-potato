@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { memberWeightedScore, formatScore } from '../lib/scoring'
 import type { CategoryScores } from '../lib/scoring'
 import {
@@ -20,6 +20,7 @@ import { colorForMember } from '../lib/palette'
 import { Avatar } from './avatars'
 import { CtaButton, ExtraCategoryChips, ScoreSliderRow, fieldClass } from './ui'
 import { CategoryLegend } from './CategoryLegend'
+import { LoadingCards, SuccessMark } from './Moments'
 
 interface RoundScorerProps {
   session: SessionInfo
@@ -42,6 +43,15 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
   const isCasual = group.tasteMode === 'casual'
   const [scores, setScores] = useState<CategoryScores>({})
   const [locked, setLocked] = useState(false)
+  const [reviewLocked, setReviewLocked] = useState(false)
+  const lockConfirmation = useRef<HTMLDivElement>(null)
+  const focusConfirmation = useRef(false)
+  useEffect(() => {
+    if (locked && focusConfirmation.current) {
+      lockConfirmation.current?.focus()
+      focusConfirmation.current = false
+    }
+  }, [locked])
   const [oneLiner, setOneLiner] = useState('')
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
   const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
@@ -103,7 +113,9 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
     setError(null)
     try {
       await saveMyScore(session.id, userId, scores, true, oneLiner.trim() || null)
+      focusConfirmation.current = true
       setLocked(true)
+      setReviewLocked(false)
       setLockStatus(await fetchLockStatus(session.id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not lock in')
@@ -300,7 +312,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
                 ))}
             </div>
             <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-              {lockedIds.size}/{inIds.size} locked
+              {lockedIds.size}/{Math.max(inIds.size, lockedIds.size)} locked
             </p>
             {showRsvps && (part.passedIds.length > 0 || part.invitedIds.length > 0) && (
               <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
@@ -313,6 +325,8 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
         </div>
       </section>
 
+      {locked && <button type="button" onClick={() => setReviewLocked((open) => !open)} aria-expanded={reviewLocked} aria-controls="my-locked-scorecard" className="mt-3 min-h-11 w-full rounded-full border border-line px-4 text-[13px] font-semibold text-muted hover:text-text">{reviewLocked ? 'Hide my scorecard' : 'Review my sealed scorecard'} <span aria-hidden>{reviewLocked ? '↑' : '↓'}</span></button>}
+      <div id="my-locked-scorecard" hidden={locked && !reviewLocked}>
       {/* ---- The category sliders: your core + the extras you added ---- */}
       <section className="mp-rise mt-4" style={{ animationDelay: '80ms' }}>
         <p className="mb-2 px-1 text-[13px] leading-snug text-muted">
@@ -320,7 +334,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
         </p>
         <CategoryLegend entries={rubric} className="mb-3 px-2" />
         {myRows === undefined ? (
-          <p className="px-2 py-4 text-[13px] text-muted">Loading your rubric…</p>
+          <LoadingCards label="Loading your rubric…" />
         ) : (
           (() => {
             const { core, extras } = splitRubricForMember(rubric, myRows, isCasual)
@@ -392,6 +406,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
           className={`${fieldClass} disabled:opacity-60`}
         />
       </section>
+      </div>
 
       {/* ---- Blind note + lock in / reveal ---- */}
       <section className="mp-rise mt-4" style={{ animationDelay: '160ms' }}>
@@ -413,13 +428,13 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
 
         {locked ? (
           <>
-            <div className="mt-4 flex items-center justify-center gap-2 rounded-full border border-teal/30 bg-teal/10 py-3.5 text-[14px] font-semibold text-teal">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="m4.5 12.5 5 5 10-11" />
-              </svg>
-              {waiting.length === 0
-                ? 'Everyone is locked in'
-                : `Locked in, waiting on ${waiting.map((m) => m.displayName).join(', ')}`}
+            <div ref={lockConfirmation} tabIndex={-1} role="status" className="mt-4 flex items-start gap-4 rounded-[22px] border border-teal/30 bg-teal/10 p-5 outline-none">
+              <SuccessMark />
+              <div className="min-w-0"><h3 className="font-display text-[22px] font-semibold leading-tight text-teal">Your scores are sealed.</h3>
+                <p className="mt-2 text-[13px] leading-relaxed text-muted">{waiting.length > 0
+                  ? `Waiting for ${waiting.map((m) => m.displayName).join(', ')} to lock in.`
+                  : part.invitedIds.length > 0 ? 'Everyone scoring is locked in. A few invitations are still open.' : 'Everyone scoring is locked in. Next up: the Reveal.'}</p>
+              </div>
             </div>
             <button
               type="button"

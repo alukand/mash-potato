@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { analyze, categoryStat, formatScore } from '../lib/scoring'
 import type { CategoryScores, CategoryStat, MemberScorecard } from '../lib/scoring'
@@ -34,6 +34,7 @@ import { RoundScorer } from './RoundScorer'
 import { ShareRevealSheet } from './ShareRevealSheet'
 import { ScoreRing } from './ScoreRing'
 import { MashMath } from './MashMath'
+import { LoadingCards, RevealBurst } from './Moments'
 
 interface SessionPanelProps {
   group: GroupInfo
@@ -129,6 +130,8 @@ export function SessionPanel({
   // Normie groups share one rubric, so nothing is an opt-in extra there.
   const isCasual = group.tasteMode === 'casual'
   const [session, setSession] = useState<SessionInfo | null | undefined>(undefined)
+  const observedSession = useRef<SessionInfo | null>(null)
+  const [celebrateSession, setCelebrateSession] = useState<string | null>(null)
   // undefined = cards not fetched yet. Distinct from []: an empty visible set
   // means "sealed for you" (RLS), and treating "still loading" as sealed
   // flashes the seal card at every mount.
@@ -172,6 +175,10 @@ export function SessionPanel({
       const s = viewSessionId
         ? await fetchSessionById(viewSessionId)
         : await fetchLatestSession(group.id)
+      const previous = observedSession.current
+      if (s && previous?.id === s.id && previous.state === 'blind' && s.state === 'revealed') setCelebrateSession(s.id)
+      else if (previous?.id !== s?.id) setCelebrateSession(null)
+      observedSession.current = s
       setSession(s)
       if (!s) return
       if (s.state === 'revealed') {
@@ -192,6 +199,7 @@ export function SessionPanel({
     setActionError(null)
     try {
       await lateScoreSession(sessionId, lateScores, lateLine.trim() || null)
+      setCelebrateSession(sessionId)
       setLateOpen(false)
       await load()
     } catch (err) {
@@ -292,7 +300,7 @@ export function SessionPanel({
   }
 
   if (session === undefined) {
-    return <p className="mp-rise py-6 text-center text-[13px] text-muted">Loading…</p>
+    return <LoadingCards label="Getting your round ready…" />
   }
 
   // ---- no sessions yet: the start-a-round block takes the stage -----------
@@ -315,7 +323,7 @@ export function SessionPanel({
 
   // ---- revealed: the Mashed result -----------------------------------------
   if (scorecards === undefined) {
-    return <p className="mp-rise py-6 text-center text-[13px] text-muted">Loading…</p>
+    return <LoadingCards label="Getting your round ready…" />
   }
   const locked = scorecards.filter((s) => s.locked)
   // A draft the viewer saved blind but never locked: seed the sliders with it
@@ -506,8 +514,9 @@ export function SessionPanel({
 
   return (
     <>
-      {/* ---- Hero: title + Mashed ring + member leaderboard ---- */}
-      <section className="mp-rise mp-card rounded-[26px] p-6">
+      {/* The celebration only mounts inside the already-authorized Reveal. */}
+      <section className={`mp-rise mp-card relative rounded-[26px] p-6 ${celebrateSession === session.id ? 'mp-reveal-stage' : ''}`}>
+        {celebrateSession === session.id && <RevealBurst />}
         <button
           type="button"
           disabled={session.titleTmdbId === null || !onOpenTitle}
@@ -551,7 +560,7 @@ export function SessionPanel({
         </button>
 
         <div className="mt-6 flex items-center gap-4">
-          <ScoreRing value={result.mashed} size={150} stroke={11} />
+          <ScoreRing key={session.id} value={result.mashed} size={150} stroke={11} />
           <ul className="flex min-w-0 flex-1 flex-col gap-1">
             {leaderboard.map((m) => {
               const isYou = m.memberId === userId

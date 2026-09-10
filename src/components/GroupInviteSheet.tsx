@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { Sheet } from './Sheet'
 import {
   createSession,
   fetchGroupRubrics,
@@ -44,6 +45,7 @@ export function GroupInviteSheet({
 }: GroupInviteSheetProps) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<GroupInfo | null>(null)
+  const selectionRequest = useRef(0)
   // null = the selected group's rubric + round state are still loading.
   const [rubrics, setRubrics] = useState<MemberRubric[] | null>(null)
   const [blindLive, setBlindLive] = useState(false)
@@ -67,6 +69,7 @@ export function GroupInviteSheet({
   const recentSet = useMemo(() => new Set(recents.slice(0, 3)), [recents])
 
   async function selectGroup(g: GroupInfo) {
+    const request = ++selectionRequest.current
     setSelected(g)
     setRubrics(null)
     setBlindLive(false)
@@ -77,6 +80,7 @@ export function GroupInviteSheet({
       fetchLatestSession(g.id).catch(() => null),
       hasGroupRatedTitle(g.id, title.tmdbId ?? null, title.mediaType).catch(() => false),
     ])
+    if (request !== selectionRequest.current) return
     setRubrics(rows)
     setBlindLive(latest?.state === 'blind')
     setRatedBefore(rated)
@@ -111,142 +115,132 @@ export function GroupInviteSheet({
       : []
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-bg/70 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-label="Invite a group"
-        className="mp-card max-h-[85dvh] w-full max-w-[480px] overflow-y-auto rounded-t-[26px] px-5 pb-safe pt-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="font-display text-[20px] font-semibold leading-tight">
-              {selected ? `Invite ${selected.name}` : 'Invite a group'}
-            </h2>
-            {/* Truncate the TITLE, not the sentence: `truncate` on the whole
-                <p> let a long name eat the explanation of what this does. */}
-            <p className="mt-0.5 text-[13px] leading-snug text-muted">
-              <span className="block truncate font-medium">
-                {title.name}
-                {title.year ? ` (${title.year})` : ''}
-              </span>
-              scored blind until the Reveal
-            </p>
-          </div>
+    <Sheet label="Invite a group" onClose={onClose}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-display text-[20px] font-semibold leading-tight">
+            {selected ? `Invite ${selected.name}` : 'Invite a group'}
+          </h2>
+          {/* Truncate the TITLE, not the sentence: `truncate` on the whole
+              <p> let a long name eat the explanation of what this does. */}
+          <p className="mt-0.5 text-[13px] leading-snug text-muted">
+            <span className="block truncate font-medium">
+              {title.name}
+              {title.year ? ` (${title.year})` : ''}
+            </span>
+            scored blind until the Reveal
+          </p>
+        </div>
+        <button
+          type="button"
+          data-sheet-close
+          aria-label="Close"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:text-text"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
+      </div>
+
+      {!selected ? (
+        <>
+          {groups.length > 4 && (
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search your groups…"
+              aria-label="Search your groups"
+              className={`mt-4 w-full ${fieldClassSm}`}
+            />
+          )}
+          <ul className="mt-3 divide-y divide-line/50">
+            {shown.map((g) => (
+              <li key={g.id}>
+                <button
+                  type="button"
+                  onClick={() => void selectGroup(g)}
+                  className="group flex w-full items-center gap-3 py-3 text-left transition-colors active:bg-surface-2"
+                >
+                  <GroupMark
+                    groupId={g.id}
+                    name={g.name}
+                    size={34}
+                    className="transition-transform group-active:scale-95"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[15px] font-semibold transition-colors group-hover:text-teal">
+                    {g.name}
+                  </span>
+                  {recentSet.has(g.id) && (
+                    <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
+                      Recent
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+            {shown.length === 0 && (
+              <li className="py-4 text-[13px] leading-snug text-muted">
+                No group by that name.
+              </li>
+            )}
+          </ul>
+        </>
+      ) : (
+        <div className="mt-4">
           <button
             type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:text-text"
+            onClick={() => { selectionRequest.current++; setSelected(null) }}
+            className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-              <path d="M6 6l12 12M18 6 6 18" />
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m15 5-7 7 7 7" />
             </svg>
+            All groups
           </button>
-        </div>
-
-        {!selected ? (
-          <>
-            {groups.length > 4 && (
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search your groups…"
-                aria-label="Search your groups"
-                className={`mt-4 w-full ${fieldClassSm}`}
-              />
-            )}
-            <ul className="mt-3 divide-y divide-line/50">
-              {shown.map((g) => (
-                <li key={g.id}>
-                  <button
-                    type="button"
-                    onClick={() => void selectGroup(g)}
-                    className="group flex w-full items-center gap-3 py-3 text-left transition-colors active:bg-surface-2"
-                  >
-                    <GroupMark
-                      groupId={g.id}
-                      name={g.name}
-                      size={34}
-                      className="transition-transform group-active:scale-95"
-                    />
-                    <span className="min-w-0 flex-1 truncate text-[15px] font-semibold transition-colors group-hover:text-teal">
-                      {g.name}
-                    </span>
-                    {recentSet.has(g.id) && (
-                      <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
-                        Recent
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-              {shown.length === 0 && (
-                <li className="py-4 text-[13px] leading-snug text-muted">
-                  No group by that name.
-                </li>
-              )}
-            </ul>
-          </>
-        ) : (
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={() => setSelected(null)}
-              className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
-            >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="m15 5-7 7 7 7" />
-              </svg>
-              All groups
-            </button>
-            {rubrics === null ? (
-              <p className="py-6 text-center text-[13px] text-muted">Loading the rubric…</p>
-            ) : (
-              <>
-                <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-teal">
-                  {TASTE_MODES[selected.tasteMode].plural}
-                </p>
-                <RubricReceipt
-                  className="mt-2"
-                  entries={receiptEntries}
-                  extrasAreOptIn={selected.tasteMode !== 'casual'}
-                />
-                <CtaButton
-                  onClick={() => void handleStart()}
-                  disabled={starting || blindLive}
-                  className="mt-4 w-full py-3.5 text-[14px] disabled:opacity-50"
-                >
-                  {starting
-                    ? 'Starting…'
-                    : ratedBefore
-                      ? `Rate it again with ${selected.name}`
-                      : `Invite ${selected.name} to score it blind`}
-                </CtaButton>
-                {blindLive ? (
-                  <p className="mt-2 text-center font-mono text-[10px] text-muted">
-                    Finish {selected.name}'s current blind round first.
-                  </p>
-                ) : ratedBefore ? (
-                  <p className="mt-2 text-center font-mono text-[10px] text-muted">
-                    {selected.name} has mashed this one before. A fresh blind
-                    round starts; the old night stays in the log.
-                  </p>
-                ) : null}
-              </>
-            )}
-            {error && (
-              <p role="alert" className="mt-2 text-[13px] leading-snug text-coral">
-                {error}
+          {rubrics === null ? (
+            <p className="py-6 text-center text-[13px] text-muted">Loading the rubric…</p>
+          ) : (
+            <>
+              <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-teal">
+                {TASTE_MODES[selected.tasteMode].plural}
               </p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+              <RubricReceipt
+                className="mt-2"
+                entries={receiptEntries}
+                extrasAreOptIn={selected.tasteMode !== 'casual'}
+              />
+              <CtaButton
+                onClick={() => void handleStart()}
+                disabled={starting || blindLive}
+                className="mt-4 w-full py-3.5 text-[14px] disabled:opacity-50"
+              >
+                {starting
+                  ? 'Starting…'
+                  : ratedBefore
+                    ? `Rate it again with ${selected.name}`
+                    : `Invite ${selected.name} to score it blind`}
+              </CtaButton>
+              {blindLive ? (
+                <p className="mt-2 text-center font-mono text-[10px] text-muted">
+                  Finish {selected.name}'s current blind round first.
+                </p>
+              ) : ratedBefore ? (
+                <p className="mt-2 text-center font-mono text-[10px] text-muted">
+                  {selected.name} has mashed this one before. A fresh blind
+                  round starts; the old night stays in the log.
+                </p>
+              ) : null}
+            </>
+          )}
+          {error && (
+            <p role="alert" className="mt-2 text-[13px] leading-snug text-coral">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </Sheet>
   )
 }
