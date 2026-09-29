@@ -40,7 +40,7 @@ export function PosterShelf({ heading, items, onPick }: PosterShelfProps) {
         <h2 id={`${id}-heading`} className="font-display text-[19px] font-semibold leading-tight">{heading}</h2>
         {(edges.previous || edges.next) && <div className="flex shrink-0 gap-1">
           {([-1, 1] as const).map((direction) => <button key={direction} type="button" onClick={() => move(direction)} aria-label={`${direction < 0 ? 'Previous' : 'More'} titles in ${heading}`} aria-controls={id} disabled={direction < 0 ? !edges.previous : !edges.next} className="grid h-11 w-11 place-items-center rounded-full border border-line text-muted transition-colors hover:border-teal/50 hover:text-teal disabled:opacity-25">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={direction < 0 ? 'm14 6-6 6 6 6 6' : 'm10 6 6 6-6 6'} /></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={direction < 0 ? 'm14 6-6 6 6 6' : 'm10 6 6 6-6 6'} /></svg>
           </button>)}
         </div>}
       </div>
