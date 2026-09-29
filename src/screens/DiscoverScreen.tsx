@@ -635,6 +635,10 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
         </a>
         .
       </p>
+      {/* The notice TMDB's API terms require "prominently on your application". */}
+      <p className="mt-1 px-2 text-center text-[11px] leading-snug text-muted/80">
+        This product uses the TMDB API but is not endorsed or certified by TMDB.
+      </p>
     </div>
   )
 }
