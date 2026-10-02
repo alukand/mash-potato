@@ -294,7 +294,11 @@ records why it exists and what stays banned; `docs/REWARDS.md` is the runbook;
   attributes); `script-src` stays strict because the startup-crash net moved
   from inline into `public/boot.js` — a sha256 pin would have broken silently
   the first time anyone edited it. `connect-src` must list `wss:` or realtime
-  is the first thing to die.
+  is the first thing to die. Both Pages projects have Cloudflare Web Analytics
+  on, which Cloudflare injects into the pages it serves: both CSPs allow its
+  script (`static.cloudflareinsights.com`) and endpoint
+  (`cloudflareinsights.com`), and `web/privacy.html` discloses it. The native
+  app never loads it (2026-10-01).
 - `src/lib/mapping.ts` — jsonb `scores` / `rubric` snapshot validators.
 - `src/lib/api.ts` — every Supabase call; screens never import the client.
   Member ratings live in `member_scores.scores` (jsonb map) plus an optional

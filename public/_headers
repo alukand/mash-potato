@@ -9,6 +9,11 @@
 #                           first thing that dies without it.
 #   - blob: / data:         the share card is drawn on a canvas and previewed
 #                           from an object URL
+#   - static.cloudflareinsights.com (script) + cloudflareinsights.com (connect)
+#                           Cloudflare Web Analytics, which Cloudflare injects
+#                           into pages it serves: cookieless visit counts,
+#                           disclosed in web/privacy.html. The native app never
+#                           loads it (Capacitor serves the bundle locally).
 # `script-src 'self'` needs no hash because the startup-crash net lives in
 # /boot.js rather than inline.
 #
@@ -18,7 +23,7 @@
 # Scripts, which are what actually matter here, stay strict.
 
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://image.tmdb.org; connect-src 'self' https://lvmcwvhlfijvegxbqipc.supabase.co wss://lvmcwvhlfijvegxbqipc.supabase.co; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://image.tmdb.org; connect-src 'self' https://lvmcwvhlfijvegxbqipc.supabase.co wss://lvmcwvhlfijvegxbqipc.supabase.co https://cloudflareinsights.com; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
