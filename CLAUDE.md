@@ -647,26 +647,24 @@ records why it exists and what stays banned; `docs/REWARDS.md` is the runbook;
 
 **2026-10-01**
 
-- 1.0 is live on the App Store (Apple ID 6788610092). 1.1.0 is built on
-  branch `release-1.1`, cut from `master` (not pushed). It holds:
+- 1.0 is live on the App Store (Apple ID 6788610092). 1.1.0 was cut from
+  `master` as branch `release-1.1`, sent to TestFlight from that branch, and
+  fast-forwarded into `master` the same day. It holds:
   - The mascot rebrand, which brings the new app icon, and the sticker set.
   - Tokens; flag `rewards` off.
   - The feature-flag store that switches tokens on.
 - Mash Potato Live (live shows, watch parties, giveaways) is parked, dormant,
-  on branch `live-shows`. It is NOT in `release-1.1` in any form: no code,
+  on branch `live-shows`. It is NOT in `master` in any form: no code,
   migrations, Edge Function, packages or docs. Its three migrations
   (`20260928120000`, `20260928140000`, `20260928150000`) are dated before the
-  ones this branch pushes, so before Live ships, rename them to timestamps
-  after the latest hosted migration. `db push` otherwise refuses them, and
-  `--include-all` would apply them out of order.
-- Hosted Supabase has every migration through `20260909142308`
-  (`migration list --linked`, 2026-10-01). Not yet pushed:
-  - `20260929120000`: feature flags.
-  - `20261001120000`: tokens.
-
-  Push them before shipping a build that reads `feature_flags`. Without them
-  the flag read 404s; it fails closed, but it is noise.
-- Launch order for tokens: `docs/REWARDS.md`.
+  flags and tokens migrations, which are already hosted, so before Live ships,
+  rename them to timestamps after the latest hosted migration. `db push`
+  otherwise refuses them, and `--include-all` would apply them out of order.
+- Hosted Supabase has every migration in this repo, through `20261001120000`
+  (tokens). Flags and tokens were pushed on 2026-10-01.
+- Tokens launch (`docs/REWARDS.md`): the database and the website are done
+  (the site deploys from `master`). What remains is shipping 1.1, then turning
+  `rewards` on just before submitting for review.
 
 **As of 2026-08-07** (history: true then, not necessarily now):
 
