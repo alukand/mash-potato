@@ -54,5 +54,7 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Mash Potato saves a Reveal card to your photos when you tap Save Image.</string>
 </dict>
 </plist>
