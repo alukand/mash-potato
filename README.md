@@ -35,13 +35,18 @@ npm run lint       # oxlint
 Copy `.env.example` to `.env` for Supabase credentials (only the anon key —
 never the service_role key or the TMDB key; those go through Edge Functions).
 
+Tokens are switched by a server feature flag that ships off; see
+`docs/REWARDS.md`.
+
 ## Project layout
 
 - `src/lib/scoring.ts` — **all** scoring math, pure and unit-tested:
   member weighted = Σ(score×imp)/Σ(imp); Mashed = mean of locked members'
   weighted scores; contested/united categories; outlier.
 - `src/lib/scoreColor.ts` — the 1→10 coral → gold → lime score ramp.
-- `src/components/` — UI building blocks (Logo, ScoreRing, BottomNav).
+- `src/components/` — UI building blocks (Logo, Mascot, ScoreRing, BottomNav).
+- `brand/` — the mascot's source art. `scripts/brand-assets.mjs` generates
+  every icon, splash and web image from it.
 - `supabase/migrations/` — schema + RLS as versioned SQL.
 - `supabase/tests/blind_read_test.sql` — pgTAP proof of the blind rule.
 

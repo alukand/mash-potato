@@ -373,6 +373,24 @@ export type Database = {
           },
         ]
       }
+      feature_flags: {
+        Row: {
+          enabled: boolean
+          key: string
+          updated_at: string
+        }
+        Insert: {
+          enabled?: boolean
+          key: string
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       global_ratings: {
         Row: {
           created_at: string
@@ -1399,6 +1417,178 @@ export type Database = {
         }
         Relationships: []
       }
+      token_accounts: {
+        Row: {
+          created_at: string
+          tz: string
+          tz_changed_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          tz?: string
+          tz_changed_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          tz?: string
+          tz_changed_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "token_accounts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      token_ineligible: {
+        Row: {
+          kind: string
+          title_id: string
+          user_id: string
+        }
+        Insert: {
+          kind: string
+          title_id: string
+          user_id: string
+        }
+        Update: {
+          kind?: string
+          title_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "token_ineligible_title_id_fkey"
+            columns: ["title_id"]
+            isOneToOne: false
+            referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "token_ineligible_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      token_ledger: {
+        Row: {
+          amount: number
+          comment_id: string | null
+          created_at: string
+          detail: Json
+          earned_on: string
+          id: number
+          kind: string
+          matures_at: string | null
+          session_id: string | null
+          status: string
+          title_id: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          comment_id?: string | null
+          created_at?: string
+          detail?: Json
+          earned_on: string
+          id?: never
+          kind: string
+          matures_at?: string | null
+          session_id?: string | null
+          status?: string
+          title_id?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          comment_id?: string | null
+          created_at?: string
+          detail?: Json
+          earned_on?: string
+          id?: never
+          kind?: string
+          matures_at?: string | null
+          session_id?: string | null
+          status?: string
+          title_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "token_ledger_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "title_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "token_ledger_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "reveal_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "token_ledger_title_id_fkey"
+            columns: ["title_id"]
+            isOneToOne: false
+            referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "token_ledger_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      token_program: {
+        Row: {
+          singleton: boolean
+          started_at: string | null
+        }
+        Insert: {
+          singleton?: boolean
+          started_at?: string | null
+        }
+        Update: {
+          singleton?: boolean
+          started_at?: string | null
+        }
+        Relationships: []
+      }
+      token_rules: {
+        Row: {
+          daily_cap: number | null
+          key: string
+          settings: Json
+          tokens: number
+        }
+        Insert: {
+          daily_cap?: number | null
+          key: string
+          settings?: Json
+          tokens: number
+        }
+        Update: {
+          daily_cap?: number | null
+          key?: string
+          settings?: Json
+          tokens?: number
+        }
+        Relationships: []
+      }
       user_blocks: {
         Row: {
           blocked_id: string
@@ -1487,6 +1677,30 @@ export type Database = {
         Args: { p_conversation_id: string; p_user_ids: string[] }
         Returns: undefined
       }
+      award_movie_night: { Args: { p_session: string }; Returns: undefined }
+      award_rating: {
+        Args: {
+          p_kind: string
+          p_session?: string
+          p_title: string
+          p_user: string
+        }
+        Returns: number
+      }
+      award_tokens: {
+        Args: {
+          p_amount: number
+          p_comment?: string
+          p_detail?: Json
+          p_kind: string
+          p_matures_at?: string
+          p_session?: string
+          p_status?: string
+          p_title?: string
+          p_user: string
+        }
+        Returns: number
+      }
       backfill_category_score: {
         Args: { p_category_key: string; p_score: number; p_session_id: string }
         Returns: undefined
@@ -1514,6 +1728,7 @@ export type Database = {
         Returns: boolean
       }
       cancel_session: { Args: { p_session_id: string }; Returns: undefined }
+      claim_daily_tokens: { Args: { p_tz: string }; Returns: Json }
       close_group_poll: { Args: { p_poll_id: string }; Returns: undefined }
       comments_open_for_me: {
         Args: { p_group_id: string; p_title_id: string }
@@ -1667,6 +1882,7 @@ export type Database = {
         }[]
       }
       my_onboarding: { Args: never; Returns: Json }
+      my_rewards: { Args: { p_history_limit?: number }; Returns: Json }
       poll_group_id: { Args: { p_poll_id: string }; Returns: string }
       poll_is_open: { Args: { p_poll_id: string }; Returns: boolean }
       post_comment: {
@@ -1680,6 +1896,7 @@ export type Database = {
       }
       public_profile: { Args: { p_user_id: string }; Returns: Json }
       push_notify: { Args: { p_payload: Json }; Returns: undefined }
+      reconcile_take: { Args: { p_comment: string }; Returns: undefined }
       register_device_token: {
         Args: { p_platform: string; p_token: string }
         Returns: undefined
@@ -1720,6 +1937,8 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      reward_day: { Args: { p_user: string }; Returns: string }
+      rewards_on: { Args: never; Returns: boolean }
       save_onboarding_rubric: {
         Args: { p_display_name: string; p_rows: Json }
         Returns: string
@@ -1777,6 +1996,9 @@ export type Database = {
       }
       shares_group_with: { Args: { p_user_id: string }; Returns: boolean }
       start_dm: { Args: { p_user_id: string }; Returns: string }
+      take_digest: { Args: { p_body: string }; Returns: string }
+      take_is_substantial: { Args: { p_body: string }; Returns: boolean }
+      take_reward_open: { Args: { p_title_id: string }; Returns: boolean }
       title_community_histogram: {
         Args: { p_title_id: string; p_weights: Json }
         Returns: {
@@ -1840,12 +2062,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1869,11 +2091,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1894,11 +2116,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1919,11 +2141,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1936,11 +2158,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1961,3 +2183,4 @@ export const Constants = {
     },
   },
 } as const
+

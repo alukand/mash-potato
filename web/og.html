@@ -4,14 +4,19 @@
     <meta charset="UTF-8" />
     <title>og.png source — 1200×630</title>
     <!--
-      SOURCE FOR web/og.png. Not deployed; it exists so the social card can be
-      regenerated exactly rather than redrawn by hand in a design tool.
+      SOURCE FOR web/og.png. Not deployed (_redirects sends /og to /); it exists
+      so the social card can be regenerated exactly rather than redrawn by hand
+      in a design tool.
 
-      To export: open this file, set the viewport to exactly 1200×630, and
-      screenshot the .card element. Save as web/og.png.
+      To export, serve web/ (from the repo: npx vite web --port 5190) and run
+      headless Chrome at exactly 1200×630:
 
-      (Generating the PNG in-repo would need an image toolchain the project
-      does not have, and this app deliberately keeps its dependencies few.)
+        chrome --headless=new --hide-scrollbars --window-size=1200,630
+               --virtual-time-budget=6000 --screenshot=web/og.png
+               http://localhost:5190/og.html
+
+      (Edge takes the same flags.) Or open it at that viewport and screenshot
+      the .card element. The mascot comes from scripts/brand-assets.mjs.
     -->
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -26,7 +31,7 @@
         height: 630px;
         background:
           radial-gradient(60% 70% at 25% 5%, rgba(81, 197, 190, 0.2), transparent 70%),
-          radial-gradient(50% 60% at 85% 40%, rgba(231, 178, 78, 0.09), transparent 70%),
+          radial-gradient(38% 58% at 84% 56%, rgba(231, 178, 78, 0.16), transparent 72%),
           #15121b;
         color: #f3eee5;
         padding: 80px;
@@ -46,29 +51,22 @@
       }
       h1 {
         font-family: 'Bricolage Grotesque', sans-serif;
-        font-size: 76px;
+        font-size: 72px;
         font-weight: 700;
         line-height: 1.06;
         letter-spacing: -0.02em;
-        max-width: 15ch;
+        max-width: 14ch;
       }
       .sub { font-size: 27px; color: #9c93ab; }
-      /* Locked identity: the Mashed number is always teal and always labelled. */
-      .score { position: absolute; right: 80px; bottom: 150px; text-align: right; }
-      .score .big {
-        font-family: 'Bricolage Grotesque', sans-serif;
-        font-size: 116px;
-        font-weight: 700;
-        color: #51c5be;
-        line-height: 1;
-      }
-      .score .lab {
-        font-family: 'Azeret Mono', monospace;
-        font-size: 19px;
-        font-weight: 700;
-        letter-spacing: 0.3em;
-        color: #9c93ab;
-        margin-top: 8px;
+      /* The mascot, turned to point at the headline. */
+      .mascot {
+        position: absolute;
+        right: 62px;
+        bottom: 48px;
+        width: 400px;
+        height: auto;
+        transform: scaleX(-1);
+        filter: drop-shadow(0 26px 30px rgba(0, 0, 0, 0.55));
       }
     </style>
   </head>
@@ -77,10 +75,7 @@
       <p class="eyebrow">MASH POTATO</p>
       <h1>Your group's shared definition of a good movie.</h1>
       <p class="sub">Rate blind. Reveal together. One Mashed score.</p>
-      <div class="score">
-        <div class="big">7.4</div>
-        <div class="lab">MASHED</div>
-      </div>
+      <img class="mascot" src="mascot-800.webp" alt="" />
     </div>
   </body>
 </html>

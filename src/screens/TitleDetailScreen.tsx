@@ -41,6 +41,7 @@ import { GroupInviteSheet } from '../components/GroupInviteSheet'
 import { ShareToChatSheet } from '../components/ShareToChatSheet'
 import { LoadingCards } from '../components/Moments'
 import { CtaButton, GroupMark, ScoreSliderRow, WhereToWatch, fieldClassSm } from '../components/ui'
+import { refreshRewards } from '../lib/rewardsStore'
 
 // Solo ratings follow YOUR taste mode: Normies score the enjoyment-heavy
 // three, Cinephiles the base-seven craft rubric. The community section shows
@@ -382,6 +383,8 @@ export function TitleDetailScreen({
       setRating(false)
       // the rating gates public discussion; let the section re-check
       setDiscussionRefresh((n) => n + 1)
+      // a first solo rating of a film can earn a token
+      void refreshRewards(userId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your rating')
     } finally {

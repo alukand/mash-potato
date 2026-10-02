@@ -21,6 +21,7 @@ import { Avatar } from './avatars'
 import { CtaButton, ExtraCategoryChips, ScoreSliderRow, fieldClass } from './ui'
 import { CategoryLegend } from './CategoryLegend'
 import { LoadingCards, SuccessMark } from './Moments'
+import { refreshRewards } from '../lib/rewardsStore'
 
 interface RoundScorerProps {
   session: SessionInfo
@@ -113,6 +114,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
     setError(null)
     try {
       await saveMyScore(session.id, userId, scores, true, oneLiner.trim() || null)
+      void refreshRewards(userId) // a card locked after the reveal can earn
       focusConfirmation.current = true
       setLocked(true)
       setReviewLocked(false)
@@ -158,6 +160,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
     setConfirmReveal(false)
     try {
       await revealSession(session.id)
+      void refreshRewards(userId) // the reveal pays the night's locked cards
       onChanged() // the panel flips to the Reveal in place
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not reveal')

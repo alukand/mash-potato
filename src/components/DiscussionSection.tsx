@@ -8,6 +8,7 @@ import {
   fetchDiscussion,
   fetchDiscussionGate,
   fetchGroupCred,
+  fetchTakeRewardOpen,
   fetchTitleRowId,
   onDiscussionChange,
   postComment,
@@ -24,7 +25,10 @@ import type {
 import { colorForUser } from '../lib/palette'
 import { Avatar } from './avatars'
 import { credFlair } from '../lib/cred'
+import { refreshRewards, useRewards } from '../lib/rewardsStore'
+import { takeBonusHint } from '../lib/rewards'
 import { CtaButton, GroupMark, fieldClassSm } from './ui'
+import { Sticker } from './Sticker'
 
 interface DiscussionSectionProps {
   /** The title as shown (used to create the titles row on first post). */
@@ -89,6 +93,24 @@ export function DiscussionSection({
     { kind: 'report' | 'block' | 'delete'; comment: DiscussionComment } | null
   >(null)
   const sectionRef = useRef<HTMLElement | null>(null)
+  // Tokens: whether a public take on this film can still earn (the server's
+  // answer, so the hint never promises what it will not pay).
+  const rewards = useRewards(userId)
+  const [takeOpen, setTakeOpen] = useState(false)
+  const rewardsOn = rewards?.enabled === true
+  useEffect(() => {
+    let cancelled = false
+    if (!rewardsOn || scope !== null || !titleRowId) {
+      setTakeOpen(false)
+      return
+    }
+    fetchTakeRewardOpen(titleRowId)
+      .then((open) => !cancelled && setTakeOpen(open))
+      .catch(() => !cancelled && setTakeOpen(false))
+    return () => {
+      cancelled = true
+    }
+  }, [rewardsOn, scope, titleRowId])
 
   // Resolve the titles row (it exists once anyone rated, saved, or discussed).
   useEffect(() => {
@@ -169,7 +191,10 @@ export function DiscussionSection({
         setReplyTo(null)
       } else {
         setBody('')
+        // a film's take earns once: this one either just did, or never could
+        if (scope === null) setTakeOpen(false)
       }
+      void refreshRewards(userId)
       await load()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not post that'
@@ -495,11 +520,14 @@ export function DiscussionSection({
         ) : (
           <>
             {topLevel.length === 0 && (
-              <p className="py-2 text-[13px] leading-snug text-muted">
-                {scope === null
-                  ? 'No takes yet. Rate it and drop the first one.'
-                  : 'Nothing yet. Say the thing you said out loud during the credits.'}
-              </p>
+              <div className="flex items-center gap-3 py-2">
+                <Sticker name="shouting" className="h-16" />
+                <p className="text-[13px] leading-snug text-muted">
+                  {scope === null
+                    ? 'No takes yet. Rate it and drop the first one.'
+                    : 'Nothing yet. Say the thing you said out loud during the credits.'}
+                </p>
+              </div>
             )}
             {topLevel.map((c) => renderComment(c, false))}
 
@@ -528,6 +556,29 @@ export function DiscussionSection({
                   {busy ? 'Posting…' : 'Post'}
                 </button>
               </div>
+            )}
+            {/* Tokens for a take: the base, and the way to the long-take bonus. */}
+            {rewards && takeOpen && scope === null && !publicUnrated && (() => {
+              const chars = body.trim().length
+              const hint = takeBonusHint(chars, rewards.rules)
+              const minChars = rewards.rules.take_bonus?.minChars ?? 300
+              return (
+                <div className="mt-2 flex items-baseline justify-between gap-3">
+                  <p className={`text-[12px] leading-snug ${hint.reached ? 'text-gold' : 'text-muted'}`}>
+                    {hint.reached
+                      ? `Posting earns ${hint.base} tokens, plus a +${hint.bonus} long-take bonus after ${rewards.rules.take_bonus?.holdHours ?? 48} hours.`
+                      : `Posting earns ${hint.base} tokens. Write ${hint.remaining} more characters for a +${hint.bonus} long-take bonus.`}
+                  </p>
+                  <span className={`tabular shrink-0 font-mono text-[11px] ${hint.reached ? 'text-gold' : 'text-muted'}`}>
+                    {Math.min(chars, 9999)}/{minChars}
+                  </span>
+                </div>
+              )
+            })()}
+            {rewardsOn && scope === null && (
+              <p className="mt-3 text-[11px] leading-snug text-muted">
+                Writers earn tokens for takes, whatever their opinion.
+              </p>
             )}
           </>
         )}

@@ -17,6 +17,61 @@ movie blind and waiting for the Reveal to drop. Dark theme is scene-driven
   category, per-category outlier) are the product's moat.
 - Single ~480px mobile column, floating pill bottom nav.
 
+## The mascot (brand mark, 2026-10-01)
+
+Mash Potato's mark is an **angry potato**: shouting, brows down, pointing. It
+argues about films the way the groups do, which is the product's whole premise.
+The drawing is the brand. Do not redraw it or tidy it into a flat glyph.
+
+- **The face is the home-screen icon, and only that.** The iOS and Android app
+  icons, and the icons the web app and the website get when someone saves them
+  to a home screen (apple-touch-icon, the manifest's install icons). Never in
+  the UI, the browser tab, the share card, or the website.
+- **Everywhere else, the logo is the WHOLE mascot**: the sticker cut out of its
+  paper, white border kept. `<Logo>` is the labelled mark in a square box, in
+  headers, gates, and forms (44px in a header, 64px over a form). `<Mascot>`
+  is the same drawing as decoration, for moments with room: the launch splash
+  and the in-app `Splash` (sized to match, so launch reads as one screen), the
+  signed-out welcome, Home's "Pick the next great debate", the website hero and
+  close, and the social card. The browser-tab favicon, the website's mark, and
+  the share card's footer use it too.
+- **It points at the thing that matters.** `<Mascot flip>` turns it to point
+  left. Flip it when the words it belongs to sit on its left (the signed-out
+  pitch, the website hero, `og.png`). Never flip it to point away from them.
+- **Decoration, not content.** `<Mascot>` is `alt=""`; the words beside it
+  carry the meaning. `<Logo>` keeps its label.
+- **Stickers (2026-10-01): fifteen poses, three in use.** `<Sticker name>`
+  bundles the whole set: shouting, cool, cheering, skeptical, grumpy,
+  heart-eyes, popcorn, wink, crying, pizza, running, confused, rock-on,
+  sleeping, trophy. The art comes from `brand/mascot-stickers.webp`, with a
+  white die-cut rim added so the dark outlines read on the dark app. Each one
+  in use names a feeling:
+  - **popcorn**, watching: the no-group card (movie night with your crew),
+    and the empty Saved list (your watchlist).
+  - **shouting**, debate: an empty discussion thread waiting for its first
+    take.
+  - **skeptical**, doubt: a search with no matches, group history with too
+    few nights to say anything honest, and the load-error screen.
+- **Where stickers may go.** Only on empty, waiting or failed moments, and at
+  most one per view. Never on scores, scorecards, the Reveal, or anything the
+  group made. They are `alt=""`, and sized by height (64px beside a line of
+  text, 96px over a card's headline), because the poses differ in width. A new
+  use names its feeling first; if no sticker matches it, the moment doesn't
+  get one.
+- **It fits the locked palette.** Its gold is `--color-gold` territory; nothing
+  in the tokens changes for it. Don't introduce its brown or tongue-pink as UI
+  colours.
+- **Assets are generated.** The sources are `brand/mascot-face.webp` and
+  `brand/mascot.webp`. `scripts/brand-assets.mjs` writes everything else:
+  the iOS icon and launch images, Android launcher icons and splashes, the web
+  app's favicon and install icons, the website's copies, and the bundled
+  `src/assets/brand/` art. Run it with sharp installed temporarily (the
+  command is in the file). `web/og.png` is laid out in `web/og.html`.
+- **Icon rules it already follows.** The App Store/iOS icon and the
+  apple-touch-icon are opaque, because iOS rounds them. Masks that crop (Android
+  adaptive and round, web "maskable") get the face shrunk inside the safe zone,
+  with its own edge pixels repeated outward, so the brow tips are never clipped.
+
 ## Tokens (`src/index.css` `@theme` — LOCKED)
 
 | Role | Token | Value |
@@ -266,7 +321,28 @@ live, accumulates nowhere). Reactions are positive-only: 👍 Like, 😂 Funny,
 DO NOT BUILD (documented failure modes: Snapstreaks, Duolingo guilt, Reddit
 karma farming, Stack Overflow rep, YouTube dislike mobs): streaks of any
 kind, global karma numbers or leaderboards, public dislike counts, credit
-penalties, points-for-volume, guilt notifications, paid restores.
+penalties, points-for-volume (one deliberate exception: tokens, below), guilt
+notifications, paid restores.
+
+**Tokens (2026-10-01): the owner's deliberate exception.** After weighing it
+against this law, the owner chose to pay tokens for activity, so the system
+is built to keep everything else here true:
+- **Quality-weighted, not volume-weighted.** A movie night (your locked card
+  in a revealed round with 2+ cards) pays the most. A solo rating pays least.
+  A take pays once per film. The long-take bonus needs real writing (300+
+  characters, varied words, not a copy) and 48 quiet hours. Another member's
+  first reaction pays a token, so peers still grant the most valuable thing.
+- **Capped and once per film**, so the Mashed score is never bought with
+  careless ratings.
+- **Still banned:** streak bonuses, "you missed it" pushes, public balances or
+  leaderboards, penalties (only what reported content earned is clawed back,
+  silently), and paid tokens. The balance is gold because it is personal, and
+  it is shown only to its owner.
+- What a take says never changes what it earns. The public takes say so.
+- Cred stays what it was: peer-given, group-scoped, and cosmetic.
+
+Mechanics live in `supabase/migrations/20261001120000_rewards.sql`; the
+runbook is `docs/REWARDS.md`.
 
 Discussion shapes: group threads are the DEBRIEF (they open with the
 reveal; sealed per member while their card is open — the blind rule extends
@@ -438,6 +514,41 @@ baseline function grant, which is exactly how an open endpoint shipped on
 2026-07-25.
 
 ## Changelog
+
+- 2026-10-01 (tokens): a private, capped, quality-weighted token ledger (see
+  the Reward loop law). Home has a daily-token strip that disappears once
+  claimed, plus a gold Tokens tile in "Your collection" that opens the ledger
+  like the other tiles. More has a Tokens row. `/rewards` shows the balance,
+  today's token, how to earn (from the server's own rules), and the history.
+  A "+N tokens" toast says what just paid, keeps a waiting bonus apart from the
+  spendable total, and is never shown for a clawback. The public-take composer
+  counts toward the 300-character bonus only while the film can still pay, and
+  the public takes carry the "whatever their opinion" line. Spending is
+  deliberately unpromised. Off by the `rewards` flag, everything disappears.
+  No token, font, or layout-system changes.
+  Considered/rejected: volume tokens with no caps (farmable once tokens are
+  worth money); a toast for clawbacks (a penalty notification, banned here).
+
+- 2026-10-01 (the mascot rebrand): the angry potato replaces the potato glyph
+  with the teal sparkle. The FACE is the home-screen icon only: iOS, Android
+  (until now Capacitor's placeholders, adaptive background included), and the
+  web app's and website's home-screen and install icons. The WHOLE mascot is
+  the logo everywhere else: every `<Logo>` (eleven call sites, one component,
+  sized up for a full figure), the browser-tab favicons, the launch screens,
+  the in-app `Splash`, the signed-out welcome, Home's empty card, the Reveal
+  share card's footer, the landing page's mark, hero and close, the info pages,
+  and `og.png`. No token, font, copy, or layout-system changes. The old
+  `favicon.svg` is gone. (A first pass used the face as an in-app tile too;
+  the owner asked for the face to stay on the home screen.)
+  Requested/delivered magnitude: a new mark and character inside the locked
+  identity, not a palette or voice change.
+  Later the same day, the sticker set: all fifteen poses bundled, three in use
+  (popcorn, shouting, skeptical) on seven empty, waiting or failed moments.
+  The error screen swapped the logo for the skeptical sticker.
+  Considered/rejected: mascot overlapping the landing scorecard's corners. It
+  would cover either the teal Mashed number or "Your card · locked". It stands
+  on the card's top edge, in the flow, so it can never slide under the sticky
+  bar.
 
 - 2026-09-10 (product-wide interaction and personality pass): clearer Home
   and Discover hierarchy, compact collection counts, poster navigation and

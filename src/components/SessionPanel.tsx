@@ -35,6 +35,7 @@ import { ShareRevealSheet } from './ShareRevealSheet'
 import { ScoreRing } from './ScoreRing'
 import { MashMath } from './MashMath'
 import { LoadingCards, RevealBurst } from './Moments'
+import { refreshRewards } from '../lib/rewardsStore'
 
 interface SessionPanelProps {
   group: GroupInfo
@@ -199,6 +200,7 @@ export function SessionPanel({
     setActionError(null)
     try {
       await lateScoreSession(sessionId, lateScores, lateLine.trim() || null)
+      void refreshRewards(userId) // a late card still counts for the night
       setCelebrateSession(sessionId)
       setLateOpen(false)
       await load()

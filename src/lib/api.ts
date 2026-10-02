@@ -12,6 +12,8 @@ import type { SessionRubricEntry } from './mapping'
 // runtime-safe: rubricCatalog only type-imports from this module
 import { CASUAL_WEIGHTS, DEFAULT_WEIGHTS, presetRowsFromJson } from './rubricCatalog'
 import type { TasteMode } from './rubricCatalog'
+import { parseRewards } from './rewards'
+import type { RewardsSummary } from './rewards'
 
 export type { SessionRubricEntry } from './mapping'
 
@@ -1972,7 +1974,7 @@ export async function setGroupVisibility(groupId: string, isPublic: boolean): Pr
  *  theirs), your comments, your playlists, your rubric. RLS already scopes
  *  every query to self. */
 export async function fetchMyExport(userId: string): Promise<Record<string, unknown>> {
-  const [ratings, saved, cards, comments, playlists, rubrics] = await Promise.all([
+  const [ratings, saved, cards, comments, playlists, rubrics, tokens] = await Promise.all([
     supabase
       .from('global_ratings')
       .select('updated_at, scores, titles(tmdb_id, media_type, name, year)')
@@ -2000,8 +2002,10 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
       .from('user_rubrics')
       .select('name, is_favorite, rows')
       .eq('user_id', userId),
+    // every token entry, not just the screen's newest 50
+    supabase.rpc('my_rewards', { p_history_limit: 5000 }),
   ])
-  for (const q of [ratings, cards, comments, playlists, rubrics]) {
+  for (const q of [ratings, cards, comments, playlists, rubrics, tokens]) {
     if (q.error) throw new Error(q.error.message)
   }
   return {
@@ -2065,6 +2069,20 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
       favorite: r.is_favorite,
       rows: r.rows,
     })),
+    tokens: (() => {
+      const t = parseRewards(tokens.data)
+      return {
+        balance: t.balance,
+        pending: t.pending,
+        history: t.history.map((e) => ({
+          kind: e.kind,
+          amount: e.amount,
+          status: e.status,
+          title: e.titleName,
+          at: e.createdAt,
+        })),
+      }
+    })(),
   }
 }
 
@@ -3148,4 +3166,52 @@ export async function fetchModerationLog(limit = 50): Promise<ModerationAction[]
     note: r.note,
     createdAt: r.created_at,
   }))
+}
+
+// ---- feature flags -------------------------------------------------------------
+//
+// The one direct table read that also runs signed out: public.feature_flags is
+// readable by anon on purpose (it gates what signed-out visitors see too) and
+// holds nothing per-user. lib/featureFlags.ts decides what the rows mean, and
+// it fails closed, so this just reports what the server said or throws.
+
+export async function fetchFeatureFlagRows(): Promise<{ key: string; enabled: boolean }[]> {
+  const { data, error } = await supabase.from('feature_flags').select('key, enabled')
+  if (error) throw error
+  return data ?? []
+}
+
+// ---- tokens ----------------------------------------------------------------------
+//
+// The server decides everything (supabase/migrations/20261001120000_rewards.sql):
+// what earns, the caps, the holds, the clawbacks. These read the caller's own
+// summary and claim the daily token; nothing here can grant one.
+
+export async function fetchMyRewards(): Promise<RewardsSummary> {
+  const { data, error } = await supabase.rpc('my_rewards')
+  if (error) throw new Error(error.message)
+  return parseRewards(data)
+}
+
+/** The daily token. The device's zone defines "today" (the server limits changes). */
+export async function claimDailyTokens(): Promise<{ claimed: boolean; summary: RewardsSummary }> {
+  let tz = ''
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? ''
+  } catch {
+    tz = ''
+  }
+  const { data, error } = await supabase.rpc('claim_daily_tokens', { p_tz: tz })
+  if (error) throw new Error(error.message)
+  return {
+    claimed: (data as { claimed?: unknown } | null)?.claimed === true,
+    summary: parseRewards(data),
+  }
+}
+
+/** Whether a public take on this film (a titles row id) can still earn. */
+export async function fetchTakeRewardOpen(titleId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('take_reward_open', { p_title_id: titleId })
+  if (error) throw new Error(error.message)
+  return data === true
 }

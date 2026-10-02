@@ -10,19 +10,19 @@ import {
 } from './lib/api'
 import type { GroupInfo, MemberInfo, OnboardingProgress } from './lib/api'
 import {
-  clearToured,
   pickActiveGroup,
   readStoredGroupId,
   readStoredTab,
   storeGroupId,
   storeTab,
-  storeToured,
   touchRecentGroup,
 } from './lib/activeGroup'
 import { bindPushOpenHandler, enablePush } from './lib/push'
 import { pathToState, stateToPath, stackKey } from './lib/urlState'
 import type { StackView } from './lib/urlState'
 import { Logo } from './components/Logo'
+import { Mascot } from './components/Mascot'
+import { Sticker } from './components/Sticker'
 import { BottomNav } from './components/BottomNav'
 import { FirstRunTour } from './components/FirstRunTour'
 import { GuidedSetup } from './components/GuidedSetup'
@@ -43,6 +43,10 @@ import { PlaylistScreen } from './screens/PlaylistScreen'
 import { ProfileScreen } from './screens/ProfileScreen'
 import { PublicProfileScreen } from './screens/PublicProfileScreen'
 import { TitleDetailScreen } from './screens/TitleDetailScreen'
+import { useFeatureFlag } from './lib/flags'
+import { refreshRewards } from './lib/rewardsStore'
+import { RewardsScreen } from './screens/RewardsScreen'
+import { TokenToast } from './components/Tokens'
 
 // App shell: auth gate -> group bootstrap -> tabbed app, with a lightweight
 // view-stack (no router) so a title's detail page, the profile, or a
@@ -65,6 +69,8 @@ function NoGroupYet({
 }) {
   return (
     <section className="mp-rise mp-card rounded-[26px] p-6 text-center">
+      {/* movie night with your crew: the thing a group is for */}
+      <Sticker name="popcorn" className="mx-auto mb-4 h-24" />
       <h2 className="font-display text-[24px] font-semibold leading-tight">{headline}</h2>
       <p className="mt-2 text-[13px] leading-snug text-muted">{note}</p>
       <CtaButton onClick={onCreate} className="mt-5 w-full py-3 text-[14px]">
@@ -77,11 +83,13 @@ function NoGroupYet({
   )
 }
 
+// The mascot at about the size the native launch screen shows it (a 560px
+// figure on its 2732px image), so launch reads as one continuous screen.
 function Splash({ note }: { note?: string }) {
   return (
     <div className="grid min-h-dvh place-items-center">
       <div className="mp-rise flex flex-col items-center">
-        <Logo className="h-14 w-14" />
+        <Mascot className="w-[176px]" />
         <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.3em] text-muted">
           {note ?? 'loading'}
         </p>
@@ -143,6 +151,9 @@ function App() {
   } | null>(null)
   const [setup, setSetup] = useState<OnboardingProgress | undefined>(undefined)
   const [setupUid, setSetupUid] = useState<string | null>(null)
+
+  // Tokens (lib/rewardsStore.ts): private to their owner, off with the flag.
+  const rewardsOn = useFeatureFlag('rewards')
 
   // The active group: the stored/selected one, else the oldest, else null.
   const group =
@@ -225,6 +236,11 @@ function App() {
       cancelled = true
     }
   }, [uid])
+
+  // Tokens: load the signed-in user's summary; signed out or switched off, clear it.
+  useEffect(() => {
+    void refreshRewards(rewardsOn ? uid : null)
+  }, [uid, rewardsOn])
 
   // Native only (no-op in the browser): register this device for pushes once
   // signed in. Permission prompt fires here on first run.
@@ -432,7 +448,7 @@ function App() {
     return (
       <div className="grid min-h-dvh place-items-center px-5">
         <div className="mp-rise flex flex-col items-center text-center">
-          <Logo className="h-12 w-12" />
+          <Sticker name="skeptical" className="h-28" />
           <p className="mt-4 max-w-[300px] text-[13px] leading-snug text-coral">{loadError}</p>
           <button
             type="button"
@@ -558,6 +574,7 @@ function App() {
               />
             )}
             {top.kind === 'moderation' && <ModerationScreen onBack={popView} />}
+            {top.kind === 'rewards' && <RewardsScreen userId={userId} onBack={popView} />}
             {top.kind === 'createGroup' && (
               <CreateGroupScreen
                 userId={userId}
@@ -577,7 +594,7 @@ function App() {
         <div className="mx-auto w-full max-w-[480px] px-5 pb-32">
           {/* ---- Header: the brand, plus one top-right slot screens fill ---- */}
           <header className="pt-safe flex items-center gap-2.5 pb-5">
-            <Logo className="h-9 w-9 shrink-0" />
+            <Logo className="h-11 w-11" />
             <h1 className="truncate font-display text-[24px] font-semibold leading-none tracking-tight">
               Mash Potato
             </h1>
@@ -606,6 +623,7 @@ function App() {
                 }}
                 onOpenTitle={openTitle}
                 onExplore={() => setTab('discover')}
+                onOpenRewards={() => pushView({ kind: 'rewards' })}
                 onOpenList={(section) => {
                   setStack([])
                   setTab('profile')
@@ -667,7 +685,6 @@ function App() {
                   window.scrollTo(0, 0)
                 }}
                 onReplayTour={() => {
-                  clearToured()
                   setStack([])
                   setTourTab('home')
                   setTab('home')
@@ -683,6 +700,8 @@ function App() {
         </div>
       )}
 
+      <TokenToast />
+
       <BottomNav
         active={tab}
         onSelect={selectTab}
@@ -693,6 +712,7 @@ function App() {
 
       {moreOpen && (
         <MoreSheet
+          userId={userId}
           unread={unreadTotal}
           onMessages={() => {
             setMoreOpen(false)
@@ -706,6 +726,10 @@ function App() {
             setMoreOpen(false)
             pushView({ kind: 'moderation' })
           }}
+          onRewards={() => {
+            setMoreOpen(false)
+            pushView({ kind: 'rewards' })
+          }}
           onClose={() => setMoreOpen(false)}
         />
       )}
@@ -718,7 +742,6 @@ function App() {
             storeTab(t)
           }}
           onDone={() => {
-            storeToured()
             setTourActive(false)
             setTab('home')
             storeTab('home')

@@ -66,7 +66,7 @@ export function CreateGroupScreen({
     <div className="flex min-h-dvh flex-col justify-center px-5 py-10">
       <div className="mx-auto w-full max-w-[400px]">
         <header className="mp-rise mb-8 flex flex-col items-center text-center">
-          <Logo className="h-12 w-12" />
+          <Logo className="h-16 w-16" />
           <h1 className="mt-4 font-display text-[28px] font-semibold leading-tight">
             Create a group
           </h1>

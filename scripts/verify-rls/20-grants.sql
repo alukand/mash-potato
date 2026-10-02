@@ -76,6 +76,30 @@ revoke all on public.group_discovery, public.onboarding_progress, public.group_j
 revoke all on function public.remember_group_removal() from public, anon, authenticated;
 -- browse_open_groups is the deliberate public, metadata-only catalogue.
 grant execute on function public.browse_open_groups(text, boolean) to anon, authenticated;
+-- feature flags (20260929120000): readable by everyone, writable by no API
+-- role. The anon write revoke loop above already covers anon.
+revoke insert, update, delete, truncate on public.feature_flags from authenticated;
+-- tokens (20261001120000): no client role touches a token table at all; the
+-- owner reads through my_rewards() and every write is a definer function.
+revoke all on public.token_rules, public.token_program, public.token_accounts,
+              public.token_ledger, public.token_ineligible
+  from public, anon, authenticated;
+-- ...and the migration's per-function anon revokes, mirrored (the CLAUDE.md
+-- law: every revoke a migration makes is re-applied here, so the twin never
+-- tests a posture looser than hosted).
+do $$
+declare f record;
+begin
+  for f in
+    select p.oid::regprocedure as sig
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = any (array[
+      -- tokens (20261001120000): the three client RPCs
+      'my_rewards', 'claim_daily_tokens', 'take_reward_open'])
+  loop
+    execute format('revoke all on function %s from public, anon', f.sig);
+  end loop;
+end $$;
 
 -- security hardening: trigger-only internals are not an API, even signed in
 -- (mirrors 20260717160000_security_hardening.sql, which the blanket function
@@ -98,7 +122,12 @@ begin
       'notify_new_message', 'auto_hide_reported_message',
       'create_group_conversation',
       -- rate-limit trigger internals (20260727120000)
-      'rate_limit_message', 'rate_limit_comment', 'rate_limit_dm'])
+      'rate_limit_message', 'rate_limit_comment', 'rate_limit_dm',
+      -- token internals (20261001120000): the award path and its triggers
+      'rewards_on', 'reward_day', 'award_tokens', 'award_rating', 'award_movie_night',
+      'take_is_substantial', 'take_digest', 'reconcile_take', 'reward_solo_rating',
+      'reward_session_revealed', 'reward_locked_card', 'reward_take',
+      'reward_take_changed', 'reward_take_reaction', 'start_token_program'])
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);
   end loop;

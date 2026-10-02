@@ -50,7 +50,7 @@ export function GuidedSetup({ userId, progress, onDone }: { userId: string; prog
     finally { inFlight.current = false; setBusy(false) }
   }
   return <main className="mx-auto min-h-dvh w-full max-w-[480px] px-5 pb-10 pt-safe">
-    <header className="mb-7 flex items-center gap-3"><Logo className="h-10 w-10" /><span className="font-display text-[23px] font-semibold">Make it your movie night</span></header>
+    <header className="mb-7 flex items-center gap-3"><Logo className="h-12 w-12" /><span className="font-display text-[23px] font-semibold">Make it your movie night</span></header>
     <ol aria-label="Getting started" className="mb-7 grid grid-cols-2 gap-3 text-[13px] font-semibold">
       {(['Your rubric', 'Your group'] as const).map((label, i) => <li key={label} aria-current={step === i + 1 ? 'step' : undefined} className={step > i + 1 ? 'text-teal' : step === i + 1 ? 'text-gold' : 'text-muted'}>
         <span className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full border border-current font-mono text-[11px]">{step > i + 1 ? '✓' : i + 1}</span>{label}</span>

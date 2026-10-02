@@ -18,9 +18,12 @@ import {
 import type { GroupInfo, MemberInfo, SavedTitle, SessionInfo, TmdbResult } from '../lib/api'
 import { participation, formatWindow } from '../lib/rsvp'
 import { PosterShelf } from '../components/PosterShelf'
-import { Logo } from '../components/Logo'
+import { Mascot } from '../components/Mascot'
 import { LoadingCards } from '../components/Moments'
 import { CtaButton, GroupMark } from '../components/ui'
+import { DailyTokenStrip } from '../components/Tokens'
+import { refreshRewards, useRewards } from '../lib/rewardsStore'
+import { tokenCount } from '../lib/rewards'
 import type { ProfileSection } from './ProfileScreen'
 
 interface HomeScreenProps {
@@ -34,6 +37,8 @@ interface HomeScreenProps {
   onExplore: () => void
   /** Open the Profile list a stat tile counts. */
   onOpenList: (section: ProfileSection) => void
+  /** Open your tokens. */
+  onOpenRewards: () => void
 }
 
 /** One group's latest activity, hydrated for the dashboard. */
@@ -57,7 +62,14 @@ export function HomeScreen({
   onOpenTitle,
   onExplore,
   onOpenList,
+  onOpenRewards,
 }: HomeScreenProps) {
+  // Tokens: re-read whenever Home shows, which is how a movie night someone
+  // else revealed reaches you (the "+N tokens" moment comes with it).
+  const rewards = useRewards(userId)
+  useEffect(() => {
+    void refreshRewards(userId)
+  }, [userId])
   const [pulses, setPulses] = useState<GroupPulse[] | undefined>(undefined)
   const [trending, setTrending] = useState<TmdbResult[]>([])
   const [popular, setPopular] = useState<TmdbResult[]>([])
@@ -186,7 +198,8 @@ export function HomeScreen({
     )
   const quiet = live.length === 0 && revealed.length === 0
 
-  const showStats = groups.length > 0 || (ratedCount ?? 0) > 0 || saved.length > 0
+  const tokensOn = rewards?.enabled === true
+  const showStats = groups.length > 0 || (ratedCount ?? 0) > 0 || saved.length > 0 || tokensOn
 
   return (
     <div className="flex flex-col gap-7">
@@ -195,9 +208,11 @@ export function HomeScreen({
         <h1 className="font-display text-[32px] font-semibold leading-[1.05]">{live.length > 0 ? 'The next take is yours.' : 'What’s worth watching?'}</h1>
         <p className="mt-3 text-[14px] leading-relaxed text-muted">{live.length > 0 ? `${live.length === 1 ? 'A round is' : `${live.length} rounds are`} live. Rate it your way, then see where you land together.` : 'Find your next watch. Bring your own opinion.'}</p>
       </header>
+      {/* today's token, while it's unclaimed */}
+      <DailyTokenStrip userId={userId} />
       {/* ---- your numbers at a glance ---- */}
       {showStats && (
-        <section aria-label="Your collection" className="grid grid-cols-3 divide-x divide-line/60 rounded-2xl border border-line/60 bg-surface/60 py-1">
+        <section aria-label="Your collection" className={`grid ${tokensOn ? 'grid-cols-4' : 'grid-cols-3'} divide-x divide-line/60 rounded-2xl border border-line/60 bg-surface/60 py-1`}>
           {(
             [
               ['groups', groups.length, groups.length === 1 ? 'Group' : 'Groups'],
@@ -221,6 +236,18 @@ export function HomeScreen({
               </p>
             </button>
           ))}
+          {/* Private, and it opens the ledger behind it like the others. */}
+          {tokensOn && rewards && (
+            <button
+              type="button"
+              onClick={onOpenRewards}
+              aria-label={`${tokenCount(rewards.balance)}, open your tokens`}
+              className="rounded-xl px-3 py-3 text-center transition-colors hover:text-teal active:bg-surface-2"
+            >
+              <p className="tabular font-display text-[24px] font-semibold leading-none text-gold">{rewards.balance}</p>
+              <p className="mt-1 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted">Tokens</p>
+            </button>
+          )}
         </section>
       )}
 
@@ -401,7 +428,7 @@ export function HomeScreen({
       {/* ---- quiet: nudge toward exploring ---- */}
       {quiet && (
         <section className="mp-rise mp-card rounded-[26px] p-7 text-center">
-          <Logo className="mx-auto h-12 w-12" />
+          <Mascot className="mx-auto w-[112px]" />
           <h2 className="mt-4 font-display text-[22px] font-semibold leading-tight">
             Pick the next great debate.
           </h2>

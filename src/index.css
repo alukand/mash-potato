@@ -348,33 +348,6 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
   animation: mp-rise 280ms var(--mp-ease) backwards;
 }
 
-/* Onboarding mockup beats: bars grow (transform-only), chips pop in. */
-@keyframes mp-grow-x {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
-  }
-}
-.mp-grow-x {
-  transform-origin: left center;
-  animation: mp-grow-x 0.7s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-}
-@keyframes mp-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.7);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-.mp-pop {
-  animation: mp-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-}
-
 /* First-run tour: the highlighted tab breathes a gold ring. */
 @keyframes mp-tour-pulse {
   0%,

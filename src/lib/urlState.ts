@@ -33,6 +33,8 @@ export type StackView =
   | { kind: 'thread'; conversationId: string }
   | { kind: 'groupHistory'; groupId: string }
   | { kind: 'moderation' }
+  /** Your tokens: balance, today's token, how to earn, history. Private. */
+  | { kind: 'rewards' }
 
 /** Identity for React keys and for "is this the same view?" comparisons. */
 export function stackKey(v: StackView): string {
@@ -112,6 +114,8 @@ export function stateToPath(tab: TabId, stack: StackView[]): string {
       return '/new-group'
     case 'moderation':
       return '/moderation'
+    case 'rewards':
+      return '/rewards'
   }
 }
 
@@ -151,6 +155,8 @@ export function pathToState(pathname: string): AppLocation {
     // Reachable by anyone who types it; the screen and the server both refuse
     // a non-moderator, so the route needs no gate of its own.
     if (head === 'moderation' && parts.length === 1) return { kind: 'moderation' }
+    // Your own tokens only; signed out it is just a path that needs sign-in.
+    if (head === 'rewards' && parts.length === 1) return { kind: 'rewards' }
     if (head === 'messages') {
       if (parts.length === 1) return { kind: 'messages' }
       if (second) return { kind: 'thread', conversationId: second }

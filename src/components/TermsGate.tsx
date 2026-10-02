@@ -37,7 +37,7 @@ export function TermsGate({ onAgree, onBack }: TermsGateProps) {
         )}
 
         <header className="mp-rise mb-6 flex flex-col items-center text-center">
-          <Logo className="h-12 w-12" />
+          <Logo className="h-16 w-16" />
           <h1 className="mt-4 font-display text-[26px] font-semibold leading-tight tracking-tight">
             Before you join
           </h1>

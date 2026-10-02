@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { Sheet } from './Sheet'
 import type { ReactNode } from 'react'
 import { fetchAmModerator } from '../lib/api'
+import { useRewards } from '../lib/rewardsStore'
+import { tokenCount } from '../lib/rewards'
+import { TokenCoin } from './Tokens'
 
 /**
  * The "More" menu.
@@ -57,20 +60,25 @@ function Row({
 }
 
 interface MoreSheetProps {
+  userId: string
   unread: number
   onMessages: () => void
   onNewGroup: () => void
   onModeration: () => void
+  onRewards: () => void
   onClose: () => void
 }
 
 export function MoreSheet({
+  userId,
   unread,
   onMessages,
   onNewGroup,
   onModeration,
+  onRewards,
   onClose,
 }: MoreSheetProps) {
+  const rewards = useRewards(userId)
   // Asked for only when the menu opens: almost nobody is a moderator, and this
   // is one RPC that would otherwise run on every app start for nothing.
   const [amModerator, setAmModerator] = useState(false)
@@ -108,6 +116,16 @@ export function MoreSheet({
         hint="Pick a rubric and invite the people you watch with"
         onClick={onNewGroup}
       />
+
+      {/* Tokens: private, so the hint shows only your own balance. */}
+      {rewards?.enabled && (
+        <Row
+          icon={<TokenCoin size={22} />}
+          label="Tokens"
+          hint={`${tokenCount(rewards.balance)}${rewards.claimedToday ? '' : ', and today’s is ready'}`}
+          onClick={onRewards}
+        />
+      )}
 
       {/* A courtesy door, not a gate — every RPC behind it re-checks the role. */}
       {amModerator && (

@@ -98,7 +98,7 @@ export function AuthScreen({ onBack }: AuthScreenProps = {}) {
     <div className="mx-auto w-full max-w-[400px]">
       {onBack && <button type="button" onClick={onBack} className="mb-5 min-h-11 text-[13px] font-semibold text-muted hover:text-text">← Keep browsing</button>}
       <header className="mp-rise mb-7">
-        <Logo className="mb-5 h-12 w-12" />
+        <Logo className="mb-5 h-16 w-16" />
         <h1 className="font-display text-[32px] font-semibold leading-tight tracking-tight">{heading}</h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted">
           {mode === 'email' ? sent ? <>We sent a sign-in link to <strong className="break-all font-semibold text-text">{email.trim()}</strong>. Open it on this device, or enter the 6-digit code below.</> : 'Sign in or create an account with your email. No password to remember.' : mode === 'password' ? 'Use your existing password, or switch to an email link below.' : sent ? 'Enter the code from your email and choose a new password.' : 'We’ll email you a code to reset your password.'}

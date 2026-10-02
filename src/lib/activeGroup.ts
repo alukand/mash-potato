@@ -61,33 +61,6 @@ export function storeTab(tab: StoredTab): void {
   }
 }
 
-// First-run tour (the tab walkthrough after the first sign-in), shown once.
-const TOURED_KEY = 'mp.toured'
-
-export function readToured(): boolean {
-  try {
-    return localStorage.getItem(TOURED_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-export function storeToured(): void {
-  try {
-    localStorage.setItem(TOURED_KEY, '1')
-  } catch {
-    // ignore
-  }
-}
-
-/** Forget the tour so it can run again ("Replay the walkthrough" in Profile). */
-export function clearToured(): void {
-  try {
-    localStorage.removeItem(TOURED_KEY)
-  } catch {
-    // ignore
-  }
-}
 
 // Recently engaged groups (switched to, invited to a round). The invite
 // picker floats these to the top, most recent first.
@@ -113,23 +86,3 @@ export function touchRecentGroup(id: string): void {
   }
 }
 
-// First-run onboarding: once the slides have been seen on this device they
-// never show again (worst case with storage disabled: they show every run).
-
-const ONBOARDED_KEY = 'mp.onboarded'
-
-export function readOnboarded(): boolean {
-  try {
-    return localStorage.getItem(ONBOARDED_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-export function storeOnboarded(): void {
-  try {
-    localStorage.setItem(ONBOARDED_KEY, '1')
-  } catch {
-    // ignore
-  }
-}

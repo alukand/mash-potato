@@ -55,6 +55,8 @@ Invoke-Sql "HARDENING TEST" (Join-Path $repo "scripts\verify-rls\98c-hardening-t
 Invoke-Sql "MODERATION TEST" (Join-Path $repo "scripts\verify-rls\98d-moderation-test.sql")
 Invoke-Sql "POLL TEST" (Join-Path $repo "scripts\verify-rls\99-poll-test.sql")
 Invoke-Sql "GROUP DISCOVERY + ONBOARDING TEST" (Join-Path $repo "scripts\verify-rls\99b-onboarding-test.sql")
+Invoke-Sql "FEATURE FLAGS TEST" (Join-Path $repo "scripts\verify-rls\99e-feature-flags-test.sql")
+Invoke-Sql "TOKENS TEST" (Join-Path $repo "scripts\verify-rls\99f-rewards-test.sql")
 
 Write-Host ""
 Write-Host "RLS verification complete - the blind rule holds." -ForegroundColor Green

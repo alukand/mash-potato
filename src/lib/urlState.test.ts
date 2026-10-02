@@ -13,7 +13,16 @@ const VIEWS: StackView[] = [
   { kind: 'thread', conversationId: 'eb3762e3-9653-4238-ba7d-fdd26737f2f6' },
   { kind: 'createGroup' },
   { kind: 'moderation' },
+  { kind: 'rewards' },
 ]
+
+describe('tokens', () => {
+  it('has its own address under Home', () => {
+    expect(stateToPath('home', [{ kind: 'rewards' }])).toBe('/rewards')
+    expect(pathToState('/rewards')).toEqual({ tab: 'home', stack: [{ kind: 'rewards' }] })
+    expect(pathToState('/rewards/extra')).toEqual({ tab: 'home', stack: [] })
+  })
+})
 
 describe('tabs', () => {
   const tabs: TabId[] = ['home', 'discover', 'rate', 'profile']

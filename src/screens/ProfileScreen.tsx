@@ -50,6 +50,7 @@ import { colorForUser } from '../lib/palette'
 import { AVATAR_CATALOG, Avatar } from '../components/avatars'
 import { TASTE_MODES } from '../lib/rubricCatalog'
 import type { TasteMode } from '../lib/rubricCatalog'
+import { Sticker } from '../components/Sticker'
 
 /**
  * Sections Home's stat tiles can point at. Each one counts a list that already
@@ -834,9 +835,12 @@ export function ProfileScreen({
         {loading ? (
           <p className="px-1 text-[13px] text-muted">Loading…</p>
         ) : saved.length === 0 ? (
-          <p className="px-1 text-[13px] leading-snug text-muted">
-            Nothing saved yet. Open any title from Discover and tap “Save”.
-          </p>
+          <div className="flex items-center gap-3 px-1">
+            <Sticker name="popcorn" className="h-16" />
+            <p className="text-[13px] leading-snug text-muted">
+              Nothing saved yet. Open any title from Discover and tap “Save”.
+            </p>
+          </div>
         ) : (
           <PosterGrid items={saved} onOpenTitle={onOpenTitle} />
         )}

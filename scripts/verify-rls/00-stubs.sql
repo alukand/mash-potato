@@ -15,6 +15,11 @@ begin
   if not exists (select from pg_roles where rolname = 'authenticated') then
     create role authenticated nologin;
   end if;
+  -- the Edge Functions' role; migrations that grant to it explicitly (feature
+  -- flags, 20260929120000) need it to exist
+  if not exists (select from pg_roles where rolname = 'service_role') then
+    create role service_role nologin bypassrls;
+  end if;
 end
 $$;
 

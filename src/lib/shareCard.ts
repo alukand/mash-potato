@@ -12,6 +12,7 @@
 
 import { scoreColor } from './scoreColor'
 import { formatScore } from './scoring'
+import mark from '../assets/brand/mascot.webp'
 
 export interface RevealCardInput {
   groupName: string
@@ -49,6 +50,20 @@ function loadPoster(posterPath: string): Promise<HTMLImageElement | null> {
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
     img.src = `https://image.tmdb.org/t/p/w500${posterPath}`
+  })
+}
+
+/**
+ * The logo (the whole mascot) for the footer. It ships with the app, so it is
+ * same-origin and keeps the canvas untainted. Null on failure: the card still
+ * works.
+ */
+function loadMark(): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => resolve(null)
+    img.src = mark
   })
 }
 
@@ -117,7 +132,10 @@ export async function renderRevealCard(input: RevealCardInput): Promise<Blob> {
   if (!ctx) throw new Error('Could not draw the card')
 
   await document.fonts.ready.catch(() => undefined)
-  const poster = input.posterPath ? await loadPoster(input.posterPath) : null
+  const [poster, logo] = await Promise.all([
+    input.posterPath ? loadPoster(input.posterPath) : Promise.resolve(null),
+    loadMark(),
+  ])
 
   // ---- background: the app's wash, so the card reads as this product ----
   ctx.fillStyle = BG
@@ -226,6 +244,12 @@ export async function renderRevealCard(input: RevealCardInput): Promise<Blob> {
   ctx.fillStyle = input.mashed !== null ? scoreColor(input.mashed) : TEAL
   ctx.font = '700 30px "Bricolage Grotesque", system-ui, sans-serif'
   ctx.fillText('Mash Potato', W - 70, H - 64)
+  if (logo) {
+    // the logo beside the wordmark, its middle level with the letters'
+    const h = 64
+    const w = Math.round((h * logo.naturalWidth) / logo.naturalHeight)
+    ctx.drawImage(logo, W - 70 - ctx.measureText('Mash Potato').width - 12 - w, H - 75 - h / 2, w, h)
+  }
 
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(

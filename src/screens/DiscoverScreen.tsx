@@ -15,6 +15,7 @@ import type { TaggedResult } from '../hooks/useTmdbSearch'
 import { fieldClass } from '../components/ui'
 import { PosterShelf } from '../components/PosterShelf'
 import { PosterResultGrid } from '../components/PosterResultGrid'
+import { Sticker } from '../components/Sticker'
 
 interface DiscoverScreenProps {
   /** null = signed out. Browsing is public; only the "Because you rated"
@@ -586,7 +587,10 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
             <PosterResultGrid results={results} onOpenTitle={onOpenTitle} />
           ) : (
             !searching && (
-              <p className="px-1 text-[13px] text-muted">No matches for “{query.trim()}”.</p>
+              <div className="flex items-center gap-3 px-1">
+                <Sticker name="skeptical" className="h-16" />
+                <p className="text-[13px] text-muted">No matches for “{query.trim()}”.</p>
+              </div>
             )
           )}
         </section>

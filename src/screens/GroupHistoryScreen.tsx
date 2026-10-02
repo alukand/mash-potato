@@ -16,6 +16,7 @@ import { formatScore } from '../lib/scoring'
 import { scoreColor } from '../lib/scoreColor'
 import { colorForMember } from '../lib/palette'
 import { Avatar } from '../components/avatars'
+import { Sticker } from '../components/Sticker'
 
 interface GroupHistoryScreenProps {
   groupId: string
@@ -229,6 +230,7 @@ export function GroupHistoryScreen({
       {/* Below the floor there is nothing honest to say, so say that. */}
       {recap && recap.nights < MIN_NIGHTS_FOR_A_CLAIM && (
         <div className="mp-card rounded-[22px] p-6 text-center">
+          <Sticker name="skeptical" className="mx-auto mb-3 h-24" />
           <p className="font-display text-[19px] font-semibold">Not enough nights yet</p>
           <p className="mt-2 text-[13px] leading-relaxed text-muted">
             {recap.nights === 0

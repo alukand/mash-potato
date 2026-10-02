@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Logo } from '../components/Logo'
+import { Mascot } from '../components/Mascot'
 import { AuthScreen } from './AuthScreen'
 import { DiscoverScreen } from './DiscoverScreen'
 import { TitleDetailScreen } from './TitleDetailScreen'
@@ -37,7 +38,7 @@ export function SignedOutShell() {
     <div className="min-h-dvh">
       <div className="mx-auto w-full max-w-[480px] px-5 pb-16">
         <header className="pt-safe flex items-center gap-2.5 pb-5">
-          <Logo className="h-9 w-9 shrink-0" />
+          <Logo className="h-11 w-11" />
           <h1 className="truncate font-display text-[24px] font-semibold leading-none tracking-tight">
             Mash Potato
           </h1>
@@ -55,8 +56,14 @@ export function SignedOutShell() {
         {view.kind === 'groups' ? <main><button type="button" onClick={() => setView({ kind: 'discover' })} className="mb-4 min-h-11 text-[13px] text-muted">← Back to browsing</button><h2 className="mb-5 font-display text-[28px] font-semibold">Find your movie-night group</h2><OpenGroups userId={null} onSignIn={() => setAuthOpen(true)} /></main> : view.kind === 'discover' ? (
           <main key="discover">
             <section className="mp-rise mb-6">
-              <h2 className="font-display text-[28px] font-semibold leading-tight">Your taste. Your people.</h2>
-              <p className="mt-2 text-[14px] leading-relaxed text-muted">Create your rubric, find a group, and compare your takes after the Reveal.</p>
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-display text-[28px] font-semibold leading-tight">Your taste. Your people.</h2>
+                  <p className="mt-2 text-[14px] leading-relaxed text-muted">Create your rubric, find a group, and compare your takes after the Reveal.</p>
+                </div>
+                {/* Turned to point at the pitch. */}
+                <Mascot flip className="-mr-1 w-[104px] shrink-0" />
+              </div>
               <CtaButton onClick={() => setAuthOpen(true)} className="mt-4 min-h-12 w-full px-4 text-[14px]">Sign in or create an account</CtaButton>
               <div className="mt-2 flex items-center justify-between gap-3"><p className="text-[12px] text-muted">Or keep browsing below.</p><button type="button" onClick={() => setView({ kind: 'groups' })} className="min-h-11 text-[13px] font-semibold text-teal">Browse groups →</button></div>
             </section>

@@ -7,7 +7,8 @@
     <meta name="description" content="What Mash Potato collects, why, who can see it, and how to get it back or delete it." />
     <meta name="theme-color" content="#15121B" />
     <meta name="color-scheme" content="dark" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400..700&family=Azeret+Mono:wght@400..700&display=swap"
@@ -51,6 +52,10 @@
         line-height: 1.65;
       }
       main { max-width: 700px; margin: 0 auto; padding: 64px 24px 96px; }
+      .eyebrow img {
+        height: 32px; width: auto;
+        vertical-align: -11px; margin-right: 10px;
+      }
       .eyebrow {
         font-family: 'Azeret Mono', monospace;
         font-size: 11px;
@@ -91,9 +96,9 @@
   </head>
   <body>
     <main>
-      <p class="eyebrow">Mash Potato</p>
+      <p class="eyebrow"><a href="/"><img src="/mascot-400.webp" alt="" width="400" height="407" /></a>Mash Potato</p>
       <h1>Privacy</h1>
-      <p class="meta">Effective 27 July 2026 · Mash Potato, an independently developed app</p>
+      <p class="meta">Effective 1 October 2026 · Mash Potato, an independently developed app</p>
 
       <p>
         Mash Potato is a place where a group of friends rates films together.
@@ -125,6 +130,12 @@
         <li>
           <strong>Notification tokens.</strong> If you allow push
           notifications, a device token so we can deliver them.
+        </li>
+        <li>
+          <strong>Your tokens.</strong> The tokens you earn and what earned each
+          one (a daily claim, a rating, a take, a reaction to your take), and the
+          time zone your device reports, which sets when your daily token resets
+          (it is not your location). Only you can see your tokens.
         </li>
       </ul>
       <p>
@@ -188,7 +199,8 @@
 
       <h2>How long we keep it</h2>
       <p>
-        Your content stays until you remove it or delete your account. A
+        Your content and your tokens stay until you remove them or delete your
+        account. A
         deleted message is hidden immediately and removed from the interface;
         rounds your group has already revealed remain part of that group's
         history.
@@ -202,7 +214,7 @@
         <li>
           <strong>Export</strong> — Profile → Account → Export gives you a JSON
           file with your ratings, scorecards and one-liners, comments,
-          playlists and saved rubrics.
+          playlists, saved rubrics and token history.
         </li>
         <li>
           <strong>Delete</strong> — Profile → Account → Danger zone → Delete my

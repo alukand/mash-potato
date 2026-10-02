@@ -1,4 +1,7 @@
-Thank you for the review. This build answers both prior rejections directly.
+Thank you for reviewing Mash Potato. New in this version: a new app icon and
+mascot, and tokens that members earn by using the app (section 4). Sections 1
+to 3 cover the user-generated content safeguards, browsing without an
+account, and how to sign in.
 
 =====================================================================
 1. GUIDELINE 1.2 - USER-GENERATED CONTENT
@@ -76,6 +79,28 @@ Test Group 1 automatically before entering the main app.
 The account is in one group, "Movie Night", with three rounds already scored
 and revealed, and it has a conversation containing a message from another
 member so that reporting and blocking can be demonstrated immediately.
+
+=====================================================================
+4. TOKENS - EARNED BY USING THE APP, NEVER BOUGHT
+=====================================================================
+
+Home shows "Today's token is ready" and a Tokens tile; More > Tokens opens
+the balance, exactly how each token is earned, and the full history. Tokens
+are earned only by using the app: claiming one a day, rating a film (more for
+rating it with your group), and writing a take on a film (a longer take earns
+a small bonus once it has stayed up for 48 hours without being reported).
+
+- Tokens cannot be bought, sold or transferred. There is no in-app purchase
+  of any kind.
+- Nothing involves chance. Every amount is fixed and shown on the Tokens
+  screen.
+- Takes are reviews of FILMS posted inside the app. Nothing rewards rating
+  or reviewing this app on the App Store.
+- What a take says never changes what it earns, and the take composer says
+  so to every writer.
+- There is nothing to spend tokens on yet. The screen says ways to spend them
+  are coming, and promises nothing specific.
+- A balance is private to its owner: no leaderboards and no public counts.
 
 WHAT TO LOOK AT
 1. The app opens on Home: the group, recent activity, and a saved list.

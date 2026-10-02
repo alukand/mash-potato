@@ -130,8 +130,61 @@ it must work signed out. `DiscoverScreen` and `TitleDetailScreen` take
 every account-scoped read would 401 and reject the whole `Promise.all`.
 Account sections render behind `userId !== null`; every write handler carries a
 `userId === null` guard so the compiler proves it. Verified signed out: the app
-issues NO `/rest/v1/` calls at all, only `tmdb-search` (which the anon key may
-call — `verify_jwt` accepts it, confirmed against hosted).
+issues ONE `/rest/v1/` call, the launch-time `GET feature_flags` (public on
+purpose: flags hold nothing per-user and load before anyone signs in), and
+otherwise only `tmdb-search` (which the anon key may call — `verify_jwt`
+accepts it, confirmed against hosted). Any other signed-out `/rest/v1/` call
+is an account-scoped read that leaked in.
+
+## FEATURE FLAGS (2026-09-29)
+
+`public.feature_flags` (20260929120000) switches a feature on or off from the
+server, with no app update. The laws:
+
+- **Fail closed.** `lib/featureFlags.ts` reads every flag once per launch, and
+  an error, the 3 s timeout, a missing row, or not-yet-loaded all read OFF.
+- **Nobody writes flags through the API**, service_role included. They change
+  in the SQL Editor only.
+- A row the client does not list in `lib/flags.ts` does nothing. The app reads
+  one flag today: `rewards`.
+- The table also holds a `livestreaming` row, seeded off. It belongs to Mash
+  Potato Live, which is parked on branch `live-shows` and is not in this
+  codebase (see Current state).
+
+## REWARDS: TOKENS (built 2026-10-01)
+
+A private, capped, quality-weighted loyalty ledger. DESIGN.md's Reward loop law
+records why it exists and what stays banned; `docs/REWARDS.md` is the runbook;
+`supabase/migrations/20261001120000_rewards.sql` is the mechanism. The laws:
+
+- **Server-authoritative.** No client role can touch a token table. Tokens are
+  awarded ONLY by triggers on the activity itself (solo rating, reveal, late
+  card, public take, reaction, moderation), through the single writer
+  `award_tokens()`. The one client action is `claim_daily_tokens`. Never add
+  an RPC that awards tokens on a client's say-so.
+- **Idempotency is the rules.** Partial unique indexes make each award "earns
+  once": a film pays one rating award and one take award per person, ever, so
+  delete-and-redo never pays twice. A movie night after a solo rating tops up
+  to the movie-night amount. Caps count per LOCAL day (`token_accounts.tz`,
+  changeable once per 30 days).
+- **Quality-weighted.** A movie night needs 2+ locked cards. The long-take
+  bonus must pass `take_is_substantial`, must not be a copy of the author's
+  own takes, and is PENDING for 48h. `reconcile_take` voids an unmatured
+  bonus if the take is deleted, hidden or removed, and claws back what a
+  hidden or removed take earned (restoring it if moderators dismiss).
+- **Start fresh.** When `rewards` first flips on, `start_token_program`
+  snapshots every (user, film) already rated or reviewed into
+  `token_ineligible`. Those films never pay.
+- **Fails closed** on `feature_flags.rewards` (seeded off): off means nothing
+  earns, and every token surface disappears in the app.
+- **Private and unpurchasable.** Only the owner reads their balance
+  (`my_rewards`). No leaderboards, no public counts, no streak bonuses, no
+  reminder pushes. Tokens can never be bought or transferred, never depend on
+  what a take says, and never reward App Store ratings or reviews (3.2.2).
+- Amounts and caps live in `token_rules` (SQL). The UI reads them from
+  `my_rewards`, so it never disagrees with what actually pays.
+- Spending does not exist yet. Before building it, read the redemption
+  checklist in `docs/REWARDS.md` (fraud gates, tax reporting, program terms).
 
 ## Commands
 
@@ -420,17 +473,18 @@ call — `verify_jwt` accepts it, confirmed against hosted).
   the winner rolls into GroupInviteSheet; PostgREST embeds need
   poll_options!poll_options_poll_id_fkey because the winner FK is a second
   relationship) → watchlists (content, not settings). Every round is an invite (RSVP shows
-  for groups of 2+). First run shows OnboardingSlides once (`mp.onboarded`,
-  live product miniatures per slide), then the app opens GROUP-LESS
-  (Home/Discover/Profile work; Rate shows a NoGroupYet card) — no forced
-  create-group gate — and the first signed-in landing runs FirstRunTour
-  once (`mp.toured`, replayable from Profile via `clearToured`): each step
+  for groups of 2+). First run is GuidedSetup (real actions, tracked server-side in
+  `onboarding_progress`; Profile can restart it), then the app opens
+  GROUP-LESS (Home/Discover/Profile work; Rate shows a NoGroupYet card), with
+  no forced create-group gate. FirstRunTour is replay-only (Profile →
+  "Replay the walkthrough"; the slides and the `mp.onboarded`/`mp.toured`
+  flags were removed 2026-10-01 as dead code): each step
   names a `data-tour` anchor (nav tabs carry `tab-<id>`, the settings pill
   carries `settings`), the tour measures that element's rect and cuts a
   SPOTLIGHT around it (transparent box + 9999px shadow spread, so it
   survives prefers-reduced-motion, which flattens `mp-tour-pulse`), and
   switches to each step's real screen; a missing anchor falls back to a
-  plain dim. Group-holders skip slides and go straight to the tour.
+  plain dim.
   useTmdbSearch takes
   'movie' | 'tv' | 'both' and returns TaggedResult (per-item mediaType);
   PosterResultGrid consumes tagged results. Shared UI recipes (fieldClass,
@@ -589,7 +643,32 @@ call — `verify_jwt` accepts it, confirmed against hosted).
   test suite can catch a missing `anon` revoke); migrations at or before
   20260725120000 are grandfathered.
 
-## Current state (2026-08-07)
+## Current state
+
+**2026-10-01**
+
+- 1.0 is live on the App Store (Apple ID 6788610092). 1.1.0 is built on
+  branch `release-1.1`, cut from `master` (not pushed). It holds:
+  - The mascot rebrand, which brings the new app icon, and the sticker set.
+  - Tokens; flag `rewards` off.
+  - The feature-flag store that switches tokens on.
+- Mash Potato Live (live shows, watch parties, giveaways) is parked, dormant,
+  on branch `live-shows`. It is NOT in `release-1.1` in any form: no code,
+  migrations, Edge Function, packages or docs. Its three migrations
+  (`20260928120000`, `20260928140000`, `20260928150000`) are dated before the
+  ones this branch pushes, so before Live ships, rename them to timestamps
+  after the latest hosted migration. `db push` otherwise refuses them, and
+  `--include-all` would apply them out of order.
+- Hosted Supabase has every migration through `20260909142308`
+  (`migration list --linked`, 2026-10-01). Not yet pushed:
+  - `20260929120000`: feature flags.
+  - `20261001120000`: tokens.
+
+  Push them before shipping a build that reads `feature_flags`. Without them
+  the flag read 404s; it fails closed, but it is noise.
+- Launch order for tokens: `docs/REWARDS.md`.
+
+**As of 2026-08-07** (history: true then, not necessarily now):
 
 - Live on TestFlight (internal testing): repo on GitHub (alukand/mash-potato),
   Codemagic `ios-testflight` workflow builds + uploads (see `codemagic.yaml`
