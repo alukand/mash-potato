@@ -5,8 +5,9 @@
                    bottom-right corner, both glows toned down 25%
        potato      one lopsided form cut into three slices by two parallel
                    seams at -30deg; each slice is displaced along the seam, the
-                   middle one AGAINST the outer two. Ink shows through the
-                   outer gaps, teal through the middle one. Drawn in a 512
+                   middle one AGAINST the outer two. Ink shows through all
+                   three gaps (the middle one was teal until a teal crescent
+                   read as a bar on the rim, 2026-10-03). Drawn in a 512
                    space and scaled 2x.
      scripts/brand-assets.mjs renders every app icon from this file. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
@@ -44,7 +45,7 @@
   <g id="potato" transform="scale(2)">
     <!-- underlay: what shows through the gaps -->
     <g clip-path="url(#mp-band0)"><path d="M92 268 C86 206 128 152 196 134 C252 119 318 122 366 152 C414 182 428 238 414 290 C400 344 350 388 290 398 C224 409 156 386 120 340 C100 314 94 292 92 268 Z" fill="#120F18"/></g>
-    <g clip-path="url(#mp-band1)"><path d="M92 268 C86 206 128 152 196 134 C252 119 318 122 366 152 C414 182 428 238 414 290 C400 344 350 388 290 398 C224 409 156 386 120 340 C100 314 94 292 92 268 Z" fill="#45BAB4"/></g>
+    <g clip-path="url(#mp-band1)"><path d="M92 268 C86 206 128 152 196 134 C252 119 318 122 366 152 C414 182 428 238 414 290 C400 344 350 388 290 398 C224 409 156 386 120 340 C100 314 94 292 92 268 Z" fill="#120F18"/></g>
     <g clip-path="url(#mp-band2)"><path d="M92 268 C86 206 128 152 196 134 C252 119 318 122 366 152 C414 182 428 238 414 290 C400 344 350 388 290 398 C224 409 156 386 120 340 C100 314 94 292 92 268 Z" fill="#120F18"/></g>
 
     <!-- slices: same potato, clipped and displaced along the 30deg axis -->

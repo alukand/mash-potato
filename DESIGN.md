@@ -30,9 +30,10 @@ The drawing is the brand. Do not redraw it or tidy it into a flat glyph.
   is `assets/icon/mash-potato-icon.svg`: one lopsided potato cut into three
   slices by two parallel seams at -30 degrees, each slice displaced along the
   seam, the middle one AGAINST the outer two (that counter-motion is the mark;
-  if it reads as sliding, a sign got flipped). Ink shows through the outer
-  gaps, teal through the middle one. It sits on the July icon's dark tile, with
-  that icon's teal and gold glows toned down 25%. The seam angle, the uneven
+  if it reads as sliding, a sign got flipped). Ink shows through all three
+  gaps, so the outline simply steps where the slices pull apart. It sits on
+  the July icon's dark tile, with that icon's teal and gold glows toned down
+  25%; that top glow is where the brand teal lives now. The seam angle, the uneven
   cuts and the offsets are deliberate: don't "balance" them. (The angry face,
   `brand/mascot-face.webp`, was the icon from 2026-10-01; it is kept, unused.)
 - **Everywhere else, the logo is the WHOLE mascot**: the sticker cut out of its
@@ -602,8 +603,8 @@ baseline function grant, which is exactly how an open endpoint shipped on
   the owner's call); tokens for wins.
 
 - 2026-10-03 (the sliced potato icon): the app icon is a new mark, a potato
-  cut into three slices pulling against each other, with teal in the middle
-  gap, on the July icon's dark tile with its glows toned down 25%. It replaces
+  cut into three slices pulling against each other, on the July icon's dark
+  tile with its glows toned down 25%. It replaces
   the angry face everywhere the face was an icon, and also takes over the
   browser-tab favicons from the logo (the owner's call: the tab matches the app
   icon, and a simple mark reads at 32px). The mascot stays the logo everywhere
@@ -611,6 +612,10 @@ baseline function grant, which is exactly how an open endpoint shipped on
   icons, which were rounded tiles; only Android's legacy round icon keeps
   transparency. The iOS file is new (`AppIcon-sliced-potato.png`), and the old
   one stays beside it so `Contents.json` can point back.
+  Considered/rejected: teal in the middle gap (the first cut). The middle
+  slice moves so little that the teal showed as a thin crescent on the rim,
+  read as a separate bar, and was the loudest thing in the icon; a deeper teal
+  still read as a rim. All three gaps are ink now.
 
 - 2026-10-01 (tokens): a private, capped, quality-weighted token ledger (see
   the Reward loop law). Home has a daily-token strip that disappears once
