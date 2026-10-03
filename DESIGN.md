@@ -58,6 +58,11 @@ The drawing is the brand. Do not redraw it or tidy it into a flat glyph.
   text, 96px over a card's headline), because the poses differ in width. A new
   use names its feeling first; if no sticker matches it, the moment doesn't
   get one.
+- **The one exception: the share card (2026-10-02).** The card is the brand
+  speaking OUTSIDE the app, so its mascot reacts to the night: shouting when
+  the group split (spread 3 or more), skeptical when the Mashed is under 5,
+  popcorn otherwise. It echoes the group's verdict; it never grades the film
+  on its own. Inside the app the rule above stands.
 - **It fits the locked palette.** Its gold is `--color-gold` territory; nothing
   in the tokens changes for it. Don't introduce its brown or tongue-pink as UI
   colours.

@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Sheet } from './Sheet'
-import { renderRevealCard, shareRevealCard } from '../lib/shareCard'
+import {
+  cardShareMode,
+  downloadRevealCard,
+  renderRevealCard,
+  shareRevealCard,
+} from '../lib/shareCard'
 import type { RevealCardInput } from '../lib/shareCard'
 import { formatScore } from '../lib/scoring'
 import { CtaButton } from './ui'
@@ -23,6 +28,16 @@ export function ShareRevealSheet({ card, onClose }: ShareRevealSheetProps) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<string | null>(null)
+  // Which buttons this device gets (see cardShareMode); null while asking.
+  const [mode, setMode] = useState<'native' | 'webShare' | 'download' | null>(null)
+  const safe = card.titleName.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'reveal'
+  const fileName = `mashed-${safe.toLowerCase()}.png`
+
+  useEffect(() => {
+    void cardShareMode()
+      .then(setMode)
+      .catch(() => setMode('download'))
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -47,8 +62,7 @@ export function ShareRevealSheet({ card, onClose }: ShareRevealSheetProps) {
     setBusy(true)
     setError(null)
     try {
-      const safe = card.titleName.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'reveal'
-      const outcome = await shareRevealCard(preview.blob, `mashed-${safe.toLowerCase()}.png`)
+      const outcome = await shareRevealCard(preview.blob, fileName)
       if (outcome === 'downloaded') setDone('Saved to your downloads.')
       else onClose()
     } catch (err) {
@@ -110,15 +124,42 @@ export function ShareRevealSheet({ card, onClose }: ShareRevealSheetProps) {
         <p className="mt-3 text-center text-[12px] leading-snug text-teal">{done}</p>
       )}
 
-      <div className="mt-5 pb-5">
-        <CtaButton
-          tone="teal"
-          onClick={() => void handleShare()}
-          disabled={!preview || busy}
-          className="w-full py-3.5 text-[14px]"
-        >
-          {busy ? 'Sharing…' : 'Share the card'}
-        </CtaButton>
+      <div className="mt-5 flex flex-col gap-2.5 pb-5">
+        {mode !== 'download' && (
+          <CtaButton
+            tone="teal"
+            onClick={() => void handleShare()}
+            disabled={!preview || busy || mode === null}
+            className="w-full py-3.5 text-[14px]"
+          >
+            {busy ? 'Opening…' : mode === 'native' ? 'Share or save the card' : 'Share the card'}
+          </CtaButton>
+        )}
+        {/* The phone's share sheet already saves to Photos (Save Image), so
+            only the web gets a separate save. */}
+        {mode !== 'native' && mode !== null && (
+          <button
+            type="button"
+            disabled={!preview}
+            onClick={() => {
+              if (!preview) return
+              downloadRevealCard(preview.blob, fileName)
+              setDone('Saved to your downloads.')
+            }}
+            className={`w-full rounded-full py-3.5 text-[14px] font-semibold transition-colors disabled:opacity-50 ${
+              mode === 'download'
+                ? 'bg-teal text-bg'
+                : 'border border-line text-muted hover:border-teal/50 hover:text-text'
+            }`}
+          >
+            Save the image
+          </button>
+        )}
+        {mode === 'native' && (
+          <p className="text-center text-[12px] leading-snug text-muted">
+            Post it to X or Instagram, or tap Save Image to keep it in Photos.
+          </p>
+        )}
       </div>
     </Sheet>
   )

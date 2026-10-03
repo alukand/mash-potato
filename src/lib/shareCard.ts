@@ -10,9 +10,11 @@
 // an explicit input type — anything absent from `RevealCardInput` physically
 // cannot leak into the image.
 
-import { scoreColor } from './scoreColor'
 import { formatScore } from './scoring'
 import mark from '../assets/brand/mascot.webp'
+import popcornSticker from '../assets/stickers/popcorn.webp'
+import shoutingSticker from '../assets/stickers/shouting.webp'
+import skepticalSticker from '../assets/stickers/skeptical.webp'
 
 export interface RevealCardInput {
   groupName: string
@@ -30,14 +32,75 @@ export interface RevealCardInput {
   headline: string | null
 }
 
+// 4:5 portrait: X shows it uncropped in the timeline, and it fills a phone
+// feed (and an Instagram post) better than 16:9.
 const W = 1080
 const H = 1350
+const PAD = 72
 
 const BG = '#15121b'
 const TEXT = '#f3eee5'
 const MUTED = '#9c93ab'
 const TEAL = '#51c5be'
-const LINE = '#352b42'
+const GOLD = '#e7b24e'
+const CORAL = '#e07a5f'
+
+const DISPLAY = '"Bricolage Grotesque", system-ui, sans-serif'
+const MONO = '"Azeret Mono", ui-monospace, monospace'
+
+/**
+ * The card's mascot reacts to the night (DESIGN.md: the share card is the one
+ * place a sticker sits beside a score): shouting when the group split,
+ * skeptical when the Mashed is low, popcorn for everything else.
+ */
+export type CardSticker = 'shouting' | 'skeptical' | 'popcorn'
+
+export function cardSticker(mashed: number | null, spread: number | null): CardSticker {
+  if (spread !== null && spread >= 3) return 'shouting'
+  if (mashed !== null && mashed < 5) return 'skeptical'
+  return 'popcorn'
+}
+
+const STICKER_SRC: Record<CardSticker, string> = {
+  popcorn: popcornSticker,
+  shouting: shoutingSticker,
+  skeptical: skepticalSticker,
+}
+
+/** A run of headline text and its colour: the agreed category teal, the split one coral. */
+export interface HeadlineRun {
+  text: string
+  tone: 'text' | 'teal' | 'coral'
+}
+
+/**
+ * The clash headline as coloured lines, the way the Reveal sets it in the app.
+ * "United on Story. Split over Pacing." becomes two lines with the categories
+ * in teal and coral; any other headline is one plain run.
+ */
+export function headlineLines(headline: string): HeadlineRun[][] {
+  const m = /^United on (.+)\. Split over (.+)\.$/.exec(headline.trim())
+  if (!m) return [[{ text: headline.trim(), tone: 'text' }]]
+  return [
+    [
+      { text: 'United on ', tone: 'text' },
+      { text: m[1], tone: 'teal' },
+      { text: '.', tone: 'text' },
+    ],
+    [
+      { text: 'Split over ', tone: 'text' },
+      { text: m[2], tone: 'coral' },
+      { text: '.', tone: 'text' },
+    ],
+  ]
+}
+
+/** How far apart, in words, for the meter under the score. */
+export function spreadWord(spread: number): string {
+  if (spread < 1) return 'In sync'
+  if (spread < 3) return 'Close call'
+  return 'Split'
+}
 
 /** Load a poster for canvas use; null on any failure, never throws. */
 function loadPoster(posterPath: string): Promise<HTMLImageElement | null> {
@@ -54,16 +117,15 @@ function loadPoster(posterPath: string): Promise<HTMLImageElement | null> {
 }
 
 /**
- * The logo (the whole mascot) for the footer. It ships with the app, so it is
- * same-origin and keeps the canvas untainted. Null on failure: the card still
- * works.
+ * An image that ships with the app (the logo, a sticker). Same-origin, so it
+ * keeps the canvas untainted. Null on failure: the card still works.
  */
-function loadMark(): Promise<HTMLImageElement | null> {
+function loadAsset(src: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image()
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
-    img.src = mark
+    img.src = src
   })
 }
 
@@ -132,124 +194,219 @@ export async function renderRevealCard(input: RevealCardInput): Promise<Blob> {
   if (!ctx) throw new Error('Could not draw the card')
 
   await document.fonts.ready.catch(() => undefined)
-  const [poster, logo] = await Promise.all([
+  const [poster, logo, sticker] = await Promise.all([
     input.posterPath ? loadPoster(input.posterPath) : Promise.resolve(null),
-    loadMark(),
+    loadAsset(mark),
+    loadAsset(STICKER_SRC[cardSticker(input.mashed, input.spread)]),
   ])
 
-  // ---- background: the app's wash, so the card reads as this product ----
+  // ---- background: the poster, blurred into a wash, fading to the app's ink ----
   ctx.fillStyle = BG
   ctx.fillRect(0, 0, W, H)
-  const wash = ctx.createRadialGradient(W * 0.5, H * 0.22, 40, W * 0.5, H * 0.22, W * 0.95)
-  wash.addColorStop(0, 'rgba(81, 197, 190, 0.14)')
-  wash.addColorStop(0.55, 'rgba(231, 178, 78, 0.06)')
-  wash.addColorStop(1, 'rgba(0, 0, 0, 0)')
-  ctx.fillStyle = wash
+  if (poster) {
+    // Blur by shrinking then stretching: the canvas `filter` property is not
+    // in every WebKit the app runs in, but resampling a 24px image is.
+    const tiny = document.createElement('canvas')
+    tiny.width = 24
+    tiny.height = 36
+    tiny.getContext('2d')?.drawImage(poster, 0, 0, 24, 36)
+    ctx.save()
+    ctx.globalAlpha = 0.6
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(tiny, -60, -90, W + 120, H * 0.9)
+    ctx.restore()
+  }
+  const fade = ctx.createLinearGradient(0, 0, 0, H)
+  fade.addColorStop(0, 'rgba(21, 18, 27, 0.35)')
+  fade.addColorStop(0.5, 'rgba(21, 18, 27, 0.82)')
+  fade.addColorStop(0.72, BG)
+  fade.addColorStop(1, BG)
+  ctx.fillStyle = fade
+  ctx.fillRect(0, 0, W, H)
+  const glow = ctx.createRadialGradient(790, 372, 20, 790, 372, 520)
+  glow.addColorStop(0, 'rgba(81, 197, 190, 0.22)')
+  glow.addColorStop(1, 'rgba(81, 197, 190, 0)')
+  ctx.fillStyle = glow
   ctx.fillRect(0, 0, W, H)
 
-  // ---- group name ----
-  ctx.textAlign = 'center'
-  ctx.fillStyle = MUTED
-  ctx.font = '700 26px "Azeret Mono", ui-monospace, monospace'
-  const groupLabel = input.groupName.toUpperCase()
+  // ---- header: what this is, and whose night ----
+  ctx.textBaseline = 'alphabetic'
+  ctx.textAlign = 'left'
+  ctx.font = `700 24px ${MONO}`
   ctx.letterSpacing = '6px'
-  ctx.fillText(groupLabel.length > 34 ? `${groupLabel.slice(0, 33)}…` : groupLabel, W / 2, 96)
+  ctx.fillStyle = TEAL
+  ctx.fillText('THE REVEAL', PAD, 96)
+  ctx.textAlign = 'right'
+  ctx.fillStyle = TEXT
+  const group = input.groupName.toUpperCase()
+  ctx.fillText(group.length > 22 ? `${group.slice(0, 21)}…` : group, W - PAD, 96)
   ctx.letterSpacing = '0px'
 
-  // ---- poster ----
-  const pw = 320
-  const ph = 480
-  const px = (W - pw) / 2
+  // ---- the poster, tipped like a card on a table ----
+  const pw = 380
+  const ph = 570
+  const px = PAD
   const py = 150
   ctx.save()
-  roundRect(ctx, px, py, pw, ph, 28)
+  ctx.translate(px + pw / 2, py + ph / 2)
+  ctx.rotate((-3 * Math.PI) / 180)
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.65)'
+  ctx.shadowBlur = 60
+  ctx.shadowOffsetY = 28
+  roundRect(ctx, -pw / 2, -ph / 2, pw, ph, 26)
+  ctx.fillStyle = '#271f31'
+  ctx.fill()
+  ctx.shadowColor = 'transparent'
   ctx.clip()
   if (poster) {
-    ctx.drawImage(poster, px, py, pw, ph)
+    ctx.drawImage(poster, -pw / 2, -ph / 2, pw, ph)
   } else {
-    const grad = ctx.createLinearGradient(px, py, px + pw, py + ph)
-    grad.addColorStop(0, '#E7B24E')
-    grad.addColorStop(1, '#E07A5F')
+    const grad = ctx.createLinearGradient(-pw / 2, -ph / 2, pw / 2, ph / 2)
+    grad.addColorStop(0, GOLD)
+    grad.addColorStop(1, CORAL)
     ctx.fillStyle = grad
-    ctx.fillRect(px, py, pw, ph)
+    ctx.fillRect(-pw / 2, -ph / 2, pw, ph)
     ctx.fillStyle = BG
-    ctx.font = '700 150px "Bricolage Grotesque", system-ui, sans-serif'
+    ctx.font = `700 160px ${DISPLAY}`
+    ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(input.titleName.charAt(0).toUpperCase(), W / 2, py + ph / 2)
+    ctx.fillText(input.titleName.charAt(0).toUpperCase(), 0, 0)
     ctx.textBaseline = 'alphabetic'
   }
   ctx.restore()
-  ctx.strokeStyle = 'rgba(53, 43, 66, 0.9)'
-  ctx.lineWidth = 2
-  roundRect(ctx, px, py, pw, ph, 28)
+
+  // ---- the Mashed number in its ring. Always teal (locked identity). ----
+  const cx = 790
+  const cy = 372
+  const r = 178
+  ctx.lineCap = 'round'
+  ctx.lineWidth = 24
+  ctx.strokeStyle = 'rgba(243, 238, 229, 0.08)'
+  ctx.beginPath()
+  ctx.arc(cx, cy, r, 0, Math.PI * 2)
   ctx.stroke()
+  if (input.mashed !== null) {
+    const share = Math.max(0.02, Math.min(1, input.mashed / 10))
+    ctx.save()
+    ctx.shadowColor = 'rgba(81, 197, 190, 0.75)'
+    ctx.shadowBlur = 36
+    ctx.strokeStyle = TEAL
+    ctx.beginPath()
+    ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + share * Math.PI * 2)
+    ctx.stroke()
+    ctx.restore()
+  }
+  ctx.textAlign = 'center'
+  ctx.fillStyle = TEAL
+  ctx.font = `700 ${input.mashed === null ? 64 : 150}px ${DISPLAY}`
+  ctx.fillText(input.mashed === null ? 'No score' : formatScore(input.mashed), cx, cy + 50)
+  ctx.font = `700 22px ${MONO}`
+  ctx.letterSpacing = '8px'
+  ctx.fillStyle = MUTED
+  ctx.fillText('MASHED', cx + 4, cy + 100)
+  ctx.letterSpacing = '0px'
+
+  // ---- the mascot, reacting to the night from beside the ring ----
+  // Sized and placed to clear both the ring above and a two-line title below.
+  if (sticker) {
+    const sh = 220
+    const sw = Math.round((sh * sticker.naturalWidth) / sticker.naturalHeight)
+    ctx.save()
+    ctx.translate(W - 56 - sw / 2, 642)
+    ctx.rotate((7 * Math.PI) / 180)
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
+    ctx.shadowBlur = 30
+    ctx.shadowOffsetY = 14
+    ctx.drawImage(sticker, -sw / 2, -sh / 2, sw, sh)
+    ctx.restore()
+  }
 
   // ---- title ----
+  let y = 852
+  ctx.textAlign = 'left'
   ctx.fillStyle = TEXT
-  ctx.font = '600 62px "Bricolage Grotesque", system-ui, sans-serif'
-  const titleLines = wrap(ctx, input.titleName, W - 140, 2)
-  let y = py + ph + 92
+  ctx.font = `700 66px ${DISPLAY}`
+  const titleLines = wrap(ctx, input.titleName, W - PAD * 2, 2)
   for (const line of titleLines) {
-    ctx.fillText(line, W / 2, y)
-    y += 70
+    ctx.fillText(line, PAD, y)
+    y += 72
   }
-
   ctx.fillStyle = MUTED
-  ctx.font = '400 28px "Azeret Mono", ui-monospace, monospace'
-  const meta = [input.mediaType === 'movie' ? 'FILM' : 'TV', input.titleYear ?? '']
+  ctx.font = `400 26px ${MONO}`
+  ctx.letterSpacing = '3px'
+  const meta = [input.mediaType === 'movie' ? 'FILM' : 'TV', input.titleYear ?? '', `${input.raters} SCORED BLIND`]
     .filter(Boolean)
-    .join(' · ')
-  ctx.fillText(meta, W / 2, y + 2)
-  y += 78
-
-  // ---- the number. Always teal, always labelled Mashed (locked identity). ----
-  if (input.mashed !== null) {
-    ctx.fillStyle = TEAL
-    ctx.font = '700 168px "Bricolage Grotesque", system-ui, sans-serif'
-    ctx.fillText(formatScore(input.mashed), W / 2, y + 130)
-    ctx.fillStyle = MUTED
-    ctx.font = '700 24px "Azeret Mono", ui-monospace, monospace'
-    ctx.letterSpacing = '8px'
-    ctx.fillText('MASHED', W / 2, y + 178)
-    ctx.letterSpacing = '0px'
-    y += 232
-  }
+    .join(', ')
+  ctx.fillText(meta, PAD, y - 22)
+  ctx.letterSpacing = '0px'
+  y += 58
 
   // ---- the headline: the disagreement, which is the whole point ----
   if (input.headline) {
-    ctx.fillStyle = TEXT
-    ctx.font = '500 34px "Hanken Grotesk", system-ui, sans-serif'
-    for (const line of wrap(ctx, input.headline, W - 160, 2)) {
-      ctx.fillText(line, W / 2, y)
-      y += 46
+    for (const runs of headlineLines(input.headline)) {
+      // shrink a long line to fit rather than wrapping it mid-category
+      let size = 50
+      const width = () => runs.reduce((sum, run) => sum + ctx.measureText(run.text).width, 0)
+      ctx.font = `600 ${size}px ${DISPLAY}`
+      while (width() > W - PAD * 2 && size > 30) {
+        size -= 2
+        ctx.font = `600 ${size}px ${DISPLAY}`
+      }
+      let x = PAD
+      for (const run of runs) {
+        ctx.fillStyle = run.tone === 'teal' ? TEAL : run.tone === 'coral' ? CORAL : TEXT
+        ctx.fillText(run.text, x, y)
+        x += ctx.measureText(run.text).width
+      }
+      y += size + 14
     }
+    y += 18
   }
 
-  // ---- footer: aggregates only. A count of people, never their names. ----
-  ctx.strokeStyle = LINE
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.moveTo(70, H - 118)
-  ctx.lineTo(W - 70, H - 118)
-  ctx.stroke()
+  // ---- how far apart: one aggregate, never whose card was where ----
+  if (input.spread !== null && y < H - 190) {
+    ctx.font = `700 22px ${MONO}`
+    ctx.letterSpacing = '5px'
+    ctx.fillStyle = MUTED
+    ctx.fillText(`SPREAD ${formatScore(input.spread)}`, PAD, y)
+    ctx.textAlign = 'right'
+    ctx.fillStyle = input.spread >= 3 ? CORAL : TEAL
+    ctx.fillText(spreadWord(input.spread).toUpperCase(), W - PAD, y)
+    ctx.textAlign = 'left'
+    ctx.letterSpacing = '0px'
+    const barY = y + 22
+    const barW = W - PAD * 2
+    roundRect(ctx, PAD, barY, barW, 14, 7)
+    ctx.fillStyle = 'rgba(243, 238, 229, 0.08)'
+    ctx.fill()
+    const fill = Math.max(14, barW * Math.min(1, input.spread / 9))
+    const ramp = ctx.createLinearGradient(PAD, 0, PAD + barW, 0)
+    ramp.addColorStop(0, TEAL)
+    ramp.addColorStop(0.45, GOLD)
+    ramp.addColorStop(1, CORAL)
+    roundRect(ctx, PAD, barY, fill, 14, 7)
+    ctx.fillStyle = ramp
+    ctx.fill()
+  }
 
-  ctx.font = '400 26px "Azeret Mono", ui-monospace, monospace'
-  ctx.textAlign = 'left'
-  ctx.fillStyle = MUTED
-  const foot = [`${input.raters} SCORED`]
-  if (input.spread !== null) foot.push(`SPREAD ${formatScore(input.spread)}`)
-  ctx.fillText(foot.join('   ·   '), 70, H - 66)
-
-  ctx.textAlign = 'right'
-  ctx.fillStyle = input.mashed !== null ? scoreColor(input.mashed) : TEAL
-  ctx.font = '700 30px "Bricolage Grotesque", system-ui, sans-serif'
-  ctx.fillText('Mash Potato', W - 70, H - 64)
+  // ---- footer: the brand, and where to find it ----
+  const footY = H - 64
+  let wordX = PAD
   if (logo) {
-    // the logo beside the wordmark, its middle level with the letters'
-    const h = 64
-    const w = Math.round((h * logo.naturalWidth) / logo.naturalHeight)
-    ctx.drawImage(logo, W - 70 - ctx.measureText('Mash Potato').width - 12 - w, H - 75 - h / 2, w, h)
+    const lh = 64
+    const lw = Math.round((lh * logo.naturalWidth) / logo.naturalHeight)
+    ctx.drawImage(logo, PAD, footY - lh + 14, lw, lh)
+    wordX = PAD + lw + 14
   }
+  ctx.textAlign = 'left'
+  ctx.fillStyle = TEXT
+  ctx.font = `700 32px ${DISPLAY}`
+  ctx.fillText('Mash Potato', wordX, footY)
+  ctx.textAlign = 'right'
+  ctx.fillStyle = MUTED
+  ctx.font = `400 24px ${MONO}`
+  ctx.fillText('mashpotato.app', W - PAD, footY)
 
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
@@ -303,6 +460,12 @@ export async function shareRevealCard(blob: Blob, fileName: string): Promise<Sha
     return 'shared'
   }
 
+  downloadRevealCard(blob, fileName)
+  return 'downloaded'
+}
+
+/** Save the card as a file (the web's "save image"; native saves from the share sheet). */
+export function downloadRevealCard(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -310,5 +473,16 @@ export async function shareRevealCard(blob: Blob, fileName: string): Promise<Sha
   a.click()
   // Revoking synchronously can beat the download on some browsers.
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
-  return 'downloaded'
+}
+
+/**
+ * How this device can hand the card on: natively (the iOS/Android share sheet,
+ * whose Save Image puts it in Photos), through the Web Share API, or only as a
+ * download.
+ */
+export async function cardShareMode(): Promise<'native' | 'webShare' | 'download'> {
+  const { Capacitor } = await import('@capacitor/core')
+  if (Capacitor.isNativePlatform()) return 'native'
+  const probe = new File([new Blob()], 'card.png', { type: 'image/png' })
+  return navigator.canShare?.({ files: [probe] }) ? 'webShare' : 'download'
 }

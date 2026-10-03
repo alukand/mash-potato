@@ -25,6 +25,8 @@ import wink from '../assets/stickers/wink.webp'
 // or failed moment: never on scores or anything the group made, never more
 // than one per view. Decorative, so screen readers skip it; the words beside
 // it say what the moment means. Size it by height (the poses differ in width).
+// The share card is the one exception (lib/shareCard.ts, DESIGN.md): outside
+// the app, its mascot reacts to the night.
 
 const STICKERS = {
   shouting,
