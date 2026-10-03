@@ -35,6 +35,7 @@ import { ShareRevealSheet } from './ShareRevealSheet'
 import { ScoreRing } from './ScoreRing'
 import { MashMath } from './MashMath'
 import { LoadingCards, RevealBurst } from './Moments'
+import { RoundGames } from './RoundGames'
 import { refreshRewards } from '../lib/rewardsStore'
 import type { TitlePart } from '../lib/titleParts'
 import type { OpenTitle } from '../lib/urlState'
@@ -60,6 +61,8 @@ interface SessionPanelProps {
   ) => void
   /** Tap the reveal's poster/title to open the title page (or the episode's). */
   onOpenTitle?: OpenTitle
+  /** A fight or a best-take vote just closed (the trophy shelf has news). */
+  onGamesSettled?: () => void
 }
 
 // The group's latest session, live: blind rounds show invite + lock progress,
@@ -134,6 +137,7 @@ export function SessionPanel({
   onViewLatest,
   onDiscuss,
   onOpenTitle,
+  onGamesSettled,
 }: SessionPanelProps) {
   // Normie groups share one rubric, so nothing is an opt-in extra there.
   const isCasual = group.tasteMode === 'casual'
@@ -146,6 +150,8 @@ export function SessionPanel({
   const [scorecards, setScorecards] = useState<MemberScorecard[] | undefined>(undefined)
   const [memberRubrics, setMemberRubrics] = useState<MemberRubric[]>([])
   const [error, setError] = useState<string | null>(null)
+  // Every reload (realtime pings included) refreshes the round's games too.
+  const [gamesKey, setGamesKey] = useState(0)
 
   // ---- living reveal: late scoring + category backfill ----
   const [lateOpen, setLateOpen] = useState(false)
@@ -196,6 +202,7 @@ export function SessionPanel({
         ])
         setScorecards(cards)
         setMemberRubrics(rubrics)
+        setGamesKey((k) => k + 1)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
@@ -402,15 +409,18 @@ export function SessionPanel({
               onToggle={toggleLateExtra}
               className="mt-3"
             />
-            <input
-              type="text"
-              maxLength={140}
-              value={lateLine}
-              disabled={lateBusy}
-              onChange={(e) => setLateLine(e.target.value)}
-              placeholder="In one sentence, what was it about? (optional)"
-              className={`${fieldClassSm} mt-2 w-full disabled:opacity-60`}
-            />
+            {/* In a takes round the take replaces the one-liner. */}
+            {session.takesMode === 'off' && (
+              <input
+                type="text"
+                maxLength={140}
+                value={lateLine}
+                disabled={lateBusy}
+                onChange={(e) => setLateLine(e.target.value)}
+                placeholder="In one sentence, what was it about? (optional)"
+                className={`${fieldClassSm} mt-2 w-full disabled:opacity-60`}
+              />
+            )}
             <CtaButton
               tone="teal"
               disabled={lateBusy || Object.keys(lateScores).length === 0}
@@ -661,15 +671,17 @@ export function SessionPanel({
                 onToggle={toggleLateExtra}
                 className="mt-3"
               />
-              <input
-                type="text"
-                maxLength={140}
-                value={lateLine}
-                disabled={lateBusy}
-                onChange={(e) => setLateLine(e.target.value)}
-                placeholder="In one sentence, what was it about? (optional)"
-                className={`${fieldClassSm} mt-2 w-full disabled:opacity-60`}
-              />
+              {session.takesMode === 'off' && (
+                <input
+                  type="text"
+                  maxLength={140}
+                  value={lateLine}
+                  disabled={lateBusy}
+                  onChange={(e) => setLateLine(e.target.value)}
+                  placeholder="In one sentence, what was it about? (optional)"
+                  className={`${fieldClassSm} mt-2 w-full disabled:opacity-60`}
+                />
+              )}
               <CtaButton
                 tone="teal"
                 disabled={lateBusy || Object.keys(lateScores).length === 0}
@@ -823,6 +835,16 @@ export function SessionPanel({
           )}
         </section>
       )}
+
+      {/* ---- The games: the fight over the split, then the best take. Both
+           open per member exactly when the scores do (server-side). ---- */}
+      <RoundGames
+        sessionId={session.id}
+        members={members}
+        userId={userId}
+        refreshKey={gamesKey}
+        onSettled={onGamesSettled}
+      />
 
       {/* ---- In one sentence: everyone's blind takeaway, dropped together.
            Two 8s can hide opposite readings; this is where that shows. ---- */}

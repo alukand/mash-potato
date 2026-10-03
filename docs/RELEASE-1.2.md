@@ -1,6 +1,6 @@
 # Releasing 1.2
 
-1.2 is built on branch `next`. It adds four things:
+1.2 is built on branch `next`. It adds five things:
 
 - **Seasons and episodes.** Rate any season or episode on its own, start a
   group round on one, and discuss it apart from the show
@@ -11,6 +11,9 @@
   ask (`20261002120000_join_requests.sql`, CLAUDE.md "JOIN REQUESTS").
 - **Following**, and ratings people choose to share with their followers
   (`20261002140000_follows.sql`, CLAUDE.md "FOLLOWS AND SHARED RATINGS").
+- **Round games**: a fight over the most split category at the Reveal, and a
+  vote for the best take, with badges on a group trophy shelf
+  (`20261003120000_round_games.sql`, CLAUDE.md "ROUND GAMES").
 
 ## The order matters
 
@@ -25,9 +28,17 @@ goes last.
    npx supabase db push --linked
    ```
 
-   The list should show exactly three local-only migrations:
-   `20261001180000`, `20261002120000`, `20261002140000`. If Live's migrations
-   (`20260928...`) appear, you are on the wrong branch.
+   The list should show exactly four local-only migrations:
+   `20261001180000`, `20261002120000`, `20261002140000`, `20261003120000`.
+   If Live's migrations (`20260928...`) appear, you are on the wrong branch.
+
+   Then probe the new functions the way CLAUDE.md asks (the suites cannot
+   catch a missing `anon` revoke): an anon-key POST to
+   `/rest/v1/rpc/round_game_state`, `cast_round_vote` and `group_trophies`
+   must answer 401, while `public_profile` answers 200.
+
+   `20261003120000` also takes away direct client UPDATEs on a round's row
+   (no app version ever made one; the reveal is an RPC). 1.1 keeps working.
 
 2. **Functions.** Both changed:
 
@@ -37,7 +48,7 @@ goes last.
    ```
 
    `tmdb-search` serves the seasons list and the `season` op; `send-push`
-   learns `join_requested`. An older deployed function degrades quietly (no
+   learns `join_requested` and `fight_started`. An older deployed function degrades quietly (no
    seasons list, no join-request push), but ship them together.
 
 3. **Version.** Bump `MARKETING_VERSION` to 1.2.0 in
@@ -63,3 +74,15 @@ goes last.
   people you follow" on Home.
 - Share a Reveal on an iPhone and tap Save Image: the card lands in Photos
   (the first time, iOS asks for permission to add photos).
+- In a group of three, reveal a round where two people are 3+ points apart
+  on one category: both get a "Fight!" push, each makes a case, the third
+  person judges, and the winner lands on the trophy shelf.
+- Switch a group's Best take to Blind: the next round's scorecard asks for a
+  take, and the takes drop together at the reveal.
+
+## For App Review
+
+The review account's group ("Movie Night") has only rounds from before round
+games, so nothing there shows a fight or a take. If you want the reviewer to
+see the Report button on a take, play one round with the review account and
+its second member before submitting, with Best take on.

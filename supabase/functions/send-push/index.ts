@@ -18,6 +18,8 @@
 //   { event: 'join_requested', group_id, recipient_id (the owner), actor_id }
 //     (20261002120000; approving needs no event: it is a membership insert,
 //     so the applicant gets 'group_added')
+//   { event: 'fight_started', session_id, group_id, recipient_id (a fighter),
+//     actor_id (the other fighter) }  (20261003120000; one per fighter)
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -78,6 +80,14 @@ async function sessionInfo(
   )
   if (rows.length === 0) return null
   return { state: rows[0].state, titleName: rows[0].titles?.name ?? 'your movie' }
+}
+
+/** The category a round's fight is over, as the round labelled it. */
+async function fightCategory(sessionId: string): Promise<string | null> {
+  const rows = await rest<{ category_label: string }>(
+    `round_fights?session_id=eq.${sessionId}&select=category_label`,
+  )
+  return rows[0]?.category_label ?? null
 }
 
 async function titleInfo(
@@ -294,6 +304,16 @@ async function composeAndSend(evt: PushEvent) {
     recipients = [evt.recipient_id]
     title = `${actor} asked to join ${group}`
     body = 'Open the group to read their request and decide.'
+  } else if (evt.event === 'fight_started' && evt.recipient_id && evt.session_id) {
+    // Names the fight, never the numbers: the scores stay in the app.
+    const [session, category] = await Promise.all([
+      sessionInfo(evt.session_id),
+      fightCategory(evt.session_id),
+    ])
+    if (!session || !category) return { skipped: 'fight gone' }
+    recipients = [evt.recipient_id]
+    title = `Fight! You and ${actor} split over ${category}`
+    body = `${session.titleName} in ${group}: make your case before the group judges.`
   } else if (evt.event === 'round_started' && evt.session_id && evt.group_id) {
     const session = await sessionInfo(evt.session_id)
     if (!session) return { skipped: 'session gone' }

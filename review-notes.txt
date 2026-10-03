@@ -1,6 +1,6 @@
 Thank you for reviewing Mash Potato. New in this version: rating TV seasons
-and episodes, a new shareable Reveal card, groups that review who joins, and
-following friends (section 5). Sections 1 to 3 cover the user-generated
+and episodes, a new shareable Reveal card, groups that review who joins,
+following friends, and round games for groups (section 5). Sections 1 to 3 cover the user-generated
 content safeguards, browsing without an account, and how to sign in; section
 4 covers tokens.
 
@@ -25,8 +25,9 @@ each one.
     rather than before registration. That is what changed.)
 
 (b) FILTERING OF OBJECTIONABLE CONTENT
-    Every comment and message is checked against a blocked-term list on the
-    server before it is stored; a match is refused and never posts. To see it,
+    Every comment, message, take and fight argument is checked against a
+    blocked-term list on the server before it is stored; a match is refused
+    and never posts. To see it,
     sign in, open any title, and post a take containing an obvious slur: the
     post is rejected.
 
@@ -35,6 +36,8 @@ each one.
     message bubble from the other person > "Report" in the sheet that opens.
     Comments: open any title > Discussion > tap the menu on any comment that
     is not yours > "Report".
+    Takes and fight arguments (on a revealed group round): tap "Report" under
+    any one that is not yours.
     Content that draws three reports is hidden automatically while it waits
     for review.
 
@@ -123,6 +126,18 @@ question for people who ask. The question and every answer pass the same
 blocked-term filter as comments and messages. Answers are seen only by the
 group owner, who can approve, decline, or decline and block the person; a
 blocked person cannot ask again.
+
+ROUND GAMES (user-generated content)
+Groups can play two games on their rounds. When a reveal shows a big split
+on one category, the highest and lowest scorer each make one short argument,
+and the other members who scored pick a winner. A group owner can also turn
+on "Best take": everyone writes a take and the group votes on the best one.
+Takes and arguments pass the same blocked-term filter as comments, need the
+community terms accepted, can be reported (three reports hide one pending
+review, and it appears in the moderator queue labelled "Take" or "Fight
+argument"), and are hidden from anyone who blocked the writer. Votes are
+anonymous. Wins collect as badges inside the group only; there is no public
+ranking. Nothing here involves money, tokens or chance.
 
 FOLLOWING
 Any profile has a Follow button. Following shows nothing on its own: a

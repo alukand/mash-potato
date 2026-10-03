@@ -248,6 +248,56 @@ A searchable group has a `group_discovery.join_policy` (20261002120000):
 - The number is computed in the app with `lib/scoring.ts` (`soloScore` in
   `lib/api.ts`) on the rater's rubric, never in SQL.
 
+## ROUND GAMES: FIGHTS AND TAKES (2026-10-03)
+
+`supabase/migrations/20261003120000_round_games.sql`; DESIGN.md "Round games"
+has the product rules and the reward-loop law's "Trophies" amendment. The laws:
+
+- **THE ONE RULE covers the games.** A fight names two members BY their
+  scores, so it is part of the Reveal: `round_game_state` (the only read)
+  shows a fight, the takes and any argument only when the round is revealed
+  AND the viewer's card is locked; a blind take is its author's alone until
+  then. The four tables (`round_fights`, `round_posts`, `round_votes`,
+  `round_post_reports`) are RPC-only. Never add a policy or a grant that
+  reads them directly.
+- **The server decides every game.** The fight starts by trigger
+  (`start_round_fight`, at the reveal or on a late card within a day) using
+  the Reveal headline's pick: widest range, 2+ raters, ties to the earlier
+  category (keep it in step with `mostContestedCategory` in lib/scoring.ts).
+  It needs a range of 3+ and three locked cards. Phases, closing times and
+  results are computed on read by `fight_status` / `take_results`; the
+  only stored decisions are the early closes (`round_fights.decided_at`,
+  `reveal_sessions.takes_decided_at`). The client never infers a result.
+- **Votes are sealed and anonymous.** Tallies appear only once a game is
+  closed; no function ever returns who voted for whom. Only PLAYERS count
+  (a locked card in the round, still in the group, not banned); a judge is a
+  player who is neither fighter and has no block with either.
+- **A round's mode is a snapshot.** `reveal_sessions.takes_mode` is stamped
+  from the group by the BEFORE INSERT trigger `stamp_new_session`, which
+  also forces a client insert to start blind, unrevealed and timestamped now.
+  It is INVOKER on purpose: `current_user` then tells a client insert
+  (normalised) from a test fixture (left alone).
+- **A round's row takes no client UPDATE.** The `sessions_update_owner_or_
+  creator` policy is gone and UPDATE is revoked: an owner or starter could
+  otherwise move a round's reveal time (the game clocks) or even its group.
+  The reveal, late scoring and cancelling are definer RPCs. Any new
+  reveal_sessions column is server-written.
+- **Words are UGC** and follow the comment rules: `check_round_text`
+  (length, control characters, `banned_terms`), accepted terms, the ban
+  switch, `consume_rate_limit('round_post', 30, 3600)`, reports (three hide
+  a post), blocks, and the moderation queue (kinds `take` and `argument`;
+  `resolve_report` and `moderation_actions.target_kind` know both).
+- **Trophies are counts, peer-given, per group.** `group_trophies` returns
+  wins only (no session, category or score); a forfeit or a draw is not a
+  win. The shelf (`TrophyShelf`, `lib/trophies.ts`) is never sorted by wins.
+- Push: `fight_started` (ID-only payload, one per fighter); send-push names
+  the category, never a score.
+- Client: `lib/roundGames.ts` parses the document; `RoundGames` renders it
+  after the Reveal headline; `RoundScorer` writes a blind take with the card
+  (the take is saved BEFORE the lock, so a refused take never locks a card);
+  `GroupGamesSettings` and `TrophyShelf` live on the group page;
+  `HouseRulesSheet` asks for the terms up front.
+
 ## Commands
 
 - `npm run dev` — Vite on port 5180 (fixed; 5173/5174 belong to another project)

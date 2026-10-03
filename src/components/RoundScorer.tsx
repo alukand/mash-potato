@@ -6,11 +6,14 @@ import {
   fetchGroupRubrics,
   fetchLockStatus,
   fetchMyScore,
+  fetchRoundGames,
   fetchSessionRsvps,
+  fetchTermsAccepted,
   posterUrl,
   respondToSession,
   revealSession,
   saveMyScore,
+  saveRoundTake,
 } from '../lib/api'
 import type { GroupInfo, GroupRubricRow, MemberInfo, SessionInfo, SessionRubricEntry } from '../lib/api'
 import { splitRubricForMember } from '../lib/rubricCatalog'
@@ -22,6 +25,8 @@ import { CtaButton, ExtraCategoryChips, ScoreSliderRow, fieldClass } from './ui'
 import { CategoryLegend } from './CategoryLegend'
 import { LoadingCards, SuccessMark } from './Moments'
 import { refreshRewards } from '../lib/rewardsStore'
+import { TAKE_MAX } from '../lib/roundGames'
+import { HouseRulesSheet } from './HouseRulesSheet'
 
 interface RoundScorerProps {
   session: SessionInfo
@@ -36,7 +41,8 @@ interface RoundScorerProps {
 const defaultScores = (rubric: SessionRubricEntry[]): CategoryScores =>
   Object.fromEntries(rubric.map((e) => [e.key, 5]))
 
-// The live blind round: RSVP, sliders, one-liner, lock, and the Reveal CTA.
+// The live blind round: RSVP, sliders, one-liner (or, in a blind-takes round,
+// the take), lock, and the Reveal CTA.
 // Scores are real member_scores rows written through RLS; lock STATUS of
 // others comes from the session_lock_status helper (flags only).
 export function RoundScorer({ session, group, members, userId, onChanged }: RoundScorerProps) {
@@ -54,6 +60,12 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
     }
   }, [locked])
   const [oneLiner, setOneLiner] = useState('')
+  // A blind-takes round: your take rides your card, sealed until the reveal.
+  const blindTakes = session.takesMode === 'blind'
+  const [take, setTake] = useState('')
+  const [savedTake, setSavedTake] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null)
+  const [termsOpen, setTermsOpen] = useState(false)
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
   const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
   // undefined = still loading; the split into core vs opt-in extras waits.
@@ -89,6 +101,15 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
       }
       setLockStatus(locks)
       setRsvps(answers)
+      if (session.takesMode === 'blind') {
+        const [games, accepted] = await Promise.all([
+          fetchRoundGames(session.id),
+          fetchTermsAccepted(userId).catch(() => null),
+        ])
+        setTake(games.myTake?.body ?? '')
+        setSavedTake(games.myTake?.body ?? '')
+        setTermsAccepted(accepted)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
     }
@@ -109,11 +130,23 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
     return () => clearInterval(id)
   }, [session.id])
 
-  async function handleLockIn() {
+  async function handleLockIn(termsJustAgreed = false) {
+    const body = take.trim()
+    // The house rules come first, before anyone's words go anywhere.
+    if (blindTakes && body !== '' && termsAccepted === false && !termsJustAgreed) {
+      setTermsOpen(true)
+      return
+    }
     setBusy(true)
     setError(null)
     try {
-      await saveMyScore(session.id, userId, scores, true, oneLiner.trim() || null)
+      // The take first: if it is refused (the wordlist, say), nothing locks.
+      if (blindTakes && body !== savedTake) {
+        await saveRoundTake(session.id, body)
+        setSavedTake(body)
+        setTake(body)
+      }
+      await saveMyScore(session.id, userId, scores, true, blindTakes ? null : oneLiner.trim() || null)
       void refreshRewards(userId) // a card locked after the reveal can earn
       focusConfirmation.current = true
       setLocked(true)
@@ -131,7 +164,7 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
     setError(null)
     try {
       // keep the row (you stay "in") but drop the lock so sliders re-open
-      await saveMyScore(session.id, userId, scores, false, oneLiner.trim() || null)
+      await saveMyScore(session.id, userId, scores, false, blindTakes ? null : oneLiner.trim() || null)
       setLocked(false)
       setLockStatus(await fetchLockStatus(session.id))
     } catch (err) {
@@ -390,25 +423,60 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
         )}
       </section>
 
-      {/* ---- One-liner: sealed with the scores, drops at the reveal ---- */}
-      <section className="mp-rise mt-4" style={{ animationDelay: '120ms' }}>
-        <label
-          htmlFor="rate-one-liner"
-          className="mb-1.5 block px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
-        >
-          Your one-liner
-        </label>
-        <input
-          id="rate-one-liner"
-          type="text"
-          maxLength={140}
-          value={oneLiner}
-          disabled={locked || busy}
-          onChange={(e) => setOneLiner(e.target.value)}
-          placeholder="In one sentence, what was it about? (optional)"
-          className={`${fieldClass} disabled:opacity-60`}
-        />
-      </section>
+      {/* ---- The words on the card: a blind take (the group votes on the
+           best), a pointer to the after-reveal vote, or the one-liner.
+           All sealed with the scores, all dropped at the reveal. ---- */}
+      {blindTakes ? (
+        <section className="mp-rise mt-4" style={{ animationDelay: '120ms' }}>
+          <label
+            htmlFor="rate-take"
+            className="mb-1.5 block px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-gold"
+          >
+            Your take
+          </label>
+          <textarea
+            id="rate-take"
+            rows={3}
+            maxLength={TAKE_MAX}
+            value={take}
+            disabled={locked || busy}
+            onChange={(e) => setTake(e.target.value)}
+            placeholder="What's your take? The group votes on the best one after the reveal."
+            className={`${fieldClass} resize-none leading-snug disabled:opacity-60`}
+          />
+          <div className="mt-1 flex items-start justify-between gap-3 px-2">
+            <p className="text-[12px] leading-snug text-muted">
+              Sealed with your scores. Everyone&apos;s drops at the reveal.
+            </p>
+            <span className="tabular shrink-0 font-mono text-[10px] text-muted">
+              {take.length}/{TAKE_MAX}
+            </span>
+          </div>
+        </section>
+      ) : session.takesMode === 'after' ? (
+        <p className="mp-rise mt-4 px-2 text-[13px] leading-snug text-muted" style={{ animationDelay: '120ms' }}>
+          This round has a best-take vote. Write yours once the scores are out.
+        </p>
+      ) : (
+        <section className="mp-rise mt-4" style={{ animationDelay: '120ms' }}>
+          <label
+            htmlFor="rate-one-liner"
+            className="mb-1.5 block px-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
+          >
+            Your one-liner
+          </label>
+          <input
+            id="rate-one-liner"
+            type="text"
+            maxLength={140}
+            value={oneLiner}
+            disabled={locked || busy}
+            onChange={(e) => setOneLiner(e.target.value)}
+            placeholder="In one sentence, what was it about? (optional)"
+            className={`${fieldClass} disabled:opacity-60`}
+          />
+        </section>
+      )}
       </div>
 
       {/* ---- Blind note + lock in / reveal ---- */}
@@ -558,6 +626,17 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
             </button>
           ))}
       </section>
+
+      {termsOpen && (
+        <HouseRulesSheet
+          onAgreed={() => {
+            setTermsAccepted(true)
+            setTermsOpen(false)
+            void handleLockIn(true)
+          }}
+          onClose={() => setTermsOpen(false)}
+        />
+      )}
     </>
   )
 }

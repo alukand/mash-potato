@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   deleteGroup,
   createPlaylist,
@@ -6,6 +6,7 @@ import {
   fetchGroupLog,
   fetchGroupPlaylists,
   fetchGroupRubrics,
+  fetchGroupTrophies,
   fetchMyRubricPresets,
   fetchRecommendations,
   removeMember,
@@ -52,6 +53,9 @@ import { AddGroupMembers } from '../components/AddGroupMembers'
 import { RubricRowsEditor } from '../components/RubricRowsEditor'
 import { GroupDiscoverySettings } from '../components/GroupDiscoverySettings'
 import { JoinRequests } from '../components/JoinRequests'
+import { GroupGamesSettings } from '../components/GroupGamesSettings'
+import { TrophyShelf } from '../components/TrophyShelf'
+import type { TrophyCount } from '../lib/trophies'
 import type { OpenTitle } from '../lib/urlState'
 
 interface GroupScreenProps {
@@ -136,6 +140,8 @@ export function GroupScreen({
   const [rows, setRows] = useState<GroupRubricRow[] | null>(null)
   const [log, setLog] = useState<GroupLogEntry[]>([])
   const [cred, setCred] = useState<Map<string, number>>(new Map())
+  // The trophy shelf: wins the group voted for (round games, 20261003120000).
+  const [trophies, setTrophies] = useState<TrophyCount[]>([])
   // ---- shared watchlists ----
   const [watchlists, setWatchlists] = useState<PlaylistSummary[] | null>(null)
   const [newListName, setNewListName] = useState('')
@@ -193,6 +199,10 @@ export function GroupScreen({
     fetchGroupCred(group.id)
       .then((m) => !cancelled && setCred(m))
       .catch(() => {})
+    setTrophies([])
+    fetchGroupTrophies(group.id)
+      .then((t) => !cancelled && setTrophies(t))
+      .catch(() => {})
     // Shared watchlists: any member curates them.
     setWatchlists(null)
     fetchGroupPlaylists(group.id)
@@ -229,6 +239,13 @@ export function GroupScreen({
       cancelled = true
     }
   }, [group.id, userId])
+
+  // A fight or a best-take vote just closed on the panel: recount the shelf.
+  const refreshTrophies = useCallback(() => {
+    fetchGroupTrophies(group.id)
+      .then(setTrophies)
+      .catch(() => {})
+  }, [group.id])
 
   // Manage panel state belongs to one group at a time.
   useEffect(() => {
@@ -514,6 +531,7 @@ export function GroupScreen({
           onDiscuss={(tmdbId, mediaType, seed, part) =>
             onOpenTitle(tmdbId, mediaType, { part, discuss: { groupId: group.id, seed } })
           }
+          onGamesSettled={refreshTrophies}
         />
       </div>
 
@@ -544,6 +562,9 @@ export function GroupScreen({
           />
         </div>
       )}
+
+      {/* ---- the trophy shelf: what the group has voted to each member ---- */}
+      <TrophyShelf counts={trophies} members={members} userId={userId} />
 
       {/* ---- what to mash next, seeded by the group's best round ---- */}
       {recs && recs.items.length > 0 && (
@@ -696,6 +717,9 @@ export function GroupScreen({
             ))}
         </div>
       </section>
+
+      {/* ---- Round games: the fight and the best take ---- */}
+      <GroupGamesSettings key={`games:${group.id}`} group={group} isOwner={isOwner} onChanged={onGroupsChanged} />
 
       {/* ---- The group's mashed rubric (compact) + editor toggle ---- */}
       <section className="mp-rise mt-7" style={{ animationDelay: '120ms' }}>

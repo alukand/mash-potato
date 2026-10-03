@@ -677,23 +677,29 @@ export type Database = {
       groups: {
         Row: {
           created_at: string
+          fights: boolean
           id: string
           name: string
           owner_id: string
+          takes_mode: string
           taste_mode: string
         }
         Insert: {
           created_at?: string
+          fights?: boolean
           id?: string
           name: string
           owner_id: string
+          takes_mode?: string
           taste_mode?: string
         }
         Update: {
           created_at?: string
+          fights?: boolean
           id?: string
           name?: string
           owner_id?: string
+          takes_mode?: string
           taste_mode?: string
         }
         Relationships: [
@@ -1301,6 +1307,8 @@ export type Database = {
           revealed_at: string | null
           rubric: Json | null
           state: Database["public"]["Enums"]["reveal_state"]
+          takes_decided_at: string | null
+          takes_mode: string
           title_id: string
         }
         Insert: {
@@ -1311,6 +1319,8 @@ export type Database = {
           revealed_at?: string | null
           rubric?: Json | null
           state?: Database["public"]["Enums"]["reveal_state"]
+          takes_decided_at?: string | null
+          takes_mode?: string
           title_id: string
         }
         Update: {
@@ -1321,6 +1331,8 @@ export type Database = {
           revealed_at?: string | null
           rubric?: Json | null
           state?: Database["public"]["Enums"]["reveal_state"]
+          takes_decided_at?: string | null
+          takes_mode?: string
           title_id?: string
         }
         Relationships: [
@@ -1343,6 +1355,236 @@ export type Database = {
             columns: ["title_id"]
             isOneToOne: false
             referencedRelation: "titles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      round_fights: {
+        Row: {
+          category_key: string
+          category_label: string
+          created_at: string
+          decided_at: string | null
+          group_id: string
+          high_member_id: string
+          high_score: number
+          low_member_id: string
+          low_score: number
+          session_id: string
+        }
+        Insert: {
+          category_key: string
+          category_label: string
+          created_at?: string
+          decided_at?: string | null
+          group_id: string
+          high_member_id: string
+          high_score: number
+          low_member_id: string
+          low_score: number
+          session_id: string
+        }
+        Update: {
+          category_key?: string
+          category_label?: string
+          created_at?: string
+          decided_at?: string | null
+          group_id?: string
+          high_member_id?: string
+          high_score?: number
+          low_member_id?: string
+          low_score?: number
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "round_fights_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "round_fights_high_member_id_fkey"
+            columns: ["high_member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "round_fights_low_member_id_fkey"
+            columns: ["low_member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "round_fights_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "reveal_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      round_post_reports: {
+        Row: {
+          created_at: string
+          post_id: string
+          reason: string | null
+          reporter_id: string
+          resolution: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          post_id: string
+          reason?: string | null
+          reporter_id: string
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          post_id?: string
+          reason?: string | null
+          reporter_id?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "round_post_reports_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "round_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "round_post_reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "round_post_reports_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      round_posts: {
+        Row: {
+          author_id: string
+          auto_hidden: boolean
+          body: string
+          created_at: string
+          group_id: string
+          id: string
+          kind: string
+          removed: boolean
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          auto_hidden?: boolean
+          body: string
+          created_at?: string
+          group_id: string
+          id?: string
+          kind: string
+          removed?: boolean
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          auto_hidden?: boolean
+          body?: string
+          created_at?: string
+          group_id?: string
+          id?: string
+          kind?: string
+          removed?: boolean
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "round_posts_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "round_posts_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "round_posts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "reveal_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      round_votes: {
+        Row: {
+          choice_id: string
+          created_at: string
+          game: string
+          session_id: string
+          updated_at: string
+          voter_id: string
+        }
+        Insert: {
+          choice_id: string
+          created_at?: string
+          game: string
+          session_id: string
+          updated_at?: string
+          voter_id: string
+        }
+        Update: {
+          choice_id?: string
+          created_at?: string
+          game?: string
+          session_id?: string
+          updated_at?: string
+          voter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "round_votes_choice_id_fkey"
+            columns: ["choice_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "round_votes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "reveal_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "round_votes_voter_id_fkey"
+            columns: ["voter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1840,6 +2082,14 @@ export type Database = {
         Returns: boolean
       }
       cancel_session: { Args: { p_session_id: string }; Returns: undefined }
+      cast_round_vote: {
+        Args: { p_choice: string; p_game: string; p_session_id: string }
+        Returns: undefined
+      }
+      check_round_text: {
+        Args: { p_body: string; p_max: number; p_noun: string }
+        Returns: undefined
+      }
       claim_daily_tokens: { Args: { p_tz: string }; Returns: Json }
       close_group_poll: { Args: { p_poll_id: string }; Returns: undefined }
       comments_open_for_me: {
@@ -1911,6 +2161,21 @@ export type Database = {
         }
         Returns: string
       }
+      fight_status: {
+        Args: { p_session_id: string }
+        Returns: {
+          arguments_due: string
+          both_in_at: string
+          closes_at: string
+          high_votes: number
+          judges: number
+          low_votes: number
+          outcome: string
+          phase: string
+          voted: number
+          winner_id: string
+        }[]
+      }
       follow_state: {
         Args: { p_user_id: string }
         Returns: {
@@ -1957,6 +2222,14 @@ export type Database = {
           join_question: string
           pending_count: number
           searchable: boolean
+        }[]
+      }
+      group_trophies: {
+        Args: { p_group_id: string }
+        Returns: {
+          fight_wins: number
+          take_wins: number
+          user_id: string
         }[]
       }
       has_locked_scorecard: { Args: { p_session_id: string }; Returns: boolean }
@@ -2075,6 +2348,16 @@ export type Database = {
       }
       my_onboarding: { Args: never; Returns: Json }
       my_rewards: { Args: { p_history_limit?: number }; Returns: Json }
+      my_round_posts: {
+        Args: never
+        Returns: {
+          body: string
+          created_at: string
+          group_name: string
+          kind: string
+          title_name: string
+        }[]
+      }
       pending_join_requests: {
         Args: { p_group_id: string }
         Returns: {
@@ -2113,6 +2396,10 @@ export type Database = {
         Args: { p_message_id: string; p_reason: string }
         Returns: undefined
       }
+      report_round_post: {
+        Args: { p_post_id: string; p_reason: string }
+        Returns: undefined
+      }
       request_to_join: {
         Args: { p_answer: string; p_group_id: string }
         Returns: string
@@ -2136,6 +2423,8 @@ export type Database = {
           revealed_at: string | null
           rubric: Json | null
           state: Database["public"]["Enums"]["reveal_state"]
+          takes_decided_at: string | null
+          takes_mode: string
           title_id: string
         }
         SetofOptions: {
@@ -2147,9 +2436,25 @@ export type Database = {
       }
       reward_day: { Args: { p_user: string }; Returns: string }
       rewards_on: { Args: never; Returns: boolean }
+      round_game_state: { Args: { p_session_id: string }; Returns: Json }
+      round_players: {
+        Args: { p_session_id: string }
+        Returns: {
+          banned: boolean
+          member_id: string
+        }[]
+      }
+      save_fight_argument: {
+        Args: { p_body: string; p_session_id: string }
+        Returns: undefined
+      }
       save_onboarding_rubric: {
         Args: { p_display_name: string; p_rows: Json }
         Returns: string
+      }
+      save_round_take: {
+        Args: { p_body: string; p_session_id: string }
+        Returns: undefined
       }
       search_my_messages: {
         Args: { p_before?: string; p_limit?: number; p_query: string }
@@ -2209,9 +2514,20 @@ export type Database = {
       }
       shares_group_with: { Args: { p_user_id: string }; Returns: boolean }
       start_dm: { Args: { p_user_id: string }; Returns: string }
+      start_round_fight: { Args: { p_session_id: string }; Returns: undefined }
       take_digest: { Args: { p_body: string }; Returns: string }
       take_is_substantial: { Args: { p_body: string }; Returns: boolean }
+      take_results: {
+        Args: { p_session_id: string }
+        Returns: {
+          author_id: string
+          post_id: string
+          votes: number
+          winner: boolean
+        }[]
+      }
       take_reward_open: { Args: { p_title_id: string }; Returns: boolean }
+      takes_close_at: { Args: { p_session_id: string }; Returns: string }
       title_community_histogram: {
         Args: { p_title_id: string; p_weights: Json }
         Returns: {

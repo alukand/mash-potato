@@ -6,7 +6,7 @@ import {
   resolveReport,
   setUserBanned,
 } from '../lib/api'
-import type { ModerationAction, ModerationItem } from '../lib/api'
+import type { ModerationAction, ModerationItem, ModerationKind } from '../lib/api'
 
 /**
  * The report queue.
@@ -22,6 +22,14 @@ import type { ModerationAction, ModerationItem } from '../lib/api'
  */
 
 const HOUR = 60 * 60 * 1000
+
+/** What the queue calls each kind of reported content. */
+const KIND_LABEL: Record<ModerationKind, string> = {
+  comment: 'Comment',
+  message: 'Message',
+  take: 'Take',
+  argument: 'Fight argument',
+}
 const SLA_HOURS = 24
 
 /** How long this has been waiting, and whether the 24-hour clock has run out. */
@@ -67,7 +75,7 @@ function QueueCard({
   return (
     <li className="rounded-2xl border border-line/60 bg-surface/60 p-4">
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        <Pill tone="muted">{item.kind === 'comment' ? 'Comment' : 'Message'}</Pill>
+        <Pill tone="muted">{KIND_LABEL[item.kind]}</Pill>
         <Pill tone={item.reportCount > 2 ? 'gold' : 'muted'}>
           {item.reportCount} {item.reportCount === 1 ? 'report' : 'reports'}
         </Pill>

@@ -91,6 +91,14 @@ revoke all on public.group_join_requests from public, anon, authenticated;
 -- profiles.share_ratings column is excluded by omission from the column grants
 -- above, like is_moderator.
 revoke all on public.follows from public, anon, authenticated;
+-- round games (20261003120000): fights, takes, votes and their reports are
+-- RPC-only, and a round's own row takes no client UPDATE at all (the reveal,
+-- late scoring and cancelling are definer RPCs; the policy that allowed it is
+-- dropped, so this revoke is what the twin has left to prove).
+revoke all on public.round_fights, public.round_posts, public.round_votes,
+              public.round_post_reports
+  from public, anon, authenticated;
+revoke update on public.reveal_sessions from authenticated, anon;
 -- ...and the migration's per-function anon revokes, mirrored (the CLAUDE.md
 -- law: every revoke a migration makes is re-applied here, so the twin never
 -- tests a posture looser than hosted).
@@ -111,7 +119,10 @@ begin
       'my_join_requests',
       -- follows (20261002140000)
       'follow_user', 'unfollow_user', 'follow_state', 'my_follow_summary',
-      'my_following', 'set_share_ratings', 'following_feed'])
+      'my_following', 'set_share_ratings', 'following_feed',
+      -- round games (20261003120000)
+      'round_game_state', 'save_round_take', 'save_fight_argument',
+      'cast_round_vote', 'report_round_post', 'group_trophies', 'my_round_posts'])
   loop
     execute format('revoke all on function %s from public, anon', f.sig);
   end loop;
@@ -143,7 +154,12 @@ begin
       'rewards_on', 'reward_day', 'award_tokens', 'award_rating', 'award_movie_night',
       'take_is_substantial', 'take_digest', 'reconcile_take', 'reward_solo_rating',
       'reward_session_revealed', 'reward_locked_card', 'reward_take',
-      'reward_take_changed', 'reward_take_reaction', 'start_token_program'])
+      'reward_take_changed', 'reward_take_reaction', 'start_token_program',
+      -- round games internals (20261003120000): the fight starter, the
+      -- result math, and the triggers that call them
+      'stamp_new_session', 'round_players', 'takes_close_at', 'take_results',
+      'fight_status', 'check_round_text', 'start_round_fight', 'fight_on_reveal',
+      'fight_on_late_card', 'auto_hide_reported_round_post'])
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);
   end loop;

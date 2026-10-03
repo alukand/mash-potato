@@ -291,6 +291,39 @@ category KEY with the label interpolated so Animation / Voice Acting read
 right — e.g. Pacing: "Where did it drag for you, and where did it fly?").
 Generic "Defend your take…" stays as the fallback for unmapped categories.
 
+## Round games (2026-10-03)
+
+Two games ride a group's rounds, switched by the owner in the group's
+settings ("Round games"). Both open per member exactly when the scores do,
+because both are part of the Reveal (THE ONE RULE, enforced server-side).
+
+**The fight.** When a reveal splits 3+ points on its most contested category
+(the headline's own pick) and has three locked cards, the highest and lowest
+scorer each make ONE argument (280 characters). Arguments are sealed until
+both are in, so neither side gets the rebuttal; then everyone else who played
+judges for a day. Votes are sealed until the bell and anonymous for good;
+once every judge has voted, the bell rings early and the result is final
+(the last judge is told so before they tap). A late card can start the fight
+the reveal could not, for a day. Fights are on by default; ties for a corner
+go to whoever started their card first. Fighters get a push ("Fight! You and
+Sam split over Pacing"); nobody else is pinged.
+Colours: the fight is coral (it is divergence), the scores use the ramp, and
+the winner's chip is gold.
+
+**Best take.** 'Blind': the take is written on the scorecard (500
+characters), sealed with it, and everyone's drops at the reveal; with every
+player voted, the vote closes early. 'After the reveal': takes are written
+once the scores are out and the vote runs its full day (a take could still
+be coming). A take with votes cannot be edited. Two takes make a contest;
+ties share the win. In a takes round the take replaces the one-liner on the
+card, so a card never asks for two pieces of writing.
+
+**Words are UGC**: the wordlist, the terms sheet before the first post, a
+rate limit, Report under every take and argument (three reports hide it),
+blocks (a blocked writer's take disappears; a judge who blocked a fighter
+watches instead of judging), and the moderation queue, labelled Take or
+Fight argument.
+
 ## View state
 
 Persist by default (localStorage, `mp.*` keys): active tab (`mp.activeTab`),
@@ -348,6 +381,21 @@ is built to keep everything else here true:
 
 Mechanics live in `supabase/migrations/20261001120000_rewards.sql`; the
 runbook is `docs/REWARDS.md`.
+
+**Trophies (2026-10-03): the owner's call.** Asked why the law bans
+leaderboards, the owner wanted badges and tallies to collect inside groups.
+That fits the law's own test, so it is an extension, not an exception: a
+trophy is PEER-GIVEN (the group voted for it), GROUP-SCOPED (counted per
+group, shown only there) and COSMETIC (nothing to spend, no tokens). The
+round games' trophy shelf counts each member's best takes and fights won,
+with three badge tiers per track (`lib/trophies.ts`: Quotable, Pull Quote,
+Final Word; Contender, Heavyweight, Undisputed). Still banned:
+- **A ranked table.** The shelf lists winners in the group's member order,
+  never sorted by wins. Global or cross-group counts stay banned.
+- **Trophies nobody voted for.** A forfeit wins the fight but earns nothing,
+  and a draw earns nothing.
+- **Counting entries.** Fights are entered by scoring at an extreme, so only
+  fights WON count; a tally of fights fought would pay for exaggerated scores.
 
 Discussion shapes: group threads are the DEBRIEF (they open with the
 reveal; sealed per member while their card is open — the blind rule extends
@@ -527,6 +575,20 @@ baseline function grant, which is exactly how an open endpoint shipped on
 2026-07-25.
 
 ## Changelog
+
+- 2026-10-03 (round games): the fight over the biggest split and the
+  best-take vote ("Round games" in group settings; owner switches, everyone
+  reads). The Reveal gains a coral "The fight" card (corners with avatar and
+  ramp-coloured score, sealed arguments, judge buttons, verdict) and a gold
+  "Best take" list (pick as best, sealed tallies, a Best take chip). Blind
+  rounds ask for the take on the scorecard in place of the one-liner. The
+  group page gains a Trophy shelf after the log (badge chips: gold for takes,
+  coral for fights; your own next badge as a goal). A shared HouseRulesSheet
+  asks for the terms before anyone's first take or argument. The reward-loop
+  law gained "Trophies" (above). No token, font, or layout-system changes.
+  Considered/rejected: public voters (social pressure on small groups);
+  tallies of fights fought (pays for extreme scores); voice notes (text first,
+  the owner's call); tokens for wins.
 
 - 2026-10-01 (tokens): a private, capped, quality-weighted token ledger (see
   the Reward loop law). Home has a daily-token strip that disappears once

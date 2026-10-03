@@ -16,6 +16,9 @@ import { parseRewards } from './rewards'
 import type { RewardsSummary } from './rewards'
 import { partFromRow, partTitleName } from './titleParts'
 import type { TitlePart } from './titleParts'
+import { parseRoundGames, takesModeFrom } from './roundGames'
+import type { RoundGames, TakesMode } from './roundGames'
+import type { TrophyCount } from './trophies'
 
 export type { SessionRubricEntry } from './mapping'
 export type { TitlePart } from './titleParts'
@@ -32,6 +35,10 @@ export interface GroupInfo {
    * Distinct from profiles.taste_mode, which governs solo/community ratings.
    */
   tasteMode: TasteMode
+  /** A fight over the biggest split starts at the reveal (20261003120000). */
+  fights: boolean
+  /** Best take: off, written 'blind' with the scorecard, or 'after' the reveal. */
+  takesMode: TakesMode
 }
 
 export interface MemberInfo {
@@ -337,7 +344,7 @@ export async function removeDeviceToken(token: string): Promise<void> {
 export async function fetchMyGroups(userId: string): Promise<GroupInfo[]> {
   const { data, error } = await supabase
     .from('group_members')
-    .select('role, is_public, groups(id, name, taste_mode)')
+    .select('role, is_public, groups(id, name, taste_mode, fights, takes_mode)')
     .eq('user_id', userId)
     .order('joined_at', { ascending: true })
   if (error) throw new Error(error.message)
@@ -349,6 +356,8 @@ export async function fetchMyGroups(userId: string): Promise<GroupInfo[]> {
       role: row.role,
       isPublic: row.is_public,
       tasteMode: row.groups!.taste_mode === 'casual' ? 'casual' : 'buff',
+      fights: row.groups!.fights,
+      takesMode: takesModeFrom(row.groups!.takes_mode),
     }))
 }
 
@@ -365,7 +374,7 @@ export async function createGroup(
   const { data, error } = await supabase
     .from('groups')
     .insert({ name, owner_id: userId, taste_mode: tasteMode })
-    .select('id, name, taste_mode')
+    .select('id, name, taste_mode, fights, takes_mode')
     .single()
   if (error) throw new Error(error.message)
   return {
@@ -374,6 +383,8 @@ export async function createGroup(
     role: 'owner',
     isPublic: false,
     tasteMode: data.taste_mode === 'casual' ? 'casual' : 'buff',
+    fights: data.fights,
+    takesMode: takesModeFrom(data.takes_mode),
   }
 }
 
@@ -389,6 +400,24 @@ export async function setGroupTasteMode(groupId: string, mode: TasteMode): Promi
     .update({ taste_mode: mode })
     .eq('id', groupId)
   if (error) throw new Error(error.message)
+}
+
+/**
+ * Switch a group's games (owner-only by RLS `groups_update_owner`, which
+ * matches no row for anyone else: hence the returned row is checked). A round
+ * keeps the takes mode it started with; a fight follows the setting at the
+ * reveal.
+ */
+export async function setGroupGames(
+  groupId: string,
+  games: { fights?: boolean; takesMode?: TakesMode },
+): Promise<void> {
+  const patch: { fights?: boolean; takes_mode?: TakesMode } = {}
+  if (games.fights !== undefined) patch.fights = games.fights
+  if (games.takesMode !== undefined) patch.takes_mode = games.takesMode
+  const { data, error } = await supabase.from('groups').update(patch).eq('id', groupId).select('id')
+  if (error) throw new Error(error.message)
+  if (!data || data.length === 0) throw new Error('Only the group owner can change the games.')
 }
 
 export async function fetchMembers(groupId: string): Promise<MemberInfo[]> {
@@ -557,6 +586,8 @@ export interface SessionInfo {
   posterPath: string | null
   /** The category set this session is scored under (snapshot at creation). */
   rubric: SessionRubricEntry[] | null
+  /** How this round plays the best take, fixed when it started. */
+  takesMode: TakesMode
 }
 
 export interface NewTitle {
@@ -576,7 +607,7 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
   const { data, error } = await supabase
     .from('reveal_sessions')
     .select(
-      'id, state, created_by, created_at, rubric, titles(id, tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
+      'id, state, created_by, created_at, rubric, takes_mode, titles(id, tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
     )
     .eq('group_id', groupId)
     .order('created_at', { ascending: false })
@@ -597,6 +628,7 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
     titlePart: partFromRow(row.titles),
     posterPath: row.titles.poster_path,
     rubric: rubricFromJson(row.rubric),
+    takesMode: takesModeFrom(row.takes_mode),
   }
 }
 
@@ -605,7 +637,7 @@ export async function fetchSessionById(sessionId: string): Promise<SessionInfo |
   const { data, error } = await supabase
     .from('reveal_sessions')
     .select(
-      'id, state, created_by, created_at, rubric, titles(id, tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
+      'id, state, created_by, created_at, rubric, takes_mode, titles(id, tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
     )
     .eq('id', sessionId)
     .maybeSingle()
@@ -624,6 +656,7 @@ export async function fetchSessionById(sessionId: string): Promise<SessionInfo |
     titlePart: partFromRow(data.titles),
     posterPath: data.titles.poster_path,
     rubric: rubricFromJson(data.rubric),
+    takesMode: takesModeFrom(data.takes_mode),
   }
 }
 
@@ -690,7 +723,7 @@ export async function createSession(
       // index signature the generated Json type wants)
       rubric: rubric.map((e) => ({ key: e.key, label: e.label, weight: e.weight })),
     })
-    .select('id, state, created_by, created_at')
+    .select('id, state, created_by, created_at, takes_mode')
     .single()
   if (error) throw new Error(error.message)
 
@@ -711,7 +744,68 @@ export async function createSession(
     titlePart: title.part ? { season: title.part.season, episode: title.part.episode } : null,
     posterPath: title.posterPath,
     rubric,
+    // the server stamps the group's mode on the round; this reads it back
+    takesMode: takesModeFrom(data.takes_mode),
   }
+}
+
+// ---- round games (20261003120000): the fight and the best take -----------
+
+/** Everything this round's games show you. THE ONE RULE is applied server-side. */
+export async function fetchRoundGames(sessionId: string): Promise<RoundGames> {
+  const { data, error } = await supabase.rpc('round_game_state', { p_session_id: sessionId })
+  if (error) throw new Error(error.message)
+  return parseRoundGames(data)
+}
+
+/** Save your take on a round; an empty body deletes it. */
+export async function saveRoundTake(sessionId: string, body: string): Promise<void> {
+  const { error } = await supabase.rpc('save_round_take', { p_session_id: sessionId, p_body: body })
+  if (error) throw new Error(error.message)
+}
+
+/** A fighter's one argument: editable until the other side's is in. */
+export async function saveFightArgument(sessionId: string, body: string): Promise<void> {
+  const { error } = await supabase.rpc('save_fight_argument', { p_session_id: sessionId, p_body: body })
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Vote, or with a null choice take your vote back. A take vote names the
+ * take's author; a fight vote names one of the two fighters.
+ */
+export async function castRoundVote(
+  sessionId: string,
+  game: 'take' | 'fight',
+  choice: string | null,
+): Promise<void> {
+  const { error } = await supabase.rpc('cast_round_vote', {
+    p_session_id: sessionId,
+    p_game: game,
+    // null takes the vote back (the generated types don't model nullable params)
+    p_choice: choice as string,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/** Report a take or a fight argument; three reports hide it pending review. */
+export async function reportRoundPost(postId: string, reason: string | null): Promise<void> {
+  const { error } = await supabase.rpc('report_round_post', {
+    p_post_id: postId,
+    p_reason: reason as string,
+  })
+  if (error) throw new Error(error.message)
+}
+
+/** Each member's wins in a group, for the trophy shelf. */
+export async function fetchGroupTrophies(groupId: string): Promise<TrophyCount[]> {
+  const { data, error } = await supabase.rpc('group_trophies', { p_group_id: groupId })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    userId: r.user_id,
+    takeWins: r.take_wins,
+    fightWins: r.fight_wins,
+  }))
 }
 
 // ---- session RSVPs ("who's in this round") --------------------------------
@@ -2283,7 +2377,7 @@ export async function setGroupVisibility(groupId: string, isPublic: boolean): Pr
  *  theirs), your comments, your playlists, your rubric. RLS already scopes
  *  every query to self. */
 export async function fetchMyExport(userId: string): Promise<Record<string, unknown>> {
-  const [ratings, saved, cards, comments, playlists, rubrics, tokens, joinRequests, following] = await Promise.all([
+  const [ratings, saved, cards, comments, playlists, rubrics, tokens, joinRequests, following, roundPosts] = await Promise.all([
     supabase
       .from('global_ratings')
       .select('updated_at, scores, titles(tmdb_id, media_type, name, year)')
@@ -2317,8 +2411,10 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
     supabase.rpc('my_join_requests'),
     // the people you follow
     supabase.rpc('my_following'),
+    // your takes and fight arguments on group rounds
+    supabase.rpc('my_round_posts'),
   ])
-  for (const q of [ratings, cards, comments, playlists, rubrics, tokens, joinRequests, following]) {
+  for (const q of [ratings, cards, comments, playlists, rubrics, tokens, joinRequests, following, roundPosts]) {
     if (q.error) throw new Error(q.error.message)
   }
   return {
@@ -2404,6 +2500,13 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
       at: r.created_at,
     })),
     following: (following.data ?? []).map((r) => ({ name: r.display_name, since: r.followed_at })),
+    roundTakesAndArguments: (roundPosts.data ?? []).map((r) => ({
+      group: r.group_name,
+      title: r.title_name,
+      kind: r.kind,
+      body: r.body,
+      postedAt: r.created_at,
+    })),
   }
 }
 
@@ -3377,8 +3480,11 @@ export function onInboxChange(onChange: () => void): () => void {
 // is a UI gate: hiding the screen from a non-moderator is a courtesy, and the
 // four calls below would still be refused if it were bypassed.
 
+/** What a report can be about (takes and fight arguments since 20261003120000). */
+export type ModerationKind = 'comment' | 'message' | 'take' | 'argument'
+
 export type ModerationItem = {
-  kind: 'comment' | 'message'
+  kind: ModerationKind
   contentId: string
   body: string
   authorId: string
@@ -3392,7 +3498,7 @@ export type ModerationItem = {
 
 export type ModerationAction = {
   action: 'dismiss' | 'remove' | 'ban' | 'unban'
-  targetKind: 'comment' | 'message' | 'user'
+  targetKind: ModerationKind | 'user'
   /** What was acted on: a content id for comment/message, a person for user. */
   targetId: string
   /**
@@ -3422,7 +3528,7 @@ export async function fetchModerationQueue(): Promise<ModerationItem[]> {
   const { data, error } = await supabase.rpc('moderation_queue')
   if (error) throw new Error(error.message)
   return (data ?? []).map((r) => ({
-    kind: r.kind as 'comment' | 'message',
+    kind: r.kind as ModerationKind,
     contentId: r.content_id,
     body: r.body ?? '',
     authorId: r.author_id,
@@ -3440,7 +3546,7 @@ export async function fetchModerationQueue(): Promise<ModerationItem[]> {
  * brigade cannot mute someone permanently. `ban` removes the content too.
  */
 export async function resolveReport(
-  kind: 'comment' | 'message',
+  kind: ModerationKind,
   contentId: string,
   action: 'dismiss' | 'remove' | 'ban',
   note?: string,

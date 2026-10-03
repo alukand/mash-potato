@@ -238,7 +238,9 @@ begin
   raise notice 'PASS 9b (outsider): a non-member gets no lock status';
 end $$;
 
--- hardening: a revealed session can never go back to blind
+-- hardening: a revealed session can never go back to blind. Since
+-- 20261003120000 a client cannot UPDATE a round's row at all (permission
+-- denied); the prevent_unreveal trigger still guards every definer path.
 set local request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}';
 
 do $$
@@ -248,6 +250,8 @@ begin
       where id = '66666666-6666-6666-6666-666666666666';
     raise exception 'FAIL 10: a revealed session was flipped back to blind';
   exception
+    when insufficient_privilege then
+      raise notice 'PASS 10: a client cannot touch a revealed session (no UPDATE privilege)';
     when raise_exception then
       if sqlerrm like '%un-revealed%' then
         raise notice 'PASS 10: a revealed session cannot be un-revealed';
@@ -256,6 +260,23 @@ begin
       end if;
   end;
 end $$;
+reset role;
+do $$
+begin
+  begin
+    update public.reveal_sessions set state = 'blind'
+      where id = '66666666-6666-6666-6666-666666666666';
+    raise exception 'FAIL 10b: a revealed session was flipped back to blind';
+  exception
+    when raise_exception then
+      if sqlerrm like '%un-revealed%' then
+        raise notice 'PASS 10b: not even the database owner can un-reveal a session';
+      else
+        raise;
+      end if;
+  end;
+end $$;
+set local role authenticated;
 
 -- ============== LIVING REVEALS: late scoring + category backfill ==============
 
