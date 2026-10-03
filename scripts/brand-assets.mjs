@@ -1,13 +1,19 @@
-// Every raster brand asset, generated from the two source drawings in brand/:
+// Every raster brand asset, generated from these sources:
 //
-//   brand/mascot-face.webp  the mascot's face: the app's HOME-SCREEN ICON and
-//                           nothing else (iOS, Android, and the icons the web
-//                           app and the website get when saved to a home screen)
+//   assets/icon/mash-potato-icon.svg
+//                           the sliced potato on the app's dark tile: the APP
+//                           ICON (iOS, Android, the web app's install icons, the
+//                           website's apple-touch icon) and the browser-tab
+//                           favicons. Opaque and square: the platforms shape it.
 //   brand/mascot.webp       the whole mascot, a sticker on cream paper: the LOGO
-//                           everywhere else, from favicons to the launch screen
+//                           everywhere else, from the launch screen to the app
 //   brand/mascot-stickers.webp
 //                           fifteen poses on a transparent sheet, cut into the
 //                           app's stickers (src/assets/stickers/)
+//
+// brand/mascot-face.webp was the app icon until 2026-10-03. It is kept, unused,
+// and so is the icon it made (AppIcon-512@2x.png), so the change can be undone
+// by pointing the iOS Contents.json back at that file.
 //
 // Run it after changing any drawing, then commit what it writes:
 //
@@ -19,7 +25,7 @@
 // is laid out in HTML (web/og.html has the command).
 
 import { createRequire } from 'node:module'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -34,11 +40,11 @@ try {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const at = (...parts) => path.join(ROOT, ...parts)
-const FACE = at('brand', 'mascot-face.webp')
+const ICON = at('assets', 'icon', 'mash-potato-icon.svg')
 const BODY = at('brand', 'mascot.webp')
 const SHEET = at('brand', 'mascot-stickers.webp')
 
-const BG = '#15121b' // --color-bg, the app's background
+const BG = '#15121b' // --color-bg, the app's background (also the icon's tile)
 
 let written = 0
 async function save(rel, buffer) {
@@ -48,63 +54,45 @@ async function save(rel, buffer) {
   written += 1
 }
 
-// ---- the face -------------------------------------------------------------------
+// ---- the app icon -----------------------------------------------------------------
 
-// The source has no alpha channel, so plain resizes stay opaque (what iOS
-// requires of an app icon). Don't call removeAlpha() here: sharp applies it at
-// output, after any mask, and the tiles' transparent corners turn black.
-const face = (size) => sharp(FACE).resize(size, size, { kernel: 'lanczos3' })
+// The master is drawn on a 1024 viewBox at 1024px, so 72 dpi renders it 1:1.
+// Every size is resized from that one render. removeAlpha(): the tile is
+// opaque, and iOS rejects an app icon with an alpha channel.
+const iconSvg = await readFile(ICON, 'utf8')
+const iconMaster = await sharp(Buffer.from(iconSvg), { density: 72 }).png().toBuffer()
+const icon = (size) => sharp(iconMaster).resize(size, size, { kernel: 'lanczos3' }).removeAlpha()
 
-/** The face as a tile with rounded corners (the shape of an app icon). */
-async function faceTile(size, radius = 0.225) {
-  const r = Math.round(size * radius)
-  const mask = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" rx="${r}" ry="${r}"/></svg>`,
+/**
+ * The icon with the potato scaled about the centre and the tile still full
+ * bleed: for a platform that crops to its own shape inside a safe zone
+ * (Android's adaptive foreground guarantees only a 66dp circle of 108dp).
+ */
+async function iconWithPotatoAt(size, scale) {
+  const tag = '<g id="potato" transform="scale(2)">'
+  if (!iconSvg.includes(tag)) throw new Error('the icon master lost the potato group this script scales')
+  const svg = iconSvg.replace(
+    tag,
+    `<g id="potato" transform="translate(512 512) scale(${scale}) translate(-512 -512) scale(2)">`,
   )
-  return face(size).ensureAlpha().composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer()
+  const png = await sharp(Buffer.from(svg), { density: 72 }).png().toBuffer()
+  return sharp(png).resize(size, size, { kernel: 'lanczos3' }).removeAlpha().png().toBuffer()
 }
 
 /**
- * The face shrunk to `fraction` of a square canvas, the margin filled by
- * repeating its own edge pixels so the paper never shows a seam. For icon
- * masks that crop (Android adaptive and round icons, web "maskable"): the
- * brow tips sit near the corners and would otherwise be clipped.
+ * Android's legacy round launcher icon: the icon cut to a circle. The one
+ * output with transparency, because round is the shape that launcher asks for;
+ * the potato sits well inside it.
  */
-async function facePadded(size, fraction) {
-  const inner = Math.round(size * fraction)
-  const before = Math.floor((size - inner) / 2)
-  const after = size - inner - before
-  const buf = await face(inner)
-    .extend({ top: before, bottom: after, left: before, right: after, extendWith: 'copy' })
-    .png()
-    .toBuffer()
-  return buf
-}
-
-async function faceCircle(size, fraction) {
+async function iconCircle(size) {
   const mask = Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}"/></svg>`,
   )
-  return sharp(await facePadded(size, fraction))
+  return sharp(await icon(size).png().toBuffer())
     .ensureAlpha()
     .composite([{ input: mask, blend: 'dest-in' }])
     .png()
     .toBuffer()
-}
-
-/** The average colour of the drawing's outer edge, for flat fills beside it. */
-async function faceEdgeColor() {
-  const { data, info } = await sharp(FACE).removeAlpha().raw().toBuffer({ resolveWithObject: true })
-  const { width: w, height: h } = info
-  let r = 0, g = 0, b = 0, n = 0
-  for (let i = 0; i < w; i++) {
-    for (const [x, y] of [[i, 0], [i, h - 1], [0, Math.min(i, h - 1)], [w - 1, Math.min(i, h - 1)]]) {
-      const p = (y * w + x) * 3
-      r += data[p]; g += data[p + 1]; b += data[p + 2]; n += 1
-    }
-  }
-  const hex = (v) => Math.round(v / n).toString(16).padStart(2, '0')
-  return `#${hex(r)}${hex(g)}${hex(b)}`.toUpperCase()
 }
 
 // ---- the mascot, cut out of its paper ---------------------------------------------
@@ -240,13 +228,6 @@ async function cutout() {
 }
 
 const mascotAt = (cut, width) => sharp(cut).resize({ width, kernel: 'lanczos3' })
-
-/** The mascot fitted into a transparent square: browser-tab favicons. */
-const mascotSquare = (cut, size) =>
-  sharp(cut)
-    .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 }, kernel: 'lanczos3' })
-    .png()
-    .toBuffer()
 
 /** The dark launch screen: the app's background, a warm glow, the mascot centred. */
 async function splash(cut, width, height, mascotWidth) {
@@ -402,11 +383,13 @@ const webp = (img) => img.webp({ quality: 90, alphaQuality: 100, effort: 6 }).to
 // share card).
 await save('src/assets/brand/mascot.webp', await webp(mascotAt(cut, 600)))
 
-// iOS: the App Store / home-screen icon (opaque, iOS rounds it) and the
-// launch screen (aspect-filled, so the mascot sits well inside the centre).
+// iOS: the App Store / home-screen icon (opaque and square: iOS rounds it) and
+// the launch screen (aspect-filled, so the mascot sits well inside the centre).
+// A new file, so the previous icon stays beside it; Contents.json names the one
+// in use.
 await save(
-  'ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png',
-  await face(1024).png().toBuffer(),
+  'ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-sliced-potato.png',
+  await icon(1024).png().toBuffer(),
 )
 const iosSplash = await splash(cut, 2732, 2732, 560)
 for (const scale of ['1x', '2x', '3x']) {
@@ -419,17 +402,19 @@ for (const scale of ['1x', '2x', '3x']) {
 const densities = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 }
 for (const [density, k] of Object.entries(densities)) {
   const dir = `android/app/src/main/res/mipmap-${density}`
-  await save(`${dir}/ic_launcher.png`, await faceTile(Math.round(48 * k)))
-  await save(`${dir}/ic_launcher_round.png`, await faceCircle(Math.round(48 * k), 0.78))
+  await save(`${dir}/ic_launcher.png`, await icon(Math.round(48 * k)).png().toBuffer())
+  await save(`${dir}/ic_launcher_round.png`, await iconCircle(Math.round(48 * k)))
   // Adaptive foreground: 108dp, of which launchers show the middle 72dp and
-  // guarantee only a 66dp circle. At 60dp the face's brow tips clear it.
-  await save(`${dir}/ic_launcher_foreground.png`, await facePadded(Math.round(108 * k), 60 / 108))
+  // guarantee only a 66dp circle. The tile fills it all; the potato, at 80%,
+  // keeps its far tips inside that circle.
+  await save(`${dir}/ic_launcher_foreground.png`, await iconWithPotatoAt(Math.round(108 * k), 0.8))
 }
-const edge = await faceEdgeColor()
+// The adaptive background layer: the tile colour, so a launcher's parallax
+// never shows a seam where the foreground ends.
 await save(
   'android/app/src/main/res/values/ic_launcher_background.xml',
   Buffer.from(
-    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${edge}</color>\n</resources>\n`,
+    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${BG.toUpperCase()}</color>\n</resources>\n`,
   ),
 )
 const androidSplash = {
@@ -449,18 +434,19 @@ for (const [rel, [w, h]] of Object.entries(androidSplash)) {
   await save(`android/app/src/main/res/${rel}`, await splash(cut, w, h, Math.round(Math.min(w, h) * 0.45)))
 }
 
-// The web app (public/): the tab favicon is the logo; the home-screen and
-// install icons are the face, like the native app's.
-await save('public/favicon-32.png', await mascotSquare(cut, 32))
-await save('public/icon-180.png', await face(180).png().toBuffer()) // apple-touch-icon: opaque, iOS rounds it
-await save('public/icon-192.png', await faceTile(192))
-await save('public/icon-512.png', await faceTile(512))
-// "maskable": the platform crops to its own shape inside a 40%-radius safe circle.
-await save('public/icon-maskable-512.png', await facePadded(512, 0.72))
+// The web app (public/): the app icon everywhere a browser or a home screen
+// shows one, opaque and square like the native icons.
+await save('public/favicon-32.png', await icon(32).png().toBuffer())
+await save('public/icon-180.png', await icon(180).png().toBuffer()) // apple-touch-icon: iOS rounds it
+await save('public/icon-192.png', await icon(192).png().toBuffer())
+await save('public/icon-512.png', await icon(512).png().toBuffer())
+// "maskable": the platform crops to its own shape inside a 40%-radius safe
+// circle, which the potato already sits inside, so the master needs no padding.
+await save('public/icon-maskable-512.png', await icon(512).png().toBuffer())
 
-// The website (web/, a separate static origin): the same split.
-await save('web/favicon-32.png', await mascotSquare(cut, 32))
-await save('web/apple-touch-icon.png', await face(180).png().toBuffer())
+// The website (web/, a separate static origin): the same icons.
+await save('web/favicon-32.png', await icon(32).png().toBuffer())
+await save('web/apple-touch-icon.png', await icon(180).png().toBuffer())
 await save('web/mascot-400.webp', await webp(mascotAt(cut, 400)))
 await save('web/mascot-800.webp', await webp(mascotAt(cut, 800)))
 
@@ -469,5 +455,5 @@ for (const { name, image } of await stickers()) {
   await save(`src/assets/stickers/${name}.webp`, await webp(image))
 }
 
-console.log(`Wrote ${written} files. Android adaptive background: ${edge}.`)
+console.log(`Wrote ${written} files.`)
 console.log('Now regenerate web/og.png from web/og.html (the command is in that file).')

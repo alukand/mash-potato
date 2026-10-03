@@ -1,5 +1,11 @@
 # App icon / splash source
 
+> **Superseded (2026-10-03).** The app icon's source is now
+> `assets/icon/mash-potato-icon.svg`, and `scripts/brand-assets.mjs` writes
+> every icon and splash from it and `brand/`. These July files are kept for
+> history (the new icon reuses this `icon.svg`'s background); don't run the
+> steps below, they would overwrite the current icons.
+
 `icon.svg` is the branded 1024×1024 app icon (opaque background — iOS rounds the
 corners itself). To regenerate the native icon + splash sets:
 

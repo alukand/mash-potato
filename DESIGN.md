@@ -23,18 +23,26 @@ Mash Potato's mark is an **angry potato**: shouting, brows down, pointing. It
 argues about films the way the groups do, which is the product's whole premise.
 The drawing is the brand. Do not redraw it or tidy it into a flat glyph.
 
-- **The face is the home-screen icon, and only that.** The iOS and Android app
-  icons, and the icons the web app and the website get when someone saves them
-  to a home screen (apple-touch-icon, the manifest's install icons). Never in
-  the UI, the browser tab, the share card, or the website.
+- **The app icon is the sliced potato (2026-10-03), and only the app icon.**
+  The iOS and Android app icons, the icons the web app and the website get
+  when someone saves them to a home screen (apple-touch-icon, the manifest's
+  install icons), and the browser-tab favicons. Never inside the UI. Its source
+  is `assets/icon/mash-potato-icon.svg`: one lopsided potato cut into three
+  slices by two parallel seams at -30 degrees, each slice displaced along the
+  seam, the middle one AGAINST the outer two (that counter-motion is the mark;
+  if it reads as sliding, a sign got flipped). Ink shows through the outer
+  gaps, teal through the middle one. It sits on the July icon's dark tile, with
+  that icon's teal and gold glows toned down 25%. The seam angle, the uneven
+  cuts and the offsets are deliberate: don't "balance" them. (The angry face,
+  `brand/mascot-face.webp`, was the icon from 2026-10-01; it is kept, unused.)
 - **Everywhere else, the logo is the WHOLE mascot**: the sticker cut out of its
   paper, white border kept. `<Logo>` is the labelled mark in a square box, in
   headers, gates, and forms (44px in a header, 64px over a form). `<Mascot>`
   is the same drawing as decoration, for moments with room: the launch splash
   and the in-app `Splash` (sized to match, so launch reads as one screen), the
   signed-out welcome, Home's "Pick the next great debate", the website hero and
-  close, and the social card. The browser-tab favicon, the website's mark, and
-  the share card's footer use it too.
+  close, and the social card. The website's mark and the share card's footer
+  use it too.
 - **It points at the thing that matters.** `<Mascot flip>` turns it to point
   left. Flip it when the words it belongs to sit on its left (the signed-out
   pitch, the website hero, `og.png`). Never flip it to point away from them.
@@ -66,16 +74,19 @@ The drawing is the brand. Do not redraw it or tidy it into a flat glyph.
 - **It fits the locked palette.** Its gold is `--color-gold` territory; nothing
   in the tokens changes for it. Don't introduce its brown or tongue-pink as UI
   colours.
-- **Assets are generated.** The sources are `brand/mascot-face.webp` and
-  `brand/mascot.webp`. `scripts/brand-assets.mjs` writes everything else:
-  the iOS icon and launch images, Android launcher icons and splashes, the web
-  app's favicon and install icons, the website's copies, and the bundled
-  `src/assets/brand/` art. Run it with sharp installed temporarily (the
-  command is in the file). `web/og.png` is laid out in `web/og.html`.
-- **Icon rules it already follows.** The App Store/iOS icon and the
-  apple-touch-icon are opaque, because iOS rounds them. Masks that crop (Android
-  adaptive and round, web "maskable") get the face shrunk inside the safe zone,
-  with its own edge pixels repeated outward, so the brow tips are never clipped.
+- **Assets are generated.** The sources are `assets/icon/mash-potato-icon.svg`
+  (the app icon) and `brand/mascot.webp` (the logo). `scripts/brand-assets.mjs`
+  writes everything else: the iOS icon and launch images, Android launcher
+  icons and splashes, the web app's favicon and install icons, the website's
+  copies, and the bundled `src/assets/brand/` art. Run it with sharp installed
+  temporarily (the command is in the file). `web/og.png` is laid out in
+  `web/og.html`.
+- **Icon rules it follows.** Every icon file is opaque and square: iOS rejects
+  an alpha channel, and each platform cuts its own shape. The one exception is
+  Android's legacy round icon, which is round by definition. Masks that crop
+  keep the tile full bleed: the potato reaches 36% of the width from the
+  centre, inside the web "maskable" 40% circle as drawn, and Android's
+  adaptive foreground scales it to 80% to fit its 66dp circle.
 
 ## Tokens (`src/index.css` `@theme` — LOCKED)
 
@@ -589,6 +600,17 @@ baseline function grant, which is exactly how an open endpoint shipped on
   Considered/rejected: public voters (social pressure on small groups);
   tallies of fights fought (pays for extreme scores); voice notes (text first,
   the owner's call); tokens for wins.
+
+- 2026-10-03 (the sliced potato icon): the app icon is a new mark, a potato
+  cut into three slices pulling against each other, with teal in the middle
+  gap, on the July icon's dark tile with its glows toned down 25%. It replaces
+  the angry face everywhere the face was an icon, and also takes over the
+  browser-tab favicons from the logo (the owner's call: the tab matches the app
+  icon, and a simple mark reads at 32px). The mascot stays the logo everywhere
+  else. Every icon file is now opaque and square, including the web install
+  icons, which were rounded tiles; only Android's legacy round icon keeps
+  transparency. The iOS file is new (`AppIcon-sliced-potato.png`), and the old
+  one stays beside it so `Contents.json` can point back.
 
 - 2026-10-01 (tokens): a private, capped, quality-weighted token ledger (see
   the Reward loop law). Home has a daily-token strip that disappears once

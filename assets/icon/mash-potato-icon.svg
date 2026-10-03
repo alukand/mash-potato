@@ -1,0 +1,76 @@
+<!-- Mash Potato app icon master, 1024x1024 (opaque: iOS rounds the corners).
+     Two layers:
+       background  resources/icon.svg's (the July icon): the app's background
+                   with a teal glow from the top and a gold glow in the
+                   bottom-right corner, both glows toned down 25%
+       potato      one lopsided form cut into three slices by two parallel
+                   seams at -30deg; each slice is displaced along the seam, the
+                   middle one AGAINST the outer two. Ink shows through the
+                   outer gaps, teal through the middle one. Drawn in a 512
+                   space and scaled 2x.
+     scripts/brand-assets.mjs renders every app icon from this file. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- the July glows at 75% strength (teal 0.22 -> 0.165, gold 0.16 -> 0.12) -->
+    <radialGradient id="mp-glow-teal" cx="0.5" cy="-0.1" r="0.9">
+      <stop stop-color="#51C5BE" stop-opacity="0.165"/>
+      <stop offset="0.6" stop-color="#51C5BE" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="mp-glow-gold" cx="1.05" cy="1.05" r="0.8">
+      <stop stop-color="#E7B24E" stop-opacity="0.12"/>
+      <stop offset="0.65" stop-color="#E7B24E" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="mp-skin" cx="38%" cy="30%" r="80%">
+      <stop offset="0%"   stop-color="#F2C063"/>
+      <stop offset="58%"  stop-color="#E7B24E"/>
+      <stop offset="100%" stop-color="#D19B36"/>
+    </radialGradient>
+
+    <!-- slice bands: vertical strips rotated -30deg about the centre -->
+    <clipPath id="mp-band0"><rect x="-400" y="-400" width="562" height="1312" transform="rotate(-30 256 256)"/></clipPath>
+    <clipPath id="mp-band1"><rect x="162"  y="-400" width="124" height="1312" transform="rotate(-30 256 256)"/></clipPath>
+    <clipPath id="mp-band2"><rect x="286"  y="-400" width="626" height="1312" transform="rotate(-30 256 256)"/></clipPath>
+  </defs>
+
+  <!-- background layer (resources/icon.svg's, glows at 75%) -->
+  <g id="background">
+    <rect width="1024" height="1024" fill="#15121B"/>
+    <rect width="1024" height="1024" fill="url(#mp-glow-teal)"/>
+    <rect width="1024" height="1024" fill="url(#mp-glow-gold)"/>
+  </g>
+
+  <!-- potato layer, in a 512x512 space -->
+  <g id="potato" transform="scale(2)">
+    <!-- underlay: what shows through the gaps -->
+    <g clip-path="url(#mp-band0)"><path d="M92 268 C86 206 128 152 196 134 C252 119 318 122 366 152 C414 182 428 238 414 290 C400 344 350 388 290 398 C224 409 156 386 120 340 C100 314 94 292 92 268 Z" fill="#120F18"/></g>
+    <g clip-path="url(#mp-band1)"><path d="M92 268 C86 206 128 152 196 134 C252 119 318 122 366 152 C414 182 428 238 414 290 C400 344 350 388 290 398 C224 409 156 386 120 340 C100 314 94 292 92 268 Z" fill="#45BAB4"/></g>
+    <g clip-path="url(#mp-band2)"><path d="M92 268 C86 206 128 152 196 134 C252 119 318 122 366 152 C414 182 428 238 414 290 C400 344 350 388 290 398 C224 409 156 386 120 340 C100 314 94 292 92 268 Z" fill="#120F18"/></g>
+
+    <!-- slices: same potato, clipped and displaced along the 30deg axis -->
+    <g clip-path="url(#mp-band0)"><g transform="translate(-16.00,-27.71)">
+      <path d="M92 268 C86 206 128 152 196 134 C252 119 318 122 366 152 C414 182 428 238 414 290 C400 344 350 388 290 398 C224 409 156 386 120 340 C100 314 94 292 92 268 Z" fill="url(#mp-skin)"/>
+      <circle cx="196" cy="222" r="13" fill="#A9761F" opacity=".30"/>
+      <circle cx="268" cy="196" r="10" fill="#A9761F" opacity=".30"/>
+      <circle cx="246" cy="286" r="12" fill="#A9761F" opacity=".30"/>
+      <circle cx="318" cy="258" r="9"  fill="#A9761F" opacity=".30"/>
+      <circle cx="170" cy="300" r="9"  fill="#A9761F" opacity=".30"/>
+    </g></g>
+    <g clip-path="url(#mp-band1)"><g transform="translate(11.00,19.05)">
+      <path d="M92 268 C86 206 128 152 196 134 C252 119 318 122 366 152 C414 182 428 238 414 290 C400 344 350 388 290 398 C224 409 156 386 120 340 C100 314 94 292 92 268 Z" fill="url(#mp-skin)"/>
+      <circle cx="196" cy="222" r="13" fill="#A9761F" opacity=".30"/>
+      <circle cx="268" cy="196" r="10" fill="#A9761F" opacity=".30"/>
+      <circle cx="246" cy="286" r="12" fill="#A9761F" opacity=".30"/>
+      <circle cx="318" cy="258" r="9"  fill="#A9761F" opacity=".30"/>
+      <circle cx="170" cy="300" r="9"  fill="#A9761F" opacity=".30"/>
+    </g></g>
+    <g clip-path="url(#mp-band2)"><g transform="translate(-13.00,-22.52)">
+      <path d="M92 268 C86 206 128 152 196 134 C252 119 318 122 366 152 C414 182 428 238 414 290 C400 344 350 388 290 398 C224 409 156 386 120 340 C100 314 94 292 92 268 Z" fill="url(#mp-skin)"/>
+      <circle cx="196" cy="222" r="13" fill="#A9761F" opacity=".30"/>
+      <circle cx="268" cy="196" r="10" fill="#A9761F" opacity=".30"/>
+      <circle cx="246" cy="286" r="12" fill="#A9761F" opacity=".30"/>
+      <circle cx="318" cy="258" r="9"  fill="#A9761F" opacity=".30"/>
+      <circle cx="170" cy="300" r="9"  fill="#A9761F" opacity=".30"/>
+    </g></g>
+  </g>
+</svg>
