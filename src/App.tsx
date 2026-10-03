@@ -525,6 +525,7 @@ function App() {
               <PublicProfileScreen
                 userId={top.userId}
                 onOpenPlaylist={(id) => pushView({ kind: 'playlist', playlistId: id })}
+                onOpenTitle={openTitle}
                 onBack={popView}
               />
             )}

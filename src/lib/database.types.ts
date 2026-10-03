@@ -391,6 +391,39 @@ export type Database = {
         }
         Relationships: []
       }
+      follows: {
+        Row: {
+          created_at: string
+          followee_id: string
+          follower_id: string
+        }
+        Insert: {
+          created_at?: string
+          followee_id: string
+          follower_id: string
+        }
+        Update: {
+          created_at?: string
+          followee_id?: string
+          follower_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follows_followee_id_fkey"
+            columns: ["followee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follows_follower_id_fkey"
+            columns: ["follower_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       global_ratings: {
         Row: {
           created_at: string
@@ -1211,6 +1244,7 @@ export type Database = {
           display_name: string
           id: string
           is_moderator: boolean
+          share_ratings: boolean
           taste_mode: string
         }
         Insert: {
@@ -1221,6 +1255,7 @@ export type Database = {
           display_name: string
           id: string
           is_moderator?: boolean
+          share_ratings?: boolean
           taste_mode?: string
         }
         Update: {
@@ -1231,6 +1266,7 @@ export type Database = {
           display_name?: string
           id?: string
           is_moderator?: boolean
+          share_ratings?: boolean
           taste_mode?: string
         }
         Relationships: []
@@ -1875,6 +1911,33 @@ export type Database = {
         }
         Returns: string
       }
+      follow_state: {
+        Args: { p_user_id: string }
+        Returns: {
+          following: boolean
+          shares_ratings: boolean
+        }[]
+      }
+      follow_user: { Args: { p_user_id: string }; Returns: undefined }
+      following_feed: {
+        Args: { p_limit?: number; p_user_id?: string }
+        Returns: {
+          avatar_key: string
+          display_name: string
+          episode_number: number
+          media_type: string
+          poster_path: string
+          rated_at: string
+          scores: Json
+          season_number: number
+          taste_mode: string
+          title_id: string
+          title_name: string
+          tmdb_id: number
+          user_id: string
+          year: number
+        }[]
+      }
       group_conversation: { Args: { p_group_id: string }; Returns: string }
       group_cred: {
         Args: { p_group_id: string }
@@ -1950,6 +2013,24 @@ export type Database = {
           avatar_key: string
           created_at: string
           display_name: string
+          user_id: string
+        }[]
+      }
+      my_follow_summary: {
+        Args: never
+        Returns: {
+          followers: number
+          following: number
+          share_ratings: boolean
+        }[]
+      }
+      my_following: {
+        Args: never
+        Returns: {
+          avatar_key: string
+          display_name: string
+          followed_at: string
+          shares_ratings: boolean
           user_id: string
         }[]
       }
@@ -2121,6 +2202,7 @@ export type Database = {
         Args: { p_group_id: string; p_public: boolean }
         Returns: undefined
       }
+      set_share_ratings: { Args: { p_on: boolean }; Returns: undefined }
       set_user_banned: {
         Args: { p_banned: boolean; p_note?: string; p_user_id: string }
         Returns: undefined
@@ -2173,6 +2255,7 @@ export type Database = {
         Returns: undefined
       }
       unblock_user: { Args: { p_user_id: string }; Returns: undefined }
+      unfollow_user: { Args: { p_user_id: string }; Returns: undefined }
       withdraw_join_request: {
         Args: { p_group_id: string }
         Returns: undefined

@@ -231,6 +231,23 @@ A searchable group has a `group_discovery.join_policy` (20261002120000):
   open ones. `group_discovery_settings` (a boolean) stays for 1.1 apps; the
   app reads `group_join_settings`.
 
+## FOLLOWS AND SHARED RATINGS (2026-10-02)
+
+20261002140000; DESIGN.md's privacy model has the product rule. The laws:
+
+- **Nothing travels by default.** Solo ratings reach followers only after
+  `profiles.share_ratings` is switched on (default false), and only through
+  the definer `following_feed`. The column is excluded by omission from the
+  profiles column grants, like `is_moderator`; `set_share_ratings` writes it.
+- **The feed never reads `member_scores`,** so THE ONE RULE is untouched: a
+  group's cards, blind or revealed, never travel this way.
+- **Who follows whom is private.** `follows` is RPC-only; you get your own
+  counts and list (`my_follow_summary`, `my_following`) and nothing about
+  anyone else's. Blocks cut both ways; banned accounts neither follow nor
+  appear.
+- The number is computed in the app with `lib/scoring.ts` (`soloScore` in
+  `lib/api.ts`) on the rater's rubric, never in SQL.
+
 ## Commands
 
 - `npm run dev` — Vite on port 5180 (fixed; 5173/5174 belong to another project)

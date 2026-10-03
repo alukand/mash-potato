@@ -87,6 +87,10 @@ revoke all on public.token_rules, public.token_program, public.token_accounts,
 -- join requests (20261002120000): what an applicant sent the owner is read
 -- and written only through the definer RPCs.
 revoke all on public.group_join_requests from public, anon, authenticated;
+-- follows (20261002140000): who follows whom is private; RPC-only. The new
+-- profiles.share_ratings column is excluded by omission from the column grants
+-- above, like is_moderator.
+revoke all on public.follows from public, anon, authenticated;
 -- ...and the migration's per-function anon revokes, mirrored (the CLAUDE.md
 -- law: every revoke a migration makes is re-applied here, so the twin never
 -- tests a posture looser than hosted).
@@ -104,7 +108,10 @@ begin
       -- join requests (20261002120000)
       'set_group_join_policy', 'group_join_settings', 'pending_join_requests',
       'decide_join_request', 'request_to_join', 'withdraw_join_request',
-      'my_join_requests'])
+      'my_join_requests',
+      -- follows (20261002140000)
+      'follow_user', 'unfollow_user', 'follow_state', 'my_follow_summary',
+      'my_following', 'set_share_ratings', 'following_feed'])
   loop
     execute format('revoke all on function %s from public, anon', f.sig);
   end loop;

@@ -374,9 +374,17 @@ playlists — each group and each playlist can still be hidden with its own
 toggle. Ratings, reviewed, and saved are NEVER auto-public; sharing scores
 happens through the community number, never the profile. GROUP WATCHLISTS
 never leave the group (structurally: they cannot be made public; an insert
-trigger pins them private). Friends are simply your groupmates — no follow
-graph. Visibility chips share one vocabulary: globe + teal = public,
-lock + muted = private.
+trigger pins them private). Friends are your groupmates. Visibility chips
+share one vocabulary: globe + teal = public, lock + muted = private.
+
+**Follows (2026-10-02, the owner's call):** a one-way follow graph exists now,
+and it changes nothing above by default. Your SOLO ratings reach anyone only
+after you switch on "Share my ratings with people who follow me", and then
+only your followers, on Home ("Recently rated by people you follow") and on
+your profile page. Group cards never travel. Who follows whom stays private:
+you see your own counts and who you follow, nobody sees anyone else's, so
+there is nothing to rank. Another person's number uses the score ramp: gold
+stays YOUR number, teal stays the group's.
 
 **What a shared card may carry (2026-07-25):** the group name, the title, the
 MASHED score, the clash headline, and counts (`N scored`, `spread`). Never a

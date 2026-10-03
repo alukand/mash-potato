@@ -6,11 +6,11 @@ import { supabase } from './supabase'
 import { Capacitor } from '@capacitor/core'
 import { NATIVE_AUTH_REDIRECT } from './authCallback'
 import type { CategoryScores, MemberScorecard } from './scoring'
-import { mashedScore } from './scoring'
+import { mashedScore, memberWeightedScore } from './scoring'
 import { rubricFromJson, scorecardFromRow, scoresFromJson, weightsFromRubric } from './mapping'
 import type { SessionRubricEntry } from './mapping'
 // runtime-safe: rubricCatalog only type-imports from this module
-import { CASUAL_WEIGHTS, DEFAULT_WEIGHTS, presetRowsFromJson } from './rubricCatalog'
+import { CASUAL_WEIGHTS, DEFAULT_WEIGHTS, presetRowsFromJson, soloWeightsFor } from './rubricCatalog'
 import type { TasteMode } from './rubricCatalog'
 import { parseRewards } from './rewards'
 import type { RewardsSummary } from './rewards'
@@ -2093,6 +2093,137 @@ export async function fetchPublicProfile(userId: string): Promise<PublicProfile 
   }
 }
 
+// ---- follows (20261002140000): solo ratings, shared only by choice ----------
+//
+// Following shows you what someone CHOOSES to share: nothing at all until they
+// turn sharing on. Who follows whom is private (you see your own counts and
+// who you follow), and only solo ratings travel, never a group's blind card.
+
+export interface FollowState {
+  following: boolean
+  /** Whether they share their ratings with followers. */
+  sharesRatings: boolean
+}
+
+export async function fetchFollowState(userId: string): Promise<FollowState> {
+  const { data, error } = await supabase.rpc('follow_state', { p_user_id: userId })
+  if (error) throw new Error(error.message)
+  const row = data?.[0]
+  return { following: row?.following === true, sharesRatings: row?.shares_ratings === true }
+}
+
+export async function followUser(userId: string): Promise<void> {
+  const { error } = await supabase.rpc('follow_user', { p_user_id: userId })
+  if (error) throw new Error(error.message)
+}
+
+export async function unfollowUser(userId: string): Promise<void> {
+  const { error } = await supabase.rpc('unfollow_user', { p_user_id: userId })
+  if (error) throw new Error(error.message)
+}
+
+export interface FollowSummary {
+  followers: number
+  following: number
+  /** Your own choice: share your solo ratings with your followers. */
+  shareRatings: boolean
+}
+
+export async function fetchMyFollowSummary(): Promise<FollowSummary> {
+  const { data, error } = await supabase.rpc('my_follow_summary')
+  if (error) throw new Error(error.message)
+  const row = data?.[0]
+  return {
+    followers: Number(row?.followers ?? 0),
+    following: Number(row?.following ?? 0),
+    shareRatings: row?.share_ratings === true,
+  }
+}
+
+export async function setShareRatings(on: boolean): Promise<void> {
+  const { error } = await supabase.rpc('set_share_ratings', { p_on: on })
+  if (error) throw new Error(error.message)
+}
+
+export interface FollowedPerson {
+  userId: string
+  displayName: string
+  avatarKey: string | null
+  sharesRatings: boolean
+  followedAt: string
+}
+
+/** The people you follow, newest first. */
+export async function fetchMyFollowing(): Promise<FollowedPerson[]> {
+  const { data, error } = await supabase.rpc('my_following')
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    userId: r.user_id,
+    displayName: r.display_name ?? 'Member',
+    avatarKey: r.avatar_key ?? null,
+    sharesRatings: r.shares_ratings === true,
+    followedAt: r.followed_at,
+  }))
+}
+
+/** One solo rating someone you follow chose to share. */
+export interface FeedRating {
+  userId: string
+  displayName: string
+  avatarKey: string | null
+  titleId: string
+  tmdbId: number | null
+  mediaType: 'movie' | 'tv'
+  part: TitlePart | null
+  titleName: string
+  year: number | null
+  posterPath: string | null
+  /** Their number, on their own taste mode's rubric (lib/scoring.ts). */
+  score: number | null
+  ratedAt: string
+}
+
+/**
+ * Ratings from the people you follow who share them, newest first. With a
+ * userId, just that person's (their profile page).
+ */
+export async function fetchFollowingFeed(limit = 30, userId?: string): Promise<FeedRating[]> {
+  const { data, error } = await supabase.rpc('following_feed', {
+    p_limit: limit,
+    p_user_id: userId as string,
+  })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    userId: r.user_id,
+    displayName: r.display_name ?? 'Member',
+    avatarKey: r.avatar_key ?? null,
+    titleId: r.title_id,
+    tmdbId: r.tmdb_id,
+    mediaType: r.media_type === 'tv' ? 'tv' : 'movie',
+    part: partFromRow(r),
+    titleName: r.title_name,
+    year: r.year,
+    posterPath: r.poster_path,
+    score: soloScore(scoresFromJson(r.scores), r.taste_mode === 'casual' ? 'casual' : 'buff'),
+    ratedAt: r.rated_at,
+  }))
+}
+
+/**
+ * Someone's solo number on their current taste mode's rubric, or on the other
+ * one when they rated before switching (their categories would not overlap,
+ * and the weighted score of nothing is 0, not "unknown"). Null if neither fits.
+ */
+function soloScore(scores: CategoryScores, mode: TasteMode): number | null {
+  for (const m of [mode, mode === 'casual' ? 'buff' : 'casual'] as const) {
+    const weights = soloWeightsFor(m)
+    if (Object.keys(weights).some((k) => typeof scores[k] === 'number')) {
+      return memberWeightedScore(scores, weights)
+    }
+  }
+  return null
+}
+
 /** The signed-in user's own picked avatar key (null = initial circle). */
 export async function fetchMyAvatarKey(userId: string): Promise<string | null> {
   const { data, error } = await supabase
@@ -2152,7 +2283,7 @@ export async function setGroupVisibility(groupId: string, isPublic: boolean): Pr
  *  theirs), your comments, your playlists, your rubric. RLS already scopes
  *  every query to self. */
 export async function fetchMyExport(userId: string): Promise<Record<string, unknown>> {
-  const [ratings, saved, cards, comments, playlists, rubrics, tokens, joinRequests] = await Promise.all([
+  const [ratings, saved, cards, comments, playlists, rubrics, tokens, joinRequests, following] = await Promise.all([
     supabase
       .from('global_ratings')
       .select('updated_at, scores, titles(tmdb_id, media_type, name, year)')
@@ -2184,8 +2315,10 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
     supabase.rpc('my_rewards', { p_history_limit: 5000 }),
     // what you asked groups, and what you answered their questions
     supabase.rpc('my_join_requests'),
+    // the people you follow
+    supabase.rpc('my_following'),
   ])
-  for (const q of [ratings, cards, comments, playlists, rubrics, tokens, joinRequests]) {
+  for (const q of [ratings, cards, comments, playlists, rubrics, tokens, joinRequests, following]) {
     if (q.error) throw new Error(q.error.message)
   }
   return {
@@ -2270,6 +2403,7 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
       status: r.status,
       at: r.created_at,
     })),
+    following: (following.data ?? []).map((r) => ({ name: r.display_name, since: r.followed_at })),
   }
 }
 

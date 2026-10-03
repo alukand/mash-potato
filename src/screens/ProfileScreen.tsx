@@ -51,6 +51,7 @@ import { AVATAR_CATALOG, Avatar } from '../components/avatars'
 import { TASTE_MODES } from '../lib/rubricCatalog'
 import type { TasteMode } from '../lib/rubricCatalog'
 import { Sticker } from '../components/Sticker'
+import { FollowSettings } from '../components/FollowSettings'
 import type { OpenTitle } from '../lib/urlState'
 
 /**
@@ -1051,6 +1052,9 @@ export function ProfileScreen({
             </svg>
           </button>
         )}
+
+        {/* Follows: sharing your ratings is opt-in (20261002140000). */}
+        <FollowSettings onOpenUser={onOpenUser} />
 
         {/* Blocking existed since 2026-07-14 with a delete policy and NO way
             to undo it from the app. DMs make that gap visible, and App Review

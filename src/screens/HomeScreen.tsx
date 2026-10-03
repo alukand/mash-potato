@@ -4,9 +4,11 @@ import { weightsFromRubric } from '../lib/mapping'
 import {
   fetchAllScorecards,
   fetchBrowse,
+  fetchFollowingFeed,
   fetchLatestSession,
   fetchLockStatus,
   fetchMembers,
+  fetchMyFollowSummary,
   fetchMyGlobalRatings,
   fetchMyReviewedTitles,
   fetchMySavedTitles,
@@ -15,7 +17,16 @@ import {
   posterUrl,
   respondToSession,
 } from '../lib/api'
-import type { GroupInfo, MemberInfo, SavedTitle, SessionInfo, TmdbResult } from '../lib/api'
+import type {
+  FeedRating,
+  GroupInfo,
+  MemberInfo,
+  SavedTitle,
+  SessionInfo,
+  TmdbResult,
+} from '../lib/api'
+import { FeedList } from '../components/FollowingFeed'
+import type { OpenTitle } from '../lib/urlState'
 import { participation, formatWindow } from '../lib/rsvp'
 import { PosterShelf } from '../components/PosterShelf'
 import { Mascot } from '../components/Mascot'
@@ -32,7 +43,7 @@ interface HomeScreenProps {
   /** Switch to that group and land on the given tab. */
   /** Rounds and reveals both live on the Rate tab now. */
   onOpenGroup: (groupId: string, dest: 'rate') => void
-  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  onOpenTitle: OpenTitle
   /** Jump to Discover. */
   onExplore: () => void
   /** Open the Profile list a stat tile counts. */
@@ -71,6 +82,9 @@ export function HomeScreen({
     void refreshRewards(userId)
   }, [userId])
   const [pulses, setPulses] = useState<GroupPulse[] | undefined>(undefined)
+  const [feed, setFeed] = useState<FeedRating[]>([])
+  // null until known; 0 means a gentle "follow people" pointer instead
+  const [followingCount, setFollowingCount] = useState<number | null>(null)
   const [trending, setTrending] = useState<TmdbResult[]>([])
   const [popular, setPopular] = useState<TmdbResult[]>([])
   const [saved, setSaved] = useState<SavedTitle[]>([])
@@ -117,6 +131,22 @@ export function HomeScreen({
     const unsubscribes = groups.map((g) => onSessionChange(g.id, () => void load()))
     return () => unsubscribes.forEach((u) => u())
   }, [load, groups])
+
+  // What the people you follow chose to share (20261002140000). Your groups'
+  // reveals are the section above; this is everyone else you follow.
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([fetchFollowingFeed(8), fetchMyFollowSummary()])
+      .then(([items, summary]) => {
+        if (cancelled) return
+        setFeed(items)
+        setFollowingCount(summary.following)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
 
   useEffect(() => {
     let cancelled = false
@@ -441,6 +471,21 @@ export function HomeScreen({
           </CtaButton>
         </section>
       )}
+
+      {/* ---- what the people you follow rated (only what they chose to share) ---- */}
+      {feed.length > 0 ? (
+        <section className="mp-rise" style={{ animationDelay: '100ms' }}>
+          <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+            Recently rated by people you follow
+          </p>
+          <FeedList items={feed} onOpenTitle={onOpenTitle} />
+        </section>
+      ) : followingCount === 0 && groups.length > 0 ? (
+        <p className="mp-rise px-1 text-[12px] leading-snug text-muted">
+          Follow people from their profile (tap a name in your group or a discussion) to see
+          what they rate here, if they share it.
+        </p>
+      ) : null}
 
       {/* ---- your saved list: the what-to-watch-next pool ---- */}
       {saved.filter((s) => s.tmdbId !== null).length > 0 && (
