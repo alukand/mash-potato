@@ -1,8 +1,8 @@
-Thank you for reviewing Mash Potato. New in this version: rating TV seasons
-and episodes, a new shareable Reveal card, groups that review who joins,
-following friends, and round games for groups (section 5). Sections 1 to 3 cover the user-generated
-content safeguards, browsing without an account, and how to sign in; section
-4 covers tokens.
+Thank you for reviewing Mash Potato. New in this version: tokens (section
+4), plus rating TV seasons and episodes, a new shareable Reveal card, groups
+that review who joins, following friends, and round games for groups
+(section 5). Sections 1 to 3 cover the user-generated content safeguards,
+browsing without an account, and how to sign in.
 
 =====================================================================
 1. GUIDELINE 1.2 - USER-GENERATED CONTENT

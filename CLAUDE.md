@@ -234,8 +234,8 @@ A searchable group has a `group_discovery.join_policy` (20261002120000):
   insert, so the existing `group_added` push tells the applicant; the request
   itself pushes `join_requested` to the owner (send-push).
 - A suggested (starter) group must stay open: `GuidedSetup` auto-joins only
-  open ones. `group_discovery_settings` (a boolean) stays for 1.1 apps; the
-  app reads `group_join_settings`.
+  open ones. `group_discovery_settings` (a boolean) stays for the first 1.1
+  TestFlight builds, which call it; the app reads `group_join_settings`.
 
 ## FOLLOWS AND SHARED RATINGS (2026-10-02)
 
@@ -767,26 +767,34 @@ has the product rules and the reward-loop law's "Trophies" amendment. The laws:
 
 ## Current state
 
-**2026-10-01**
+**2026-10-03**
 
-- 1.0 is live on the App Store (Apple ID 6788610092). 1.1.0 was cut from
-  `master` as branch `release-1.1`, sent to TestFlight from that branch, and
-  fast-forwarded into `master` the same day. It holds:
-  - The mascot rebrand, which brings the new app icon, and the sticker set.
-  - Tokens; flag `rewards` off.
-  - The feature-flag store that switches tokens on.
+- 1.0 is live on the App Store (Apple ID 6788610092). 1.1.0 has not been
+  submitted. It ships EVERYTHING since 1.0 except Live, from branch
+  `release-1.1`, and `docs/RELEASE-1.1.md` is the release order:
+  - Already on `master` and hosted: the mascot rebrand and sticker set,
+    tokens (flag `rewards` off) and the feature-flag store, the Cloudflare
+    Web Analytics CSP, and the Save Image fix.
+  - Added 2026-10-03 (built on `next`, then moved into `release-1.1`):
+    seasons and episodes, the redrawn share card, join requests, follows,
+    round games, and the sliced-potato icon.
+- `master` still holds 1.1 without those additions; it deploys the website
+  and the web app, so it is fast-forwarded to `release-1.1` only after the
+  hosted database and functions are updated.
+- Hosted Supabase has every migration through `20261001120000` (tokens). Five
+  are not hosted yet: `20261001180000`, `20261002120000`, `20261002140000`,
+  `20261003120000`, `20261003130000`. Nor are the new `tmdb-search` and
+  `send-push`.
 - Mash Potato Live (live shows, watch parties, giveaways) is parked, dormant,
-  on branch `live-shows`. It is NOT in `master` in any form: no code,
-  migrations, Edge Function, packages or docs. Its three migrations
+  on branch `live-shows`. It is NOT in `master` or `release-1.1` in any form:
+  no code, migrations, Edge Function, packages or docs. Its three migrations
   (`20260928120000`, `20260928140000`, `20260928150000`) are dated before the
-  flags and tokens migrations, which are already hosted, so before Live ships,
-  rename them to timestamps after the latest hosted migration. `db push`
-  otherwise refuses them, and `--include-all` would apply them out of order.
-- Hosted Supabase has every migration in this repo, through `20261001120000`
-  (tokens). Flags and tokens were pushed on 2026-10-01.
-- Tokens launch (`docs/REWARDS.md`): the database and the website are done
-  (the site deploys from `master`). What remains is shipping 1.1, then turning
-  `rewards` on just before submitting for review.
+  hosted flags and tokens migrations, so before Live ships, rename them to
+  timestamps after the latest hosted migration. `db push` otherwise refuses
+  them, and `--include-all` would apply them out of order.
+- Tokens launch (`docs/REWARDS.md`): the database and the website are done.
+  What remains is shipping 1.1, then turning `rewards` on just before
+  submitting for review.
 
 **As of 2026-08-07** (history: true then, not necessarily now):
 
