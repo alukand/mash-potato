@@ -93,11 +93,19 @@ async function fightCategory(sessionId: string): Promise<string | null> {
 async function titleInfo(
   titleId: string,
 ): Promise<{ name: string; tmdbId: number | null; mediaType: string } | null> {
-  const rows = await rest<{ name: string; tmdb_id: number | null; media_type: string }>(
-    `titles?id=eq.${titleId}&select=name,tmdb_id,media_type`,
-  )
+  const rows = await rest<{
+    name: string
+    tmdb_id: number | null
+    show_tmdb_id: number | null
+    media_type: string
+  }>(`titles?id=eq.${titleId}&select=name,tmdb_id,show_tmdb_id,media_type`)
   if (rows.length === 0) return null
-  return { name: rows[0].name, tmdbId: rows[0].tmdb_id, mediaType: rows[0].media_type }
+  // a season or an episode has no TMDB id of its own; its show's opens it
+  return {
+    name: rows[0].name,
+    tmdbId: rows[0].tmdb_id ?? rows[0].show_tmdb_id,
+    mediaType: rows[0].media_type,
+  }
 }
 
 // ---- messaging ---------------------------------------------------------------

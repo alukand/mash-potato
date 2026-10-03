@@ -2,13 +2,14 @@
 --   npx supabase test db
 --
 -- Ana creates Season 2 and S2E3 of a show BEFORE anyone has added the show
--- itself, then the show, which is the order that would break a lookup that
--- forgot parts share the show's TMDB id.
+-- itself, then the show. A part keeps its show's TMDB id in show_tmdb_id and
+-- has none of its own (20261003130000), so the lookup every app before 1.1
+-- makes, by (tmdb_id, media_type), still finds exactly one row.
 
 create extension if not exists pgtap with schema extensions;
 
 begin;
-select plan(27);
+select plan(30);
 
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data, created_at, updated_at)
 values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '00000000-0000-0000-0000-000000000000',
@@ -42,6 +43,11 @@ select is((select season_number is null and episode_number is null and part_name
   true, 'the show row is not a part, though its parts were added first');
 select is(public.ensure_title(990101, 'tv', 'Severance', 2022, '/show.jpg'),
   (select id from ids where name = 'show'), 'ensure_title finds the show, never one of its parts');
+select is((select row(tmdb_id, show_tmdb_id)::text from public.titles
+            where id = (select id from ids where name = 'episode')),
+  row(null::integer, 990101)::text, 'a part has no TMDB id of its own; its show''s is show_tmdb_id');
+select is((select count(*)::int from public.titles where tmdb_id = 990101 and media_type = 'tv'),
+  1, 'an older app''s lookup by (tmdb_id, media_type) finds the show alone');
 select is(public.ensure_tv_part(990101, 2, null, 'Severance', 'Season 2', 2025, '/s2.jpg'),
   (select id from ids where name = 'season'), 'ensure_tv_part is idempotent for a season');
 select is(public.ensure_tv_part(990101, 2, 3, 'Severance', 'Who Is Alive?', 2025, null),
@@ -49,7 +55,7 @@ select is(public.ensure_tv_part(990101, 2, 3, 'Severance', 'Who Is Alive?', 2025
 
 -- ---- the table's own rules ----------------------------------------------------
 select throws_ok(
-  $$insert into public.titles (tmdb_id, media_type, name, season_number, episode_number)
+  $$insert into public.titles (show_tmdb_id, media_type, name, season_number, episode_number)
     values (990101, 'tv', 'dupe', 2, 3)$$,
   '23505', null, 'a part cannot be stored twice');
 select throws_ok(
@@ -60,9 +66,13 @@ select throws_ok(
     values (880001, 'movie', 'Film Season 1', 1)$$,
   '23514', null, 'a film has no seasons');
 select throws_ok(
-  $$insert into public.titles (tmdb_id, media_type, name, episode_number)
+  $$insert into public.titles (show_tmdb_id, media_type, name, episode_number)
     values (990101, 'tv', 'orphan', 4)$$,
   '23514', null, 'an episode needs a season');
+select throws_ok(
+  $$insert into public.titles (tmdb_id, show_tmdb_id, media_type, name, season_number)
+    values (990102, 990101, 'tv', 'Severance Season 9', 9)$$,
+  '23514', null, 'a part never carries a TMDB id of its own');
 select lives_ok(
   $$insert into public.titles (tmdb_id, media_type, name)
     values (null, 'movie', 'Home Movie'), (null, 'movie', 'Home Movie')$$,
@@ -104,7 +114,7 @@ select lives_ok(
   $$insert into public.global_ratings (user_id, title_id, scores)
     values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
             (select id from public.titles
-              where tmdb_id = 990101 and season_number = 2 and episode_number = 3),
+              where show_tmdb_id = 990101 and season_number = 2 and episode_number = 3),
             '{"story": 8}')$$,
   'an episode takes a solo rating');
 select lives_ok(

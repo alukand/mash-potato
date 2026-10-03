@@ -1739,6 +1739,7 @@ export type Database = {
           part_name: string | null
           poster_path: string | null
           season_number: number | null
+          show_tmdb_id: number | null
           tmdb_id: number | null
           year: number | null
         }
@@ -1751,6 +1752,7 @@ export type Database = {
           part_name?: string | null
           poster_path?: string | null
           season_number?: number | null
+          show_tmdb_id?: number | null
           tmdb_id?: number | null
           year?: number | null
         }
@@ -1763,6 +1765,7 @@ export type Database = {
           part_name?: string | null
           poster_path?: string | null
           season_number?: number | null
+          show_tmdb_id?: number | null
           tmdb_id?: number | null
           year?: number | null
         }

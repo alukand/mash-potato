@@ -51,7 +51,13 @@ begin
      or public.ensure_tv_part(990101, 2, 3, 'Severance', 'Who Is Alive?', 2025, null) <> v_episode then
     raise exception 'FAIL 2: a repeat call made a new row';
   end if;
-  raise notice 'PASS 2: show, season and episode are distinct rows, and repeat calls reuse them';
+  -- the lookup every app before 1.1 makes must still find one row
+  if (select count(*) from public.titles where tmdb_id = 990101 and media_type = 'tv') <> 1
+     or (select tmdb_id from public.titles where id = v_episode) is not null
+     or (select show_tmdb_id from public.titles where id = v_episode) is distinct from 990101 then
+    raise exception 'FAIL 2: a part answers to its show''s TMDB id';
+  end if;
+  raise notice 'PASS 2: show, season and episode are distinct rows, repeat calls reuse them, and only the show answers to its TMDB id';
 end $$;
 reset role;
 
@@ -59,7 +65,7 @@ reset role;
 do $$
 begin
   begin
-    insert into public.titles (tmdb_id, media_type, name, season_number, episode_number)
+    insert into public.titles (show_tmdb_id, media_type, name, season_number, episode_number)
     values (990101, 'tv', 'dupe', 2, 3);
     raise exception 'FAIL 3: a part was stored twice';
   exception when unique_violation then null;
@@ -71,9 +77,15 @@ begin
   exception when check_violation then null;
   end;
   begin
-    insert into public.titles (tmdb_id, media_type, name, episode_number)
+    insert into public.titles (show_tmdb_id, media_type, name, episode_number)
     values (990101, 'tv', 'orphan', 4);
     raise exception 'FAIL 3: an episode was stored without a season';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.titles (tmdb_id, show_tmdb_id, media_type, name, season_number)
+    values (990102, 990101, 'tv', 'Severance Season 9', 9);
+    raise exception 'FAIL 3: a part carried a TMDB id of its own';
   exception when check_violation then null;
   end;
   raise notice 'PASS 3: no duplicate parts, no film seasons, no orphan episodes';
@@ -85,7 +97,7 @@ do $$
 begin
   insert into public.global_ratings (user_id, title_id, scores)
   select 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', id, '{"story": 8}'
-    from public.titles where tmdb_id = 990101 and season_number = 2 and episode_number = 3;
+    from public.titles where show_tmdb_id = 990101 and season_number = 2 and episode_number = 3;
   insert into public.global_ratings (user_id, title_id, scores)
   select 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', id, '{"story": 6}'
     from public.titles where tmdb_id = 990101 and media_type = 'tv' and season_number is null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { partFromRow, partLabel, partTitleName, samePart } from './titleParts'
+import { partFromRow, partLabel, partTitleName, samePart, tmdbIdFromRow } from './titleParts'
 
 describe('part labels', () => {
   it('names seasons, specials and episodes the way the server does', () => {
@@ -13,6 +13,15 @@ describe('part labels', () => {
     expect(partTitleName('  Severance ', { season: 2, episode: null })).toBe('Severance Season 2')
     expect(partTitleName('Severance', { season: 2, episode: 3 })).toBe('Severance S2E3')
     expect(partTitleName('Severance', { season: 0, episode: null })).toBe('Severance Specials')
+  })
+})
+
+describe('the TMDB id a row opens by', () => {
+  it("is a film's or show's own, and a part's show's", () => {
+    expect(tmdbIdFromRow({ tmdb_id: 95396, show_tmdb_id: null })).toBe(95396)
+    expect(tmdbIdFromRow({ tmdb_id: null, show_tmdb_id: 95396 })).toBe(95396)
+    expect(tmdbIdFromRow({ tmdb_id: null, show_tmdb_id: null })).toBeNull()
+    expect(tmdbIdFromRow({ tmdb_id: 603 })).toBe(603)
   })
 })
 

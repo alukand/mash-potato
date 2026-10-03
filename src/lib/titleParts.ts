@@ -1,7 +1,10 @@
 // Seasons and episodes, as titles of their own.
 //
-// A part is a row in `titles` under its show's TMDB id with season_number
-// (and episode_number) set (supabase/migrations/20261001180000_tv_parts.sql).
+// A part is a row in `titles` with season_number (and episode_number) set
+// (supabase/migrations/20261001180000_tv_parts.sql). It is filed under its
+// show's TMDB id in show_tmdb_id and has NO tmdb_id of its own
+// (20261003130000), so the apps from before 1.1, which look a title up by
+// (tmdb_id, media_type), never find two rows for one TMDB id.
 // The server composes the row's name; this module composes the SAME label so
 // the app can show it before the row exists. Pure: no Supabase, unit-tested.
 
@@ -30,6 +33,17 @@ export function partFromRow(row: {
 }): TitlePart | null {
   if (row.season_number === null || row.season_number === undefined) return null
   return { season: row.season_number, episode: row.episode_number ?? null }
+}
+
+/**
+ * The TMDB id to open a titles row by: its own, or, for a part (which has
+ * none), its show's. Every list that can hold a part reads it this way.
+ */
+export function tmdbIdFromRow(row: {
+  tmdb_id: number | null
+  show_tmdb_id?: number | null
+}): number | null {
+  return row.tmdb_id ?? row.show_tmdb_id ?? null
 }
 
 /** Two parts (or two "not a part"s) name the same title. */

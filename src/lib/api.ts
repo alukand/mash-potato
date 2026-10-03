@@ -14,7 +14,7 @@ import { CASUAL_WEIGHTS, DEFAULT_WEIGHTS, presetRowsFromJson, soloWeightsFor } f
 import type { TasteMode } from './rubricCatalog'
 import { parseRewards } from './rewards'
 import type { RewardsSummary } from './rewards'
-import { partFromRow, partTitleName } from './titleParts'
+import { partFromRow, partTitleName, tmdbIdFromRow } from './titleParts'
 import type { TitlePart } from './titleParts'
 import { parseRoundGames, takesModeFrom } from './roundGames'
 import type { RoundGames, TakesMode } from './roundGames'
@@ -607,7 +607,7 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
   const { data, error } = await supabase
     .from('reveal_sessions')
     .select(
-      'id, state, created_by, created_at, rubric, takes_mode, titles(id, tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
+      'id, state, created_by, created_at, rubric, takes_mode, titles(id, tmdb_id, show_tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
     )
     .eq('group_id', groupId)
     .order('created_at', { ascending: false })
@@ -623,7 +623,7 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
     titleId: row.titles.id,
     titleName: row.titles.name,
     titleYear: row.titles.year,
-    titleTmdbId: row.titles.tmdb_id,
+    titleTmdbId: tmdbIdFromRow(row.titles),
     mediaType: row.titles.media_type,
     titlePart: partFromRow(row.titles),
     posterPath: row.titles.poster_path,
@@ -637,7 +637,7 @@ export async function fetchSessionById(sessionId: string): Promise<SessionInfo |
   const { data, error } = await supabase
     .from('reveal_sessions')
     .select(
-      'id, state, created_by, created_at, rubric, takes_mode, titles(id, tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
+      'id, state, created_by, created_at, rubric, takes_mode, titles(id, tmdb_id, show_tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
     )
     .eq('id', sessionId)
     .maybeSingle()
@@ -651,7 +651,7 @@ export async function fetchSessionById(sessionId: string): Promise<SessionInfo |
     titleId: data.titles.id,
     titleName: data.titles.name,
     titleYear: data.titles.year,
-    titleTmdbId: data.titles.tmdb_id,
+    titleTmdbId: tmdbIdFromRow(data.titles),
     mediaType: data.titles.media_type,
     titlePart: partFromRow(data.titles),
     posterPath: data.titles.poster_path,
@@ -1047,21 +1047,33 @@ export async function fetchSeasonDetail(tmdbId: number, season: number): Promise
 
 /**
  * The titles row for a film or show, or for one of a show's parts; null if
- * nobody has added it yet. A show and its parts share (tmdb_id, media_type),
- * so a lookup that leaves the part out would match every episode too.
+ * nobody has added it yet. A part has no TMDB id of its own: it is filed
+ * under its show's in show_tmdb_id (20261003130000), so the two are found
+ * differently, and a film or show lookup can never match an episode.
  */
 async function findTitleId(
   tmdbId: number,
   mediaType: 'movie' | 'tv',
   part?: TitlePart | null,
 ): Promise<string | null> {
-  let query = supabase.from('titles').select('id').eq('tmdb_id', tmdbId).eq('media_type', mediaType)
-  query = part ? query.eq('season_number', part.season) : query.is('season_number', null)
-  query =
-    part && part.episode !== null
-      ? query.eq('episode_number', part.episode)
-      : query.is('episode_number', null)
-  const { data, error } = await query.maybeSingle()
+  if (part) {
+    let query = supabase
+      .from('titles')
+      .select('id')
+      .eq('show_tmdb_id', tmdbId)
+      .eq('season_number', part.season)
+    query =
+      part.episode !== null ? query.eq('episode_number', part.episode) : query.is('episode_number', null)
+    const { data, error } = await query.maybeSingle()
+    if (error) throw new Error(error.message)
+    return data?.id ?? null
+  }
+  const { data, error } = await supabase
+    .from('titles')
+    .select('id')
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .maybeSingle()
   if (error) throw new Error(error.message)
   return data?.id ?? null
 }
@@ -1327,7 +1339,7 @@ export async function fetchMyReviewedTitles(userId: string): Promise<ReviewedTit
   const { data, error } = await supabase
     .from('member_scores')
     .select(
-      'updated_at, reveal_sessions(state, titles(id, tmdb_id, media_type, name, year, poster_path, season_number, episode_number))',
+      'updated_at, reveal_sessions(state, titles(id, tmdb_id, show_tmdb_id, media_type, name, year, poster_path, season_number, episode_number))',
     )
     .eq('member_id', userId)
     .order('updated_at', { ascending: false })
@@ -1345,7 +1357,7 @@ export async function fetchMyReviewedTitles(userId: string): Promise<ReviewedTit
     } else {
       byTitle.set(title.id, {
         titleId: title.id,
-        tmdbId: title.tmdb_id,
+        tmdbId: tmdbIdFromRow(title),
         mediaType: title.media_type,
         part: partFromRow(title),
         name: title.name,
@@ -1635,7 +1647,7 @@ export interface GroupHistoryNight {
 async function loadGroupHistory(groupId: string): Promise<GroupHistoryNight[]> {
   const { data: sessions, error } = await supabase
     .from('reveal_sessions')
-    .select('id, revealed_at, rubric, titles(tmdb_id, media_type, name, year, poster_path)')
+    .select('id, revealed_at, rubric, titles(tmdb_id, show_tmdb_id, media_type, name, year, poster_path)')
     .eq('group_id', groupId)
     .eq('state', 'revealed')
     .order('revealed_at', { ascending: false })
@@ -1668,7 +1680,7 @@ async function loadGroupHistory(groupId: string): Promise<GroupHistoryNight[]> {
       titleYear: r.titles!.year,
       mediaType: r.titles!.media_type,
       posterPath: r.titles!.poster_path,
-      tmdbId: r.titles!.tmdb_id,
+      tmdbId: tmdbIdFromRow(r.titles!),
       revealedAt: r.revealed_at,
       rubric,
       cards: bySession.get(r.id) ?? [],
@@ -1849,7 +1861,7 @@ export async function fetchMyGlobalRatings(userId: string): Promise<RatedTitle[]
   const { data, error } = await supabase
     .from('global_ratings')
     .select(
-      'updated_at, titles(id, tmdb_id, media_type, name, year, poster_path, season_number, episode_number)',
+      'updated_at, titles(id, tmdb_id, show_tmdb_id, media_type, name, year, poster_path, season_number, episode_number)',
     )
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
@@ -1858,7 +1870,7 @@ export async function fetchMyGlobalRatings(userId: string): Promise<RatedTitle[]
     .filter((row) => row.titles)
     .map((row) => ({
       titleId: row.titles!.id,
-      tmdbId: row.titles!.tmdb_id,
+      tmdbId: tmdbIdFromRow(row.titles!),
       mediaType: row.titles!.media_type,
       part: partFromRow(row.titles!),
       name: row.titles!.name,

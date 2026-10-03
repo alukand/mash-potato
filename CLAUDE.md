@@ -188,17 +188,23 @@ records why it exists and what stays banned; `docs/REWARDS.md` is the runbook;
 
 ## SEASONS AND EPISODES (2026-10-02)
 
-A season or an episode is a ROW IN `titles` under its show's TMDB id, with
-`season_number` (and `episode_number`) set (20261001180000). Everything keyed
-on `title_id` works on it unchanged: solo ratings, rounds and the blind rule,
-discussion, tokens (each part is a title, so the daily caps bound it). The laws:
+A season or an episode is a ROW IN `titles` with `season_number` (and
+`episode_number`) set (20261001180000). Everything keyed on `title_id` works
+on it unchanged: solo ratings, rounds and the blind rule, discussion, tokens
+(each part is a title, so the daily caps bound it). The laws:
 
-- **Every lookup by TMDB id says which part it wants.** A show and its parts
-  share `(tmdb_id, media_type)`; a lookup that leaves the part out matches every
-  episode (and `.maybeSingle()` then throws). Use `findTitleId` in `lib/api.ts`;
-  `ensure_title` only ever returns the film or show itself. The unique key is
-  the index `titles_identity_key` over `coalesce(season_number, -1)` and
-  `coalesce(episode_number, -1)`.
+- **A part has NO `tmdb_id` of its own.** Its show's TMDB id is
+  `show_tmdb_id` (20261003130000). Every app before 1.1 (1.0, and any web app
+  still cached) looks a title up by `(tmdb_id, media_type)` with
+  `.maybeSingle()`, so a part sharing its show's id would break the show's page
+  for them the moment anyone rated an episode. An older app that meets a part
+  sees a title with no TMDB identity, which it already treats as typed in.
+- **A film or show is found by `tmdb_id`, a part by `show_tmdb_id`.** Use
+  `findTitleId` in `lib/api.ts`, and read a row's TMDB id with
+  `tmdbIdFromRow` (`lib/titleParts.ts`: a part answers with its show's).
+  `ensure_title` only ever returns the film or show itself. The keys: the
+  original unique `(tmdb_id, media_type)`, and `titles_part_key` on
+  `(show_tmdb_id, season_number, coalesce(episode_number, -1))`.
 - **Parts are created only by `ensure_tv_part`**, which composes the row's
   name ("Severance Season 2", "Severance S2E3", season 0 = "Specials") so
   every list that prints `titles.name` says which part it is. `part_name`
