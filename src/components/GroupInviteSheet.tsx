@@ -17,6 +17,7 @@ import {
   resolveSessionRubricTagged,
 } from '../lib/rubricCatalog'
 import { readRecentGroupIds, touchRecentGroup } from '../lib/activeGroup'
+import { partTitleName } from '../lib/titleParts'
 import { CtaButton, GroupMark, fieldClassSm } from './ui'
 import { RubricReceipt } from './RubricReceipt'
 
@@ -78,7 +79,9 @@ export function GroupInviteSheet({
     const [rows, latest, rated] = await Promise.all([
       fetchGroupRubrics(g.id).catch(() => []),
       fetchLatestSession(g.id).catch(() => null),
-      hasGroupRatedTitle(g.id, title.tmdbId ?? null, title.mediaType).catch(() => false),
+      hasGroupRatedTitle(g.id, title.tmdbId ?? null, title.mediaType, title.part).catch(
+        () => false,
+      ),
     ])
     if (request !== selectionRequest.current) return
     setRubrics(rows)
@@ -125,7 +128,7 @@ export function GroupInviteSheet({
               <p> let a long name eat the explanation of what this does. */}
           <p className="mt-0.5 text-[13px] leading-snug text-muted">
             <span className="block truncate font-medium">
-              {title.name}
+              {title.part ? partTitleName(title.name, title.part) : title.name}
               {title.year ? ` (${title.year})` : ''}
             </span>
             scored blind until the Reveal

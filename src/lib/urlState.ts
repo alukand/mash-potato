@@ -11,6 +11,7 @@
 // the push handler still sets state directly. History just mirrors it.
 
 import type { TabId } from '../components/BottomNav'
+import type { TitlePart } from './titleParts'
 
 /** A view pushed over the tabs. Tapping a bottom tab clears the whole stack. */
 export type StackView =
@@ -18,6 +19,8 @@ export type StackView =
       kind: 'title'
       tmdbId: number
       mediaType: 'movie' | 'tv'
+      /** A season or an episode of the show (lib/titleParts.ts); absent = the show. */
+      part?: TitlePart
       /**
        * Open the discussion on this group's thread (reveal deep link).
        * Deliberately NOT in the URL — see `stateToPath`.
@@ -36,9 +39,25 @@ export type StackView =
   /** Your tokens: balance, today's token, how to earn, history. Private. */
   | { kind: 'rewards' }
 
+/** How a link opens a title page: which part, and whether straight into a discussion. */
+export interface OpenTitleOptions {
+  part?: TitlePart | null
+  discuss?: { groupId: string; seed?: string }
+}
+
+/** The one signature every "open this title" prop shares (App.tsx openTitle). */
+export type OpenTitle = (
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+  options?: OpenTitleOptions,
+) => void
+
 /** Identity for React keys and for "is this the same view?" comparisons. */
 export function stackKey(v: StackView): string {
-  if (v.kind === 'title') return `title:${v.tmdbId}:${v.mediaType}`
+  if (v.kind === 'title') {
+    const part = v.part ? `:s${v.part.season}${v.part.episode !== null ? `e${v.part.episode}` : ''}` : ''
+    return `title:${v.tmdbId}:${v.mediaType}${part}`
+  }
   if (v.kind === 'user') return `user:${v.userId}`
   if (v.kind === 'playlist') return `playlist:${v.playlistId}`
   if (v.kind === 'thread') return `thread:${v.conversationId}`
@@ -98,8 +117,12 @@ export function stateToPath(tab: TabId, stack: StackView[]): string {
   if (!top) return TAB_PATHS[tab]
 
   switch (top.kind) {
-    case 'title':
-      return `/${top.mediaType === 'movie' ? 'film' : 'show'}/${top.tmdbId}`
+    case 'title': {
+      const base = `/${top.mediaType === 'movie' ? 'film' : 'show'}/${top.tmdbId}`
+      if (!top.part || top.mediaType !== 'tv') return base
+      const season = `${base}/season/${top.part.season}`
+      return top.part.episode === null ? season : `${season}/episode/${top.part.episode}`
+    }
     case 'user':
       return `/u/${encodeURIComponent(top.userId)}`
     case 'playlist':
@@ -144,6 +167,17 @@ export function pathToState(pathname: string): AppLocation {
     if ((head === 'film' || head === 'show') && second) {
       const tmdbId = Number(second)
       if (!Number.isInteger(tmdbId) || tmdbId <= 0) return null
+      // /show/:id/season/:n[/episode/:m]. A malformed part is refused outright
+      // rather than quietly opening the show it was meant to narrow.
+      if (head === 'show' && third === 'season') {
+        const season = Number(parts[3])
+        if (!Number.isInteger(season) || season < 0 || season > 999) return null
+        if (parts.length === 4) return { kind: 'title', tmdbId, mediaType: 'tv', part: { season, episode: null } }
+        const episode = Number(parts[5])
+        if (parts.length !== 6 || parts[4] !== 'episode') return null
+        if (!Number.isInteger(episode) || episode < 0 || episode > 9999) return null
+        return { kind: 'title', tmdbId, mediaType: 'tv', part: { season, episode } }
+      }
       return { kind: 'title', tmdbId, mediaType: head === 'film' ? 'movie' : 'tv' }
     }
     if (head === 'u' && second) return { kind: 'user', userId: second }

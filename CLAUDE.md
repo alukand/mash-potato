@@ -186,6 +186,31 @@ records why it exists and what stays banned; `docs/REWARDS.md` is the runbook;
 - Spending does not exist yet. Before building it, read the redemption
   checklist in `docs/REWARDS.md` (fraud gates, tax reporting, program terms).
 
+## SEASONS AND EPISODES (2026-10-02)
+
+A season or an episode is a ROW IN `titles` under its show's TMDB id, with
+`season_number` (and `episode_number`) set (20261001180000). Everything keyed
+on `title_id` works on it unchanged: solo ratings, rounds and the blind rule,
+discussion, tokens (each part is a title, so the daily caps bound it). The laws:
+
+- **Every lookup by TMDB id says which part it wants.** A show and its parts
+  share `(tmdb_id, media_type)`; a lookup that leaves the part out matches every
+  episode (and `.maybeSingle()` then throws). Use `findTitleId` in `lib/api.ts`;
+  `ensure_title` only ever returns the film or show itself. The unique key is
+  the index `titles_identity_key` over `coalesce(season_number, -1)` and
+  `coalesce(episode_number, -1)`.
+- **Parts are created only by `ensure_tv_part`**, which composes the row's
+  name ("Severance Season 2", "Severance S2E3", season 0 = "Specials") so
+  every list that prints `titles.name` says which part it is. `part_name`
+  keeps TMDB's own name. `lib/titleParts.ts` mirrors the label.
+- Parts are never saved, put in playlists or sent as chat cards: those hold
+  films and shows, and the title page hides the buttons on a part.
+- URLs: `/show/:id/season/:n[/episode/:m]`. Links pass the part through the
+  `OpenTitle` options (`lib/urlState.ts`), never positionally.
+- `tmdb-search` serves `seasonList` on a TV detail and the `season` op. A
+  deployed function older than this has neither; the app then shows no
+  seasons list rather than failing, so deploy it with the release.
+
 ## Commands
 
 - `npm run dev` — Vite on port 5180 (fixed; 5173/5174 belong to another project)

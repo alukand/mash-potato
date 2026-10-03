@@ -19,7 +19,7 @@ import {
 } from './lib/activeGroup'
 import { bindPushOpenHandler, enablePush } from './lib/push'
 import { pathToState, stateToPath, stackKey } from './lib/urlState'
-import type { StackView } from './lib/urlState'
+import type { OpenTitle, StackView } from './lib/urlState'
 import { Logo } from './components/Logo'
 import { Mascot } from './components/Mascot'
 import { Sticker } from './components/Sticker'
@@ -359,19 +359,18 @@ function App() {
     setActiveGroupId((prev) => pickActiveGroup(gs, prev)?.id ?? null)
   }, [session])
 
-  function openTitle(
-    tmdbId: number,
-    mediaType: 'movie' | 'tv',
-    discuss?: { groupId: string; seed?: string },
-  ) {
+  const openTitle: OpenTitle = (tmdbId, mediaType, options) => {
+    const part = options?.part
     setStack((s) => [
       ...s,
       {
         kind: 'title',
         tmdbId,
         mediaType,
-        discussGroupId: discuss?.groupId,
-        discussSeed: discuss?.seed,
+        // a season or episode of a show; films never carry one
+        ...(part && mediaType === 'tv' ? { part } : {}),
+        discussGroupId: options?.discuss?.groupId,
+        discussSeed: options?.discuss?.seed,
       },
     ])
     window.scrollTo(0, 0)
@@ -498,6 +497,8 @@ function App() {
               <TitleDetailScreen
                 tmdbId={top.tmdbId}
                 mediaType={top.mediaType}
+                part={top.part ?? null}
+                onOpenPart={(part) => openTitle(top.tmdbId, top.mediaType, { part })}
                 groups={groups}
                 userId={userId}
                 discussGroupId={top.discussGroupId ?? null}

@@ -1,9 +1,13 @@
 import { posterUrl } from '../lib/api'
+import type { TitlePart } from '../lib/titleParts'
+import type { OpenTitle } from '../lib/urlState'
 
 export interface PosterGridItem {
   titleId: string
   tmdbId: number | null
   mediaType: 'movie' | 'tv'
+  /** A season or episode opens its own page; absent for films and shows. */
+  part?: TitlePart | null
   name: string
   year: number | null
   posterPath: string | null
@@ -11,7 +15,7 @@ export interface PosterGridItem {
 
 interface PosterGridProps {
   items: PosterGridItem[]
-  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  onOpenTitle: OpenTitle
   /** Optional corner label on each tile (e.g. "Solo"). */
   badge?: string
   /** When set, tiles grow a remove control (manage mode). */
@@ -39,7 +43,9 @@ export function PosterGrid({ items, onOpenTitle, badge, onRemove }: PosterGridPr
           <button
             type="button"
             disabled={it.tmdbId === null}
-            onClick={() => it.tmdbId !== null && onOpenTitle(it.tmdbId, it.mediaType)}
+            onClick={() =>
+              it.tmdbId !== null && onOpenTitle(it.tmdbId, it.mediaType, { part: it.part ?? null })
+            }
             className="mp-poster-button w-full text-left disabled:opacity-70"
           >
             <div className="mp-poster-art relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-line/60 bg-surface-2">

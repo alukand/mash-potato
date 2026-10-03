@@ -36,6 +36,8 @@ import { ScoreRing } from './ScoreRing'
 import { MashMath } from './MashMath'
 import { LoadingCards, RevealBurst } from './Moments'
 import { refreshRewards } from '../lib/rewardsStore'
+import type { TitlePart } from '../lib/titleParts'
+import type { OpenTitle } from '../lib/urlState'
 
 interface SessionPanelProps {
   group: GroupInfo
@@ -50,9 +52,14 @@ interface SessionPanelProps {
   /** A re-rate round started: jump the view back to the (new) latest round. */
   onViewLatest?: () => void
   /** Open the title's discussion on this group's thread (the debrief). */
-  onDiscuss?: (tmdbId: number, mediaType: 'movie' | 'tv', seed: string) => void
-  /** Tap the reveal's poster/title to open the title page. */
-  onOpenTitle?: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  onDiscuss?: (
+    tmdbId: number,
+    mediaType: 'movie' | 'tv',
+    seed: string,
+    part: TitlePart | null,
+  ) => void
+  /** Tap the reveal's poster/title to open the title page (or the episode's). */
+  onOpenTitle?: OpenTitle
 }
 
 // The group's latest session, live: blind rounds show invite + lock progress,
@@ -524,7 +531,7 @@ export function SessionPanel({
           disabled={session.titleTmdbId === null || !onOpenTitle}
           onClick={() =>
             session.titleTmdbId !== null &&
-            onOpenTitle?.(session.titleTmdbId, session.mediaType)
+            onOpenTitle?.(session.titleTmdbId, session.mediaType, { part: session.titlePart })
           }
           className="group -mx-2 flex w-full items-start gap-4 rounded-2xl px-2 py-1 text-left transition-colors active:bg-surface-2 disabled:cursor-default disabled:active:bg-transparent"
         >
@@ -787,6 +794,7 @@ export function SessionPanel({
                   session.titleTmdbId!,
                   session.mediaType,
                   discussSeedFor(clash.category, labelFor(clash.category)),
+                  session.titlePart,
                 )
               }
               className="mt-3.5 flex items-center gap-2 rounded-full border border-teal/40 bg-teal/10 px-4 py-2 text-[13px] font-semibold text-teal transition-colors hover:bg-teal/20"

@@ -7,6 +7,7 @@ import { TitleDetailScreen } from './TitleDetailScreen'
 import { OpenGroups } from '../components/OpenGroups'
 import { CtaButton } from '../components/ui'
 import { getAuthLinkError } from '../lib/authLinks'
+import type { TitlePart } from '../lib/titleParts'
 
 // App Store guideline 5.1.1(v): an app may require an account for
 // account-based features, but NOT for the rest. Browsing the catalogue is not
@@ -20,7 +21,10 @@ import { getAuthLinkError } from '../lib/authLinks'
 // `null` through it would put a sign-in branch in dozens of places. This is
 // the whole signed-out surface in one file.
 
-type View = { kind: 'discover' } | { kind: 'groups' } | { kind: 'title'; tmdbId: number; mediaType: 'movie' | 'tv' }
+type View =
+  | { kind: 'discover' }
+  | { kind: 'groups' }
+  | { kind: 'title'; tmdbId: number; mediaType: 'movie' | 'tv'; part?: TitlePart | null }
 
 export function SignedOutShell() {
   const [authOpen, setAuthOpen] = useState(() => getAuthLinkError() !== null)
@@ -76,15 +80,35 @@ export function SignedOutShell() {
             />
           </main>
         ) : (
-          <main key={`title:${view.mediaType}:${view.tmdbId}`} className="-mx-5">
+          <main
+            key={`title:${view.mediaType}:${view.tmdbId}:${view.part ? `${view.part.season}:${view.part.episode ?? ''}` : ''}`}
+            className="-mx-5"
+          >
             <TitleDetailScreen
               tmdbId={view.tmdbId}
               mediaType={view.mediaType}
+              part={view.part ?? null}
+              onOpenPart={(part) => {
+                setView({ kind: 'title', tmdbId: view.tmdbId, mediaType: view.mediaType, part })
+                window.scrollTo(0, 0)
+              }}
               groups={[]}
               userId={null}
               onSignIn={() => setAuthOpen(true)}
+              // No stack here, so Back climbs the show itself: episode, then
+              // season, then show, then Discover.
               onBack={() => {
-                setView({ kind: 'discover' })
+                const part = view.part
+                setView(
+                  part
+                    ? {
+                        kind: 'title',
+                        tmdbId: view.tmdbId,
+                        mediaType: view.mediaType,
+                        part: part.episode !== null ? { season: part.season, episode: null } : null,
+                      }
+                    : { kind: 'discover' },
+                )
                 window.scrollTo(0, 0)
               }}
               onStartedSession={() => setAuthOpen(true)}

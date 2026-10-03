@@ -1390,28 +1390,37 @@ export type Database = {
       titles: {
         Row: {
           created_at: string
+          episode_number: number | null
           id: string
           media_type: Database["public"]["Enums"]["media_type"]
           name: string
+          part_name: string | null
           poster_path: string | null
+          season_number: number | null
           tmdb_id: number | null
           year: number | null
         }
         Insert: {
           created_at?: string
+          episode_number?: number | null
           id?: string
           media_type: Database["public"]["Enums"]["media_type"]
           name: string
+          part_name?: string | null
           poster_path?: string | null
+          season_number?: number | null
           tmdb_id?: number | null
           year?: number | null
         }
         Update: {
           created_at?: string
+          episode_number?: number | null
           id?: string
           media_type?: Database["public"]["Enums"]["media_type"]
           name?: string
+          part_name?: string | null
           poster_path?: string | null
+          season_number?: number | null
           tmdb_id?: number | null
           year?: number | null
         }
@@ -1778,6 +1787,18 @@ export type Database = {
           p_media_type: string
           p_name: string
           p_poster_path: string
+          p_tmdb_id: number
+          p_year: number
+        }
+        Returns: string
+      }
+      ensure_tv_part: {
+        Args: {
+          p_episode: number
+          p_part_name: string
+          p_poster_path: string
+          p_season: number
+          p_show_name: string
           p_tmdb_id: number
           p_year: number
         }

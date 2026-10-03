@@ -11,6 +11,7 @@ import {
   fetchAddablePlaylists,
   fetchMyPlaylistsContaining,
   fetchSavedTitleId,
+  fetchSeasonDetail,
   fetchTitleDetail,
   fetchTitleHistory,
   fetchWatchProviders,
@@ -19,16 +20,21 @@ import {
   removeTitleFromPlaylist,
   saveGlobalRating,
   saveTitle,
+  stillUrl,
   unsaveTitle,
 } from '../lib/api'
 import type {
   GroupInfo,
   ModeScores,
+  NewTitle,
   PlaylistSummary,
+  SeasonDetail,
   TitleDetail,
   TitleHistoryEntry,
+  TitlePart,
   WatchProviders,
 } from '../lib/api'
+import { partLabel } from '../lib/titleParts'
 import type { CategoryScores } from '../lib/scoring'
 import { mashedScore, memberWeightedScore, formatScore } from '../lib/scoring'
 import { weightsFromRubric } from '../lib/mapping'
@@ -50,6 +56,13 @@ import { refreshRewards } from '../lib/rewardsStore'
 interface TitleDetailScreenProps {
   tmdbId: number
   mediaType: 'movie' | 'tv'
+  /**
+   * A season or an episode of the show (lib/titleParts.ts). It is a title of
+   * its own: rated, scored in rounds and discussed apart from the show.
+   */
+  part?: TitlePart | null
+  /** Open a season or episode of this show; null opens the show itself. */
+  onOpenPart?: (part: TitlePart | null) => void
   groups: GroupInfo[]
   /** null = signed out: only the public TMDB surface loads (guideline 5.1.1(v)). */
   userId: string | null
@@ -83,11 +96,28 @@ function formatRevealed(iso: string | null): string {
   })
 }
 
+/**
+ * TMDB's "2025-01-17" is a calendar date, not an instant: parsed with
+ * new Date(string) it is UTC midnight, which is the day before anywhere west
+ * of Greenwich. Built from its parts it stays the date TMDB meant.
+ */
+function formatAirDate(date: string | null): string | null {
+  const m = date ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(date) : null
+  if (!m) return null
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
 // Full TMDB detail page for one title. Lives on the App view-stack (opened from
 // Discover, Profile, or a saved list) with its own back button.
 export function TitleDetailScreen({
   tmdbId,
   mediaType,
+  part = null,
+  onOpenPart,
   groups,
   userId,
   onSignIn,
@@ -98,6 +128,9 @@ export function TitleDetailScreen({
   onStartedSession,
 }: TitleDetailScreenProps) {
   const [detail, setDetail] = useState<TitleDetail | null | undefined>(undefined)
+  // A season page, or an episode page (its season carries the episodes).
+  // Films and shows never load one. Null: TMDB has no such season.
+  const [season, setSeason] = useState<SeasonDetail | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [savedTitleId, setSavedTitleId] = useState<string | null>(null)
   const [celebrateSave, setCelebrateSave] = useState(false)
@@ -130,6 +163,37 @@ export function TitleDetailScreen({
   const [newListName, setNewListName] = useState('')
   // Where the new list lives: personal (null) or one of your groups.
   const [newListGroupId, setNewListGroupId] = useState<string | null>(null)
+
+  // The episode, when this page is one (its season carries them all).
+  const episode =
+    part && part.episode !== null
+      ? (season?.episodes.find((e) => e.episodeNumber === part.episode) ?? null)
+      : null
+  // Effect dependency for the part: its numbers, not the object's identity.
+  const partKey = part ? `${part.season}:${part.episode ?? ''}` : ''
+
+  /**
+   * What this page IS, as a title to write: the film or show, or one of the
+   * show's parts. Every write below goes through it, so a season or episode
+   * can never be rated, scored or discussed as its show by accident.
+   */
+  function titleInput(d: TitleDetail): NewTitle {
+    if (!part) {
+      return { name: d.name, year: d.year, mediaType: d.mediaType, tmdbId: d.tmdbId, posterPath: d.posterPath }
+    }
+    return {
+      name: d.name,
+      year: episode?.year ?? season?.year ?? d.year,
+      mediaType: d.mediaType,
+      tmdbId: d.tmdbId,
+      posterPath: season?.posterPath ?? d.posterPath,
+      part: {
+        season: part.season,
+        episode: part.episode,
+        partName: part.episode === null ? (season?.name ?? null) : (episode?.name ?? null),
+      },
+    }
+  }
 
   // Every handler below writes on your behalf, so each is unreachable signed
   // out (the controls that call them are gated). The guards make that a fact
@@ -172,13 +236,7 @@ export function TitleDetailScreen({
           ) ?? prev,
         )
       } else {
-        const addedId = await addTitleToPlaylist(playlistId, {
-          name: detail.name,
-          year: detail.year,
-          mediaType: detail.mediaType,
-          tmdbId: detail.tmdbId,
-          posterPath: detail.posterPath,
-        })
+        const addedId = await addTitleToPlaylist(playlistId, titleInput(detail))
         setContaining((prev) => new Map(prev).set(playlistId, addedId))
         setMyLists((prev) =>
           prev?.map((l) => (l.id === playlistId ? { ...l, itemCount: l.itemCount + 1 } : l)) ??
@@ -202,13 +260,7 @@ export function TitleDetailScreen({
     setError(null)
     try {
       const id = await createPlaylist(userId, name, newListGroupId)
-      await addTitleToPlaylist(id, {
-        name: detail.name,
-        year: detail.year,
-        mediaType: detail.mediaType,
-        tmdbId: detail.tmdbId,
-        posterPath: detail.posterPath,
-      })
+      await addTitleToPlaylist(id, titleInput(detail))
       setNewListName('')
       await refreshLists()
     } catch (err) {
@@ -227,16 +279,24 @@ export function TitleDetailScreen({
     setListsOpen(false)
     setMyLists(null)
     setHistFilter('all')
+    setSeason(null)
+    // A season or episode page reads its season too. A failure there leaves
+    // the page on the show's own details rather than failing the whole load.
+    const seasonLoad = part
+      ? fetchSeasonDetail(tmdbId, part.season).catch(() => null)
+      : Promise.resolve(null)
     // Signed out, every account-scoped read would 401 and reject the whole
     // Promise.all — so browsing loads ONLY the public TMDB surface.
     if (userId === null) {
       Promise.all([
         fetchTitleDetail(tmdbId, mediaType),
         fetchWatchProviders(tmdbId, mediaType).catch(() => null),
+        seasonLoad,
       ])
-        .then(([d, providers]) => {
+        .then(([d, providers, s]) => {
           if (cancelled) return
           setDetail(d)
+          setSeason(s)
           setNotFound(d === null)
           setWatch(providers)
         })
@@ -253,20 +313,25 @@ export function TitleDetailScreen({
 
     Promise.all([
       fetchTitleDetail(tmdbId, mediaType),
-      fetchSavedTitleId(userId, tmdbId, mediaType),
-      fetchTitleHistory(tmdbId, mediaType),
-      fetchModeScores(tmdbId, mediaType),
-      fetchMyGlobalRating(userId, tmdbId, mediaType),
-      fetchModeHistogram(tmdbId, mediaType, null),
+      fetchSavedTitleId(userId, tmdbId, mediaType, part),
+      fetchTitleHistory(tmdbId, mediaType, part),
+      fetchModeScores(tmdbId, mediaType, part),
+      fetchMyGlobalRating(userId, tmdbId, mediaType, part),
+      fetchModeHistogram(tmdbId, mediaType, null, part),
       fetchMyTasteMode(userId),
-      fetchMyPlaylistsContaining(userId, tmdbId, mediaType).catch(
-        () => new Map<string, string>(),
-      ),
+      // playlists hold films and shows only
+      part
+        ? Promise.resolve(new Map<string, string>())
+        : fetchMyPlaylistsContaining(userId, tmdbId, mediaType).catch(
+            () => new Map<string, string>(),
+          ),
       fetchWatchProviders(tmdbId, mediaType).catch(() => null),
+      seasonLoad,
     ])
-      .then(([d, savedId, hist, comm, mine, histogram, mode, holds, providers]) => {
+      .then(([d, savedId, hist, comm, mine, histogram, mode, holds, providers, s]) => {
         if (cancelled) return
         setDetail(d)
+        setSeason(s)
         setNotFound(d === null)
         setSavedTitleId(savedId)
         setHistory(hist)
@@ -286,7 +351,9 @@ export function TitleDetailScreen({
     return () => {
       cancelled = true
     }
-  }, [tmdbId, mediaType, userId])
+    // `part` is read through partKey: its numbers, not the object's identity
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tmdbId, mediaType, userId, partKey])
 
   async function toggleSave() {
     if (!detail || userId === null) return
@@ -298,13 +365,7 @@ export function TitleDetailScreen({
         await unsaveTitle(userId, savedTitleId)
         setSavedTitleId(null)
       } else {
-        const id = await saveTitle(userId, {
-          name: detail.name,
-          year: detail.year,
-          mediaType: detail.mediaType,
-          tmdbId: detail.tmdbId,
-          posterPath: detail.posterPath,
-        })
+        const id = await saveTitle(userId, titleInput(detail))
         setSavedTitleId(id)
         setCelebrateSave(true)
       }
@@ -343,7 +404,9 @@ export function TitleDetailScreen({
   async function switchHistFilter(next: TasteMode | 'all') {
     setHistFilter(next)
     try {
-      setCommunityBins(await fetchModeHistogram(tmdbId, mediaType, next === 'all' ? null : next))
+      setCommunityBins(
+        await fetchModeHistogram(tmdbId, mediaType, next === 'all' ? null : next, part),
+      )
     } catch {
       // leave the previous bins; the chips stay usable
     }
@@ -362,21 +425,11 @@ export function TitleDetailScreen({
     setSavingRating(true)
     setError(null)
     try {
-      await saveGlobalRating(
-        userId,
-        {
-          name: detail.name,
-          year: detail.year,
-          mediaType: detail.mediaType,
-          tmdbId: detail.tmdbId,
-          posterPath: detail.posterPath,
-        },
-        soloScores,
-      )
+      await saveGlobalRating(userId, titleInput(detail), soloScores)
       setMyScores({ ...soloScores })
       const [comm, histogram] = await Promise.all([
-        fetchModeScores(tmdbId, mediaType),
-        fetchModeHistogram(tmdbId, mediaType, histFilter === 'all' ? null : histFilter),
+        fetchModeScores(tmdbId, mediaType, part),
+        fetchModeHistogram(tmdbId, mediaType, histFilter === 'all' ? null : histFilter, part),
       ])
       setModeScores(comm)
       setCommunityBins(histogram)
@@ -397,13 +450,13 @@ export function TitleDetailScreen({
     setSavingRating(true)
     setError(null)
     try {
-      await deleteGlobalRating(userId, tmdbId, mediaType)
+      await deleteGlobalRating(userId, tmdbId, mediaType, part)
       setMyScores(null)
       setConfirmRemove(false)
       setRating(false)
       const [comm, histogram] = await Promise.all([
-        fetchModeScores(tmdbId, mediaType),
-        fetchModeHistogram(tmdbId, mediaType, histFilter === 'all' ? null : histFilter),
+        fetchModeScores(tmdbId, mediaType, part),
+        fetchModeHistogram(tmdbId, mediaType, histFilter === 'all' ? null : histFilter, part),
       ])
       setModeScores(comm)
       setCommunityBins(histogram)
@@ -448,14 +501,44 @@ export function TitleDetailScreen({
     )
   }
 
-  const runtime = formatRuntime(detail.runtimeMinutes)
-  const seasons = detail.seasons ? `${detail.seasons} season${detail.seasons === 1 ? '' : 's'}` : null
+  // A season or episode page shows ITS details over its show's backdrop, and
+  // falls back to the show's where TMDB has nothing for the part.
+  const heading = !part
+    ? detail.name
+    : part.episode === null
+      ? (season?.name ?? partLabel(part))
+      : (episode?.name ?? partLabel(part))
+  const posterPath = part ? (season?.posterPath ?? detail.posterPath) : detail.posterPath
+  const year = part ? (episode?.year ?? season?.year ?? null) : detail.year
+  const overview = !part
+    ? detail.overview
+    : ((part.episode === null ? season?.overview : episode?.overview) ?? '')
+  const tmdbRating = part ? (episode?.tmdbRating ?? null) : detail.tmdbRating
+  const runtime = formatRuntime(part ? (episode?.runtimeMinutes ?? null) : detail.runtimeMinutes)
+  const seasons =
+    !part && detail.seasons ? `${detail.seasons} season${detail.seasons === 1 ? '' : 's'}` : null
+  const episodeCount =
+    part && part.episode === null && season
+      ? `${season.episodes.length} episode${season.episodes.length === 1 ? '' : 's'}`
+      : null
   const meta = [
     detail.mediaType === 'movie' ? 'Film' : 'TV',
-    detail.year ? String(detail.year) : null,
+    // a season's heading already names it; an episode's is its title
+    part && part.episode !== null ? partLabel(part) : null,
+    year ? String(year) : null,
     runtime,
     seasons,
+    episodeCount,
   ].filter(Boolean)
+
+  // An episode page steps to its neighbours in the season.
+  const episodeIndex =
+    episode && season ? season.episodes.findIndex((e) => e.episodeNumber === episode.episodeNumber) : -1
+  const prevEpisode = season && episodeIndex > 0 ? season.episodes[episodeIndex - 1] : null
+  const nextEpisode =
+    season && episodeIndex >= 0 && episodeIndex < season.episodes.length - 1
+      ? season.episodes[episodeIndex + 1]
+      : null
 
   return (
     <div className="pb-4">
@@ -489,8 +572,8 @@ export function TitleDetailScreen({
       <div className="-mt-16 px-5">
         <div className="flex items-end gap-4">
           <div className="relative h-[132px] w-[88px] shrink-0 overflow-hidden rounded-xl border border-line/60 bg-surface-2 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.9)]">
-            {detail.posterPath ? (
-              <img src={posterUrl(detail.posterPath, 'w342')} alt="" className="h-full w-full object-cover" />
+            {posterPath ? (
+              <img src={posterUrl(posterPath, 'w342')} alt="" className="h-full w-full object-cover" />
             ) : (
               <span
                 aria-hidden
@@ -502,18 +585,28 @@ export function TitleDetailScreen({
             )}
           </div>
           <div className="min-w-0 flex-1 pb-1">
-            {detail.tmdbRating !== null && detail.tmdbRating > 0 && (
+            {tmdbRating !== null && tmdbRating > 0 && (
               <div className="mb-1.5 flex items-center gap-1.5">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="text-gold" aria-hidden>
                   <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5Z" />
                 </svg>
                 <span className="font-mono text-[12px] font-bold text-gold">
-                  {detail.tmdbRating.toFixed(1)}
+                  {tmdbRating.toFixed(1)}
                 </span>
                 <span className="font-mono text-[10px] text-muted">TMDB</span>
               </div>
             )}
-            <h1 className="font-display text-[26px] font-semibold leading-[1.05]">{detail.name}</h1>
+            {/* a part names its show, which is one tap away */}
+            {part && (
+              <button
+                type="button"
+                onClick={() => onOpenPart?.(null)}
+                className="mb-1 block max-w-full truncate text-left font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-teal"
+              >
+                {detail.name}
+              </button>
+            )}
+            <h1 className="font-display text-[26px] font-semibold leading-[1.05]">{heading}</h1>
           </div>
         </div>
 
@@ -567,13 +660,7 @@ export function TitleDetailScreen({
             <GroupInviteSheet
               groups={groups}
               userId={userId}
-              title={{
-                name: detail.name,
-                year: detail.year,
-                mediaType: detail.mediaType,
-                tmdbId: detail.tmdbId,
-                posterPath: detail.posterPath,
-              }}
+              title={titleInput(detail)}
               genreIds={detail.genreIds}
               onStarted={(groupId) => {
                 setInviteOpen(false)
@@ -601,6 +688,8 @@ export function TitleDetailScreen({
                 ? `Solo ${formatScore(memberWeightedScore(myScores, soloWeights))}, edit`
                 : 'Rate it solo'}
             </button>
+            {/* lists, playlists and chat cards hold films and shows, not their parts */}
+            {!part && (
             <button
               type="button"
               onClick={() => void toggleSave()}
@@ -618,8 +707,11 @@ export function TitleDetailScreen({
               </svg>
               {saving ? 'Saving…' : savedTitleId ? 'Saved' : 'Save'}
             </button>
+            )}
           </div>
 
+          {!part && (
+          <>
           {/* ---- add to a playlist ---- */}
           <button
             type="button"
@@ -660,13 +752,7 @@ export function TitleDetailScreen({
               label={`${detail.name}${detail.year ? ` (${detail.year})` : ''}`}
               // Resolved on send, so browsing the sheet never writes a row.
               resolveShare={async () => ({
-                shareTitleId: await ensureTitleRow({
-                  name: detail.name,
-                  year: detail.year,
-                  mediaType: detail.mediaType,
-                  tmdbId: detail.tmdbId,
-                  posterPath: detail.posterPath,
-                }),
+                shareTitleId: await ensureTitleRow(titleInput(detail)),
               })}
               onClose={() => setShareOpen(false)}
               onSent={() => setShareOpen(false)}
@@ -772,11 +858,120 @@ export function TitleDetailScreen({
               )}
             </div>
           )}
+          </>
+          )}
         </div>
         )}
 
-        {detail.overview && (
-          <p className="mt-5 text-[13px] leading-relaxed text-text/90">{detail.overview}</p>
+        {overview && <p className="mt-5 text-[13px] leading-relaxed text-text/90">{overview}</p>}
+
+        {/* ---- an episode steps to its neighbours ---- */}
+        {part && part.episode !== null && onOpenPart && (prevEpisode || nextEpisode) && (
+          <div className="mt-5 flex items-center justify-between gap-3">
+            {prevEpisode ? (
+              <button
+                type="button"
+                onClick={() => onOpenPart({ season: part.season, episode: prevEpisode.episodeNumber })}
+                className="min-h-11 min-w-0 truncate rounded-full border border-line px-4 text-[12px] font-semibold text-muted transition-colors hover:border-teal/50 hover:text-text"
+              >
+                ← Episode {prevEpisode.episodeNumber}
+              </button>
+            ) : (
+              <span />
+            )}
+            {nextEpisode && (
+              <button
+                type="button"
+                onClick={() => onOpenPart({ season: part.season, episode: nextEpisode.episodeNumber })}
+                className="min-h-11 min-w-0 truncate rounded-full border border-teal/40 bg-teal/10 px-4 text-[12px] font-semibold text-teal transition-colors hover:bg-teal/20"
+              >
+                Episode {nextEpisode.episodeNumber} →
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ---- a show's seasons, each rated as a title of its own ---- */}
+        {!part && onOpenPart && detail.seasonList && detail.seasonList.length > 0 && (
+          <section className="mt-7">
+            <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+              Seasons
+            </p>
+            <div className="-mx-5 flex gap-3 overflow-x-auto px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {detail.seasonList.map((s) => (
+                <button
+                  key={s.seasonNumber}
+                  type="button"
+                  onClick={() => onOpenPart({ season: s.seasonNumber, episode: null })}
+                  className="group w-[88px] shrink-0 text-left"
+                >
+                  <div className="h-[132px] w-[88px] overflow-hidden rounded-xl border border-line/60 bg-surface-2">
+                    {s.posterPath ? (
+                      <img
+                        src={posterUrl(s.posterPath, 'w185')}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="grid h-full w-full place-items-center font-display text-2xl font-semibold text-muted">
+                        {s.seasonNumber === 0 ? 'SP' : s.seasonNumber}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 truncate text-[12px] font-semibold transition-colors group-hover:text-teal">
+                    {s.name}
+                  </p>
+                  <p className="truncate font-mono text-[10px] text-muted">
+                    {s.episodeCount} episode{s.episodeCount === 1 ? '' : 's'}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ---- a season's episodes ---- */}
+        {part && part.episode === null && onOpenPart && season && season.episodes.length > 0 && (
+          <section className="mt-7">
+            <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
+              Episodes
+            </p>
+            <div className="mp-card divide-y divide-line/50 overflow-hidden rounded-[22px]">
+              {season.episodes.map((e) => (
+                <button
+                  key={e.episodeNumber}
+                  type="button"
+                  onClick={() => onOpenPart({ season: part.season, episode: e.episodeNumber })}
+                  className="group flex w-full items-center gap-3 px-4 py-3 text-left"
+                >
+                  <div className="h-[45px] w-[80px] shrink-0 overflow-hidden rounded-lg bg-surface-2">
+                    {e.stillPath && (
+                      <img
+                        src={stillUrl(e.stillPath, 'w185')}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold transition-colors group-hover:text-teal">
+                      {e.episodeNumber}. {e.name}
+                    </p>
+                    <p className="font-mono text-[10px] text-muted">
+                      {[formatAirDate(e.airDate), formatRuntime(e.runtimeMinutes)]
+                        .filter(Boolean)
+                        .join(', ') || 'Not aired yet'}
+                    </p>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted" aria-hidden>
+                    <path d="m9 5 7 7-7 7" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          </section>
         )}
 
         {/* ---- where to watch (JustWatch data via TMDB) ---- */}
@@ -967,8 +1162,8 @@ export function TitleDetailScreen({
         </section>
         )}
 
-        {/* ---- cast ---- */}
-        {detail.cast.length > 0 && (
+        {/* ---- cast (the show's, so not repeated on its seasons and episodes) ---- */}
+        {!part && detail.cast.length > 0 && (
           <section className="mt-7">
             <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
               Cast
@@ -1102,13 +1297,7 @@ export function TitleDetailScreen({
         {/* ---- discussion: group debriefs + everyone's takes ---- */}
         {userId !== null && (
           <DiscussionSection
-            title={{
-              name: detail.name,
-              year: detail.year,
-              mediaType: detail.mediaType,
-              tmdbId: detail.tmdbId,
-              posterPath: detail.posterPath,
-            }}
+            title={titleInput(detail)}
             groups={groups}
             userId={userId}
             initialGroupId={discussGroupId}

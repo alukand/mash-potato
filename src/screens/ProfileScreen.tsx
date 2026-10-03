@@ -51,6 +51,7 @@ import { AVATAR_CATALOG, Avatar } from '../components/avatars'
 import { TASTE_MODES } from '../lib/rubricCatalog'
 import type { TasteMode } from '../lib/rubricCatalog'
 import { Sticker } from '../components/Sticker'
+import type { OpenTitle } from '../lib/urlState'
 
 /**
  * Sections Home's stat tiles can point at. Each one counts a list that already
@@ -65,7 +66,7 @@ interface ProfileScreenProps {
   activeGroupId: string | null
   onSwitchGroup: (id: string) => void
   onCreateGroup: () => void
-  onOpenTitle: (tmdbId: number, mediaType: 'movie' | 'tv') => void
+  onOpenTitle: OpenTitle
   onOpenUser: (userId: string) => void
   onOpenPlaylist: (playlistId: string) => void
   /** The display name changed; refresh whatever caches it. */

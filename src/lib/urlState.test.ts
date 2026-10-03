@@ -6,6 +6,8 @@ import type { TabId } from '../components/BottomNav'
 const VIEWS: StackView[] = [
   { kind: 'title', tmdbId: 27205, mediaType: 'movie' },
   { kind: 'title', tmdbId: 1399, mediaType: 'tv' },
+  { kind: 'title', tmdbId: 1399, mediaType: 'tv', part: { season: 2, episode: null } },
+  { kind: 'title', tmdbId: 1399, mediaType: 'tv', part: { season: 0, episode: 7 } },
   { kind: 'user', userId: '442dc827-84b2-4afd-9804-931419042f78' },
   { kind: 'playlist', playlistId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' },
   { kind: 'groupHistory', groupId: 'fca59af2-507b-4abf-9ef9-738f6c275dde' },
@@ -15,6 +17,41 @@ const VIEWS: StackView[] = [
   { kind: 'moderation' },
   { kind: 'rewards' },
 ]
+
+describe('seasons and episodes', () => {
+  it('nest under the show', () => {
+    const show = { kind: 'title' as const, tmdbId: 95396, mediaType: 'tv' as const }
+    expect(stateToPath('discover', [{ ...show, part: { season: 2, episode: null } }])).toBe(
+      '/show/95396/season/2',
+    )
+    expect(stateToPath('discover', [{ ...show, part: { season: 2, episode: 3 } }])).toBe(
+      '/show/95396/season/2/episode/3',
+    )
+  })
+
+  it('refuse malformed parts instead of opening the show', () => {
+    for (const bad of [
+      '/show/95396/season',
+      '/show/95396/season/x',
+      '/show/95396/season/-1',
+      '/show/95396/season/1000',
+      '/show/95396/season/2/episode',
+      '/show/95396/season/2/episode/1.5',
+      '/show/95396/season/2/chapter/3',
+      '/show/95396/season/2/episode/3/extra',
+    ]) {
+      expect(pathToState(bad), bad).toEqual({ tab: 'home', stack: [] })
+    }
+  })
+
+  it('never put a part on a film', () => {
+    expect(
+      stateToPath('discover', [
+        { kind: 'title', tmdbId: 27205, mediaType: 'movie', part: { season: 1, episode: null } },
+      ]),
+    ).toBe('/film/27205')
+  })
+})
 
 describe('tokens', () => {
   it('has its own address under Home', () => {

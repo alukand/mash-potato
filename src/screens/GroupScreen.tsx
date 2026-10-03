@@ -51,6 +51,7 @@ import { StartRound } from '../components/StartRound'
 import { AddGroupMembers } from '../components/AddGroupMembers'
 import { RubricRowsEditor } from '../components/RubricRowsEditor'
 import { GroupDiscoverySettings } from '../components/GroupDiscoverySettings'
+import type { OpenTitle } from '../lib/urlState'
 
 interface GroupScreenProps {
   group: GroupInfo
@@ -61,11 +62,7 @@ interface GroupScreenProps {
   onMembersChanged: () => void
   /** Refetch the group list itself (rename / leave / delete). */
   onGroupsChanged: () => Promise<void>
-  onOpenTitle: (
-    tmdbId: number,
-    mediaType: 'movie' | 'tv',
-    discuss?: { groupId: string; seed?: string },
-  ) => void
+  onOpenTitle: OpenTitle
   /** Open a member's public profile. */
   onOpenUser: (userId: string) => void
   onSwitchGroup: (groupId: string) => void
@@ -495,7 +492,7 @@ export function GroupScreen({
           members={members}
           userId={userId}
           viewSessionId={viewSessionId}
-          onOpenTitle={(tmdbId, mediaType) => onOpenTitle(tmdbId, mediaType)}
+          onOpenTitle={onOpenTitle}
           startRound={
             <StartRound
               group={group}
@@ -510,8 +507,8 @@ export function GroupScreen({
             setViewSessionId(null)
             window.scrollTo(0, 0)
           }}
-          onDiscuss={(tmdbId, mediaType, seed) =>
-            onOpenTitle(tmdbId, mediaType, { groupId: group.id, seed })
+          onDiscuss={(tmdbId, mediaType, seed, part) =>
+            onOpenTitle(tmdbId, mediaType, { part, discuss: { groupId: group.id, seed } })
           }
         />
       </div>

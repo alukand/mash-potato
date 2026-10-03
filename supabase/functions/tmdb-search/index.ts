@@ -11,6 +11,10 @@
 //   { op: 'discover', filters, mediaType }       -> { results: TmdbResult[] }
 //   { op: 'recommendations', tmdbId, mediaType } -> { results: TmdbResult[] }
 //   { op: 'providers', tmdbId, mediaType, region? } -> { providers: WatchProviders | null }
+//   { op: 'season', tmdbId, season }             -> { season: SeasonDetail | null }
+// A TV detail also carries `seasonList` (every season, specials last), and
+// 'season' returns one season with its episodes, so seasons and episodes can
+// be rated as titles of their own.
 // where mediaType is 'movie' | 'tv', feed is 'trending' | 'popular' |
 // 'top_rated' | 'now_playing' | 'upcoming' (the last two map to TMDB's
 // on-the-air / airing-today lists on the TV side), and filters is
@@ -53,6 +57,11 @@ function mapListItem(r: TmdbListItem) {
     year,
     posterPath: r.poster_path ?? null,
   }
+}
+
+/** "2025-03-14" -> 2025; anything else -> null. */
+function yearOf(date: string | null | undefined): number | null {
+  return date && /^\d{4}/.test(date) ? Number(date.slice(0, 4)) : null
 }
 
 type MediaType = 'movie' | 'tv'
@@ -121,6 +130,13 @@ interface TmdbDetail {
   runtime?: number | null
   episode_run_time?: number[]
   number_of_seasons?: number | null
+  seasons?: {
+    season_number?: number
+    name?: string
+    poster_path?: string | null
+    episode_count?: number
+    air_date?: string | null
+  }[]
   genres?: { id: number; name: string }[]
   credits?: {
     cast?: { name?: string; character?: string; profile_path?: string | null }[]
@@ -156,6 +172,20 @@ async function handleDetail(body: Record<string, unknown>, apiKey: string): Prom
     genreIds: (d.genres ?? []).map((g) => g.id),
     runtimeMinutes,
     seasons: mediaType === 'tv' ? (d.number_of_seasons ?? null) : null,
+    // Specials (season 0) go last: people look for Season 1 first.
+    seasonList:
+      mediaType === 'tv'
+        ? (d.seasons ?? [])
+            .filter((s) => Number.isInteger(s.season_number) && (s.season_number as number) >= 0)
+            .map((s) => ({
+              seasonNumber: s.season_number as number,
+              name: s.name ?? `Season ${s.season_number}`,
+              posterPath: s.poster_path ?? null,
+              episodeCount: s.episode_count ?? 0,
+              year: yearOf(s.air_date),
+            }))
+            .sort((a, b) => (a.seasonNumber === 0 ? 1 : b.seasonNumber === 0 ? -1 : a.seasonNumber - b.seasonNumber))
+        : [],
     tmdbRating: typeof d.vote_average === 'number' ? Math.round(d.vote_average * 10) / 10 : null,
     voteCount: d.vote_count ?? 0,
     posterPath: d.poster_path ?? null,
@@ -167,6 +197,64 @@ async function handleDetail(body: Record<string, unknown>, apiKey: string): Prom
     })),
   }
   return json({ detail })
+}
+
+// ---- op: season (one season of a show, with its episodes) ---------------
+interface TmdbSeason {
+  season_number?: number
+  name?: string
+  overview?: string
+  poster_path?: string | null
+  air_date?: string | null
+  episodes?: {
+    episode_number?: number
+    name?: string
+    overview?: string
+    air_date?: string | null
+    runtime?: number | null
+    still_path?: string | null
+    vote_average?: number
+  }[]
+}
+
+async function handleSeason(body: Record<string, unknown>, apiKey: string): Promise<Response> {
+  const tmdbId = Number(body.tmdbId)
+  const season = Number(body.season)
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return json({ error: 'invalid tmdbId' }, 400)
+  if (!Number.isInteger(season) || season < 0 || season > 999) {
+    return json({ error: 'invalid season' }, 400)
+  }
+
+  const res = await tmdbFetch(`/tv/${tmdbId}/season/${season}`, apiKey)
+  if (res.status === 404) return json({ season: null })
+  if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
+  const s = (await res.json()) as TmdbSeason
+
+  return json({
+    season: {
+      tmdbId,
+      seasonNumber: season,
+      name: s.name ?? (season === 0 ? 'Specials' : `Season ${season}`),
+      overview: s.overview ?? '',
+      posterPath: s.poster_path ?? null,
+      year: yearOf(s.air_date),
+      // A daily show can run to hundreds; nobody scrolls past this many.
+      episodes: (s.episodes ?? [])
+        .filter((e) => Number.isInteger(e.episode_number) && (e.episode_number as number) >= 0)
+        .slice(0, 500)
+        .map((e) => ({
+          episodeNumber: e.episode_number as number,
+          name: e.name ?? `Episode ${e.episode_number}`,
+          overview: e.overview ?? '',
+          airDate: e.air_date ?? null,
+          year: yearOf(e.air_date),
+          runtimeMinutes: e.runtime ?? null,
+          stillPath: e.still_path ?? null,
+          tmdbRating:
+            typeof e.vote_average === 'number' ? Math.round(e.vote_average * 10) / 10 : null,
+        })),
+    },
+  })
 }
 
 // ---- op: genres (the genre catalog for the filter chips) -----------------
@@ -420,6 +508,8 @@ Deno.serve(async (req) => {
       return handleRecommendations(body, apiKey)
     case 'providers':
       return handleProviders(body, apiKey)
+    case 'season':
+      return handleSeason(body, apiKey)
     default:
       return json({ error: `unknown op: ${String(op)}` }, 400)
   }

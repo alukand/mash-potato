@@ -113,6 +113,9 @@ export function DiscussionSection({
   }, [rewardsOn, scope, titleRowId])
 
   // Resolve the titles row (it exists once anyone rated, saved, or discussed).
+  // A season or episode has a thread of its own, apart from its show's.
+  const partSeason = title.part?.season ?? null
+  const partEpisode = title.part?.episode ?? null
   useEffect(() => {
     let cancelled = false
     setTitleRowId(undefined)
@@ -120,13 +123,14 @@ export function DiscussionSection({
       setTitleRowId(null)
       return
     }
-    fetchTitleRowId(title.tmdbId, title.mediaType)
+    const part = partSeason === null ? null : { season: partSeason, episode: partEpisode }
+    fetchTitleRowId(title.tmdbId, title.mediaType, part)
       .then((id) => !cancelled && setTitleRowId(id))
       .catch(() => !cancelled && setTitleRowId(null))
     return () => {
       cancelled = true
     }
-  }, [title.tmdbId, title.mediaType, refreshKey])
+  }, [title.tmdbId, title.mediaType, partSeason, partEpisode, refreshKey])
 
   const load = useCallback(async () => {
     if (titleRowId === undefined) return

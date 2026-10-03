@@ -14,8 +14,11 @@ import { CASUAL_WEIGHTS, DEFAULT_WEIGHTS, presetRowsFromJson } from './rubricCat
 import type { TasteMode } from './rubricCatalog'
 import { parseRewards } from './rewards'
 import type { RewardsSummary } from './rewards'
+import { partFromRow, partTitleName } from './titleParts'
+import type { TitlePart } from './titleParts'
 
 export type { SessionRubricEntry } from './mapping'
+export type { TitlePart } from './titleParts'
 
 export interface GroupInfo {
   id: string
@@ -452,18 +455,23 @@ export interface SessionInfo {
   /** Null for manual entries (no TMDB identity). */
   titleTmdbId: number | null
   mediaType: 'movie' | 'tv'
+  /** A round on one season or episode of the show; null for a film or show. */
+  titlePart: TitlePart | null
   posterPath: string | null
   /** The category set this session is scored under (snapshot at creation). */
   rubric: SessionRubricEntry[] | null
 }
 
 export interface NewTitle {
+  /** For a season or episode, the SHOW's name: the server composes the label. */
   name: string
   year: number | null
   mediaType: 'movie' | 'tv'
   /** Set when the title was picked from TMDB search; null for manual entry. */
   tmdbId: number | null
   posterPath: string | null
+  /** A season or episode of the show, with TMDB's own name for it. */
+  part?: (TitlePart & { partName: string | null }) | null
 }
 
 /** The group's most recent session (blind or revealed), or null. */
@@ -471,7 +479,7 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
   const { data, error } = await supabase
     .from('reveal_sessions')
     .select(
-      'id, state, created_by, created_at, rubric, titles(id, tmdb_id, name, year, media_type, poster_path)',
+      'id, state, created_by, created_at, rubric, titles(id, tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
     )
     .eq('group_id', groupId)
     .order('created_at', { ascending: false })
@@ -489,6 +497,7 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
     titleYear: row.titles.year,
     titleTmdbId: row.titles.tmdb_id,
     mediaType: row.titles.media_type,
+    titlePart: partFromRow(row.titles),
     posterPath: row.titles.poster_path,
     rubric: rubricFromJson(row.rubric),
   }
@@ -499,7 +508,7 @@ export async function fetchSessionById(sessionId: string): Promise<SessionInfo |
   const { data, error } = await supabase
     .from('reveal_sessions')
     .select(
-      'id, state, created_by, created_at, rubric, titles(id, tmdb_id, name, year, media_type, poster_path)',
+      'id, state, created_by, created_at, rubric, titles(id, tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
     )
     .eq('id', sessionId)
     .maybeSingle()
@@ -515,6 +524,7 @@ export async function fetchSessionById(sessionId: string): Promise<SessionInfo |
     titleYear: data.titles.year,
     titleTmdbId: data.titles.tmdb_id,
     mediaType: data.titles.media_type,
+    titlePart: partFromRow(data.titles),
     posterPath: data.titles.poster_path,
     rubric: rubricFromJson(data.rubric),
   }
@@ -532,6 +542,21 @@ export async function fetchSessionById(sessionId: string): Promise<SessionInfo |
  * pre-select or 23505 retry.
  */
 async function ensureTitle(title: NewTitle): Promise<string> {
+  // A season or an episode: its own RPC, which composes the row's label.
+  if (title.part && title.tmdbId !== null) {
+    const { data, error } = await supabase.rpc('ensure_tv_part', {
+      p_tmdb_id: title.tmdbId,
+      p_season: title.part.season,
+      // null = the whole season (the generated types don't model nullable params)
+      p_episode: title.part.episode as number,
+      p_show_name: title.name,
+      p_part_name: title.part.partName as string,
+      p_year: title.year as number,
+      p_poster_path: title.posterPath as string,
+    })
+    if (error) throw new Error(error.message)
+    return data as string
+  }
   const { data, error } = await supabase.rpc('ensure_title', {
     // generated types don't model nullable RPC params; null is valid for all
     // three — a manual entry has no TMDB id, year or poster.
@@ -581,10 +606,12 @@ export async function createSession(
     createdBy: data.created_by,
     createdAt: data.created_at,
     titleId,
-    titleName: title.name,
+    // a part's row carries the server-composed label; mirror it until reread
+    titleName: title.part ? partTitleName(title.name, title.part) : title.name,
     titleYear: title.year,
     titleTmdbId: title.tmdbId,
     mediaType: title.mediaType,
+    titlePart: title.part ? { season: title.part.season, episode: title.part.episode } : null,
     posterPath: title.posterPath,
     rubric,
   }
@@ -767,6 +794,11 @@ export interface TitleDetail {
   posterPath: string | null
   backdropPath: string | null
   cast: { name: string; character: string; profilePath: string | null }[]
+  /**
+   * A show's seasons, specials last. Optional: a tmdb-search deployed before
+   * 2026-10-01 does not send it, and the page then simply has no seasons list.
+   */
+  seasonList?: SeasonSummary[]
 }
 
 /** Full details for one TMDB title, or null if TMDB has no such id. */
@@ -779,6 +811,68 @@ export async function fetchTitleDetail(
   })
   if (error) throw new Error(error.message)
   return (data as { detail: TitleDetail | null }).detail ?? null
+}
+
+// ---- seasons and episodes (rated as titles of their own: lib/titleParts.ts) ----
+
+export interface SeasonSummary {
+  seasonNumber: number
+  name: string
+  posterPath: string | null
+  episodeCount: number
+  year: number | null
+}
+
+export interface EpisodeInfo {
+  episodeNumber: number
+  name: string
+  overview: string
+  airDate: string | null
+  year: number | null
+  runtimeMinutes: number | null
+  /** A 16:9 frame from the episode (stillUrl), not a poster. */
+  stillPath: string | null
+  tmdbRating: number | null
+}
+
+export interface SeasonDetail {
+  tmdbId: number
+  seasonNumber: number
+  name: string
+  overview: string
+  posterPath: string | null
+  year: number | null
+  episodes: EpisodeInfo[]
+}
+
+/** One season of a show with its episodes, or null if TMDB has no such season. */
+export async function fetchSeasonDetail(tmdbId: number, season: number): Promise<SeasonDetail | null> {
+  const { data, error } = await supabase.functions.invoke('tmdb-search', {
+    body: { op: 'season', tmdbId, season },
+  })
+  if (error) throw new Error(error.message)
+  return (data as { season: SeasonDetail | null }).season ?? null
+}
+
+/**
+ * The titles row for a film or show, or for one of a show's parts; null if
+ * nobody has added it yet. A show and its parts share (tmdb_id, media_type),
+ * so a lookup that leaves the part out would match every episode too.
+ */
+async function findTitleId(
+  tmdbId: number,
+  mediaType: 'movie' | 'tv',
+  part?: TitlePart | null,
+): Promise<string | null> {
+  let query = supabase.from('titles').select('id').eq('tmdb_id', tmdbId).eq('media_type', mediaType)
+  query = part ? query.eq('season_number', part.season) : query.is('season_number', null)
+  query =
+    part && part.episode !== null
+      ? query.eq('episode_number', part.episode)
+      : query.is('episode_number', null)
+  const { data, error } = await query.maybeSingle()
+  if (error) throw new Error(error.message)
+  return data?.id ?? null
 }
 
 export interface TmdbGenre {
@@ -857,6 +951,11 @@ export function posterUrl(
 /** Public TMDB CDN url for a wide backdrop image. */
 export function backdropUrl(backdropPath: string, size: 'w780' | 'w1280' = 'w780'): string {
   return `https://image.tmdb.org/t/p/${size}${backdropPath}`
+}
+
+/** Public TMDB CDN url for an episode still (16:9). */
+export function stillUrl(stillPath: string, size: 'w185' | 'w300' = 'w300'): string {
+  return `https://image.tmdb.org/t/p/${size}${stillPath}`
 }
 
 /** Flip a blind session to revealed (owner or creator; enforced in the RPC). */
@@ -1016,6 +1115,8 @@ export interface ReviewedTitle {
   titleId: string
   tmdbId: number | null
   mediaType: 'movie' | 'tv'
+  /** A season or episode scored in a round; null for a film or show. */
+  part: TitlePart | null
   name: string
   year: number | null
   posterPath: string | null
@@ -1035,7 +1136,7 @@ export async function fetchMyReviewedTitles(userId: string): Promise<ReviewedTit
   const { data, error } = await supabase
     .from('member_scores')
     .select(
-      'updated_at, reveal_sessions(state, titles(id, tmdb_id, media_type, name, year, poster_path))',
+      'updated_at, reveal_sessions(state, titles(id, tmdb_id, media_type, name, year, poster_path, season_number, episode_number))',
     )
     .eq('member_id', userId)
     .order('updated_at', { ascending: false })
@@ -1055,6 +1156,7 @@ export async function fetchMyReviewedTitles(userId: string): Promise<ReviewedTit
         titleId: title.id,
         tmdbId: title.tmdb_id,
         mediaType: title.media_type,
+        part: partFromRow(title),
         name: title.name,
         year: title.year,
         posterPath: title.poster_path,
@@ -1074,14 +1176,10 @@ export async function fetchSavedTitleId(
   userId: string,
   tmdbId: number,
   mediaType: 'movie' | 'tv',
+  part?: TitlePart | null,
 ): Promise<string | null> {
-  const { data: title, error: titleError } = await supabase
-    .from('titles')
-    .select('id')
-    .eq('tmdb_id', tmdbId)
-    .eq('media_type', mediaType)
-    .maybeSingle()
-  if (titleError) throw new Error(titleError.message)
+  const foundId = await findTitleId(tmdbId, mediaType, part)
+  const title = foundId ? { id: foundId } : null
   if (!title) return null
 
   const { data: saved, error: savedError } = await supabase
@@ -1137,14 +1235,10 @@ export interface TitleHistoryEntry {
 export async function fetchTitleHistory(
   tmdbId: number,
   mediaType: 'movie' | 'tv',
+  part?: TitlePart | null,
 ): Promise<TitleHistoryEntry[]> {
-  const { data: title, error: titleError } = await supabase
-    .from('titles')
-    .select('id')
-    .eq('tmdb_id', tmdbId)
-    .eq('media_type', mediaType)
-    .maybeSingle()
-  if (titleError) throw new Error(titleError.message)
+  const foundId = await findTitleId(tmdbId, mediaType, part)
+  const title = foundId ? { id: foundId } : null
   if (!title) return []
 
   const { data: sessions, error: sessionsError } = await supabase
@@ -1190,15 +1284,11 @@ export async function hasGroupRatedTitle(
   groupId: string,
   tmdbId: number | null,
   mediaType: 'movie' | 'tv',
+  part?: TitlePart | null,
 ): Promise<boolean> {
   if (tmdbId === null) return false
-  const { data: title, error: titleError } = await supabase
-    .from('titles')
-    .select('id')
-    .eq('tmdb_id', tmdbId)
-    .eq('media_type', mediaType)
-    .maybeSingle()
-  if (titleError) throw new Error(titleError.message)
+  const foundId = await findTitleId(tmdbId, mediaType, part)
+  const title = foundId ? { id: foundId } : null
   if (!title) return false
   const { data, error } = await supabase
     .from('reveal_sessions')
@@ -1444,14 +1534,10 @@ const EMPTY_MODE_SCORES: ModeScores = {
 export async function fetchModeScores(
   tmdbId: number,
   mediaType: 'movie' | 'tv',
+  part?: TitlePart | null,
 ): Promise<ModeScores> {
-  const { data: title, error: titleError } = await supabase
-    .from('titles')
-    .select('id')
-    .eq('tmdb_id', tmdbId)
-    .eq('media_type', mediaType)
-    .maybeSingle()
-  if (titleError) throw new Error(titleError.message)
+  const foundId = await findTitleId(tmdbId, mediaType, part)
+  const title = foundId ? { id: foundId } : null
   if (!title) return EMPTY_MODE_SCORES
 
   const { data, error } = await supabase.rpc('title_mode_scores', {
@@ -1482,15 +1568,11 @@ export async function fetchModeHistogram(
   tmdbId: number,
   mediaType: 'movie' | 'tv',
   mode: TasteMode | null,
+  part?: TitlePart | null,
 ): Promise<number[]> {
   const empty = Array<number>(10).fill(0)
-  const { data: title, error: titleError } = await supabase
-    .from('titles')
-    .select('id')
-    .eq('tmdb_id', tmdbId)
-    .eq('media_type', mediaType)
-    .maybeSingle()
-  if (titleError) throw new Error(titleError.message)
+  const foundId = await findTitleId(tmdbId, mediaType, part)
+  const title = foundId ? { id: foundId } : null
   if (!title) return empty
 
   const { data, error } = await supabase.rpc('title_mode_histogram', {
@@ -1512,14 +1594,10 @@ export async function fetchMyGlobalRating(
   userId: string,
   tmdbId: number,
   mediaType: 'movie' | 'tv',
+  part?: TitlePart | null,
 ): Promise<CategoryScores | null> {
-  const { data: title, error: titleError } = await supabase
-    .from('titles')
-    .select('id')
-    .eq('tmdb_id', tmdbId)
-    .eq('media_type', mediaType)
-    .maybeSingle()
-  if (titleError) throw new Error(titleError.message)
+  const foundId = await findTitleId(tmdbId, mediaType, part)
+  const title = foundId ? { id: foundId } : null
   if (!title) return null
 
   const { data, error } = await supabase
@@ -1550,14 +1628,10 @@ export async function deleteGlobalRating(
   userId: string,
   tmdbId: number,
   mediaType: 'movie' | 'tv',
+  part?: TitlePart | null,
 ): Promise<void> {
-  const { data: title, error: titleError } = await supabase
-    .from('titles')
-    .select('id')
-    .eq('tmdb_id', tmdbId)
-    .eq('media_type', mediaType)
-    .maybeSingle()
-  if (titleError) throw new Error(titleError.message)
+  const foundId = await findTitleId(tmdbId, mediaType, part)
+  const title = foundId ? { id: foundId } : null
   if (!title) return
   const { error } = await supabase
     .from('global_ratings')
@@ -1571,6 +1645,8 @@ export interface RatedTitle {
   titleId: string
   tmdbId: number | null
   mediaType: 'movie' | 'tv'
+  /** A rated season or episode; null for a film or show. */
+  part: TitlePart | null
   name: string
   year: number | null
   posterPath: string | null
@@ -1581,7 +1657,9 @@ export interface RatedTitle {
 export async function fetchMyGlobalRatings(userId: string): Promise<RatedTitle[]> {
   const { data, error } = await supabase
     .from('global_ratings')
-    .select('updated_at, titles(id, tmdb_id, media_type, name, year, poster_path)')
+    .select(
+      'updated_at, titles(id, tmdb_id, media_type, name, year, poster_path, season_number, episode_number)',
+    )
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
   if (error) throw new Error(error.message)
@@ -1591,6 +1669,7 @@ export async function fetchMyGlobalRatings(userId: string): Promise<RatedTitle[]
       titleId: row.titles!.id,
       tmdbId: row.titles!.tmdb_id,
       mediaType: row.titles!.media_type,
+      part: partFromRow(row.titles!),
       name: row.titles!.name,
       year: row.titles!.year,
       posterPath: row.titles!.poster_path,
@@ -1840,6 +1919,8 @@ export async function fetchMyPlaylistsContaining(
     })
     .eq('titles.tmdb_id', tmdbId)
     .eq('titles.media_type', mediaType)
+    // playlists hold films and shows, never one of a show's parts
+    .is('titles.season_number', null)
   if (error) throw new Error(error.message)
   return new Map((data ?? []).map((r) => [r.playlist_id, r.title_id]))
 }
@@ -2274,15 +2355,9 @@ export interface DiscussionGate {
 export async function fetchTitleRowId(
   tmdbId: number,
   mediaType: 'movie' | 'tv',
+  part?: TitlePart | null,
 ): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('titles')
-    .select('id')
-    .eq('tmdb_id', tmdbId)
-    .eq('media_type', mediaType)
-    .maybeSingle()
-  if (error) throw new Error(error.message)
-  return data?.id ?? null
+  return findTitleId(tmdbId, mediaType, part)
 }
 
 /** Find-or-create the title row (posting can precede any rating or round). */
