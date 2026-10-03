@@ -1,7 +1,8 @@
-Thank you for reviewing Mash Potato. New in this version: a new app icon and
-mascot, and tokens that members earn by using the app (section 4). Sections 1
-to 3 cover the user-generated content safeguards, browsing without an
-account, and how to sign in.
+Thank you for reviewing Mash Potato. New in this version: rating TV seasons
+and episodes, a new shareable Reveal card, groups that review who joins, and
+following friends (section 5). Sections 1 to 3 cover the user-generated
+content safeguards, browsing without an account, and how to sign in; section
+4 covers tokens.
 
 =====================================================================
 1. GUIDELINE 1.2 - USER-GENERATED CONTENT
@@ -101,6 +102,34 @@ a small bonus once it has stayed up for 48 hours without being reported).
 - There is nothing to spend tokens on yet. The screen says ways to spend them
   are coming, and promises nothing specific.
 - A balance is private to its owner: no leaderboards and no public counts.
+
+=====================================================================
+5. NEW IN THIS VERSION
+=====================================================================
+
+SEASONS AND EPISODES
+Open any TV show: the page lists its seasons, a season lists its episodes,
+and each one can be rated on its own or scored by a group, like a film.
+
+THE REVEAL CARD
+On a revealed round, tap Share. The card shows only the group's numbers (the
+combined score, the agree/split headline, how far apart the group was), never
+a member's name or individual score. The share sheet's Save Image puts it in
+Photos; the app asks for add-only access to Photos only at that moment.
+
+GROUPS THAT REVIEW WHO JOINS (user-generated content)
+A group owner can make a searchable group "I approve each one" and add one
+question for people who ask. The question and every answer pass the same
+blocked-term filter as comments and messages. Answers are seen only by the
+group owner, who can approve, decline, or decline and block the person; a
+blocked person cannot ask again.
+
+FOLLOWING
+Any profile has a Follow button. Following shows nothing on its own: a
+person's ratings reach their followers only if they switch on "Share my
+ratings with people who follow me" (Profile > settings gear), which is off by
+default. Group scores are never shared this way, and nobody sees anyone
+else's followers or counts.
 
 WHAT TO LOOK AT
 1. The app opens on Home: the group, recent activity, and a saved list.
