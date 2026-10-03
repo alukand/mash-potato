@@ -782,12 +782,14 @@ has the product rules and the reward-loop law's "Trophies" amendment. The laws:
     seasons and episodes, the redrawn share card, join requests, follows,
     round games, and the sliced-potato icon.
 - `master` still holds 1.1 without those additions; it deploys the website
-  and the web app, so it is fast-forwarded to `release-1.1` only after the
-  hosted database and functions are updated.
-- Hosted Supabase has every migration through `20261001120000` (tokens). Five
-  are not hosted yet: `20261001180000`, `20261002120000`, `20261002140000`,
-  `20261003120000`, `20261003130000`. Nor are the new `tmdb-search` and
-  `send-push`.
+  and the web app. The database and functions are ready for it, so it is
+  fast-forwarded to `release-1.1` after the TestFlight check and before the
+  review submission (App Review reads the privacy policy).
+- Hosted Supabase has every migration in this repo, through `20261003130000`.
+  The owner pushed the last five and deployed `tmdb-search` and `send-push` on
+  2026-10-03. The anon probe then passed: all 32 new functions answered 401,
+  `browse_open_groups` 200 and a made-up name 404. The hosted `tmdb-search`
+  serves `seasonList` and the `season` op.
 - Mash Potato Live (live shows, watch parties, giveaways) is parked, dormant,
   on branch `live-shows`. It is NOT in `master` or `release-1.1` in any form:
   no code, migrations, Edge Function, packages or docs. Its three migrations
