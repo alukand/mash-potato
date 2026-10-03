@@ -211,6 +211,26 @@ discussion, tokens (each part is a title, so the daily caps bound it). The laws:
   deployed function older than this has neither; the app then shows no
   seasons list rather than failing, so deploy it with the release.
 
+## JOIN REQUESTS (2026-10-02)
+
+A searchable group has a `group_discovery.join_policy` (20261002120000):
+'open' (anyone joins, `join_open_group`) or 'approval' (people ask with
+`request_to_join`; the owner decides with `decide_join_request`). The laws:
+
+- **Approval cannot be skipped.** `join_open_group` refuses an approval group,
+  which matters most for older apps that never heard of approval.
+- **The question and answers are UGC.** The question (200 chars, shown to
+  anyone browsing) and each answer (500, owner only) pass `banned_terms`;
+  asking needs accepted terms, is rate-limited (10 an hour), allows one
+  pending request per person per group, and waits a week after a decline.
+  Owner blocks (either way) and removals refuse with one generic message.
+- `group_join_requests` is RPC-only. Approving is an ordinary membership
+  insert, so the existing `group_added` push tells the applicant; the request
+  itself pushes `join_requested` to the owner (send-push).
+- A suggested (starter) group must stay open: `GuidedSetup` auto-joins only
+  open ones. `group_discovery_settings` (a boolean) stays for 1.1 apps; the
+  app reads `group_join_settings`.
+
 ## Commands
 
 - `npm run dev` — Vite on port 5180 (fixed; 5173/5174 belong to another project)

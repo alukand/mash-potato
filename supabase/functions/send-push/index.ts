@@ -15,6 +15,9 @@
 //   { event: 'member_locked', session_id, group_id, actor_id }
 //   { event: 'comment_reply', comment_id, title_id, group_id?, recipient_id, actor_id }
 //   { event: 'new_message',   message_id, conversation_id, actor_id }   (no group_id)
+//   { event: 'join_requested', group_id, recipient_id (the owner), actor_id }
+//     (20261002120000; approving needs no event: it is a membership insert,
+//     so the applicant gets 'group_added')
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -286,6 +289,11 @@ async function composeAndSend(evt: PushEvent) {
     recipients = [evt.recipient_id]
     title = `${actor} added you to ${group}`
     body = 'Set your rubric and jump into the next round.'
+  } else if (evt.event === 'join_requested' && evt.recipient_id) {
+    // The answer stays in the app: a lock screen is not the place for it.
+    recipients = [evt.recipient_id]
+    title = `${actor} asked to join ${group}`
+    body = 'Open the group to read their request and decide.'
   } else if (evt.event === 'round_started' && evt.session_id && evt.group_id) {
     const session = await sessionInfo(evt.session_id)
     if (!session) return { skipped: 'session gone' }

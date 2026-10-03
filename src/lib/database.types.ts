@@ -433,16 +433,22 @@ export type Database = {
       group_discovery: {
         Row: {
           group_id: string
+          join_policy: string
+          join_question: string | null
           searchable: boolean
           suggested: boolean
         }
         Insert: {
           group_id: string
+          join_policy?: string
+          join_question?: string | null
           searchable?: boolean
           suggested?: boolean
         }
         Update: {
           group_id?: string
+          join_policy?: string
+          join_question?: string | null
           searchable?: boolean
           suggested?: boolean
         }
@@ -479,6 +485,64 @@ export type Database = {
           },
           {
             foreignKeyName: "group_join_blocks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_join_requests: {
+        Row: {
+          answer: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          group_id: string
+          id: string
+          question: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          answer?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          group_id: string
+          id?: string
+          question?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          answer?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          group_id?: string
+          id?: string
+          question?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_join_requests_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_join_requests_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_join_requests_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -1726,7 +1790,10 @@ export type Database = {
         Args: { p_query?: string; p_suggested_only?: boolean }
         Returns: {
           id: string
+          join_policy: string
+          join_question: string
           member_count: number
+          my_status: string
           name: string
           taste_mode: string
         }[]
@@ -1762,6 +1829,10 @@ export type Database = {
       create_group_poll: {
         Args: { p_group_id: string; p_title_ids: string[] }
         Returns: string
+      }
+      decide_join_request: {
+        Args: { p_approve: boolean; p_request_id: string }
+        Returns: undefined
       }
       decline_dm_request: {
         Args: { p_conversation_id: string }
@@ -1815,6 +1886,15 @@ export type Database = {
       group_discovery_settings: {
         Args: { p_group_id: string }
         Returns: boolean
+      }
+      group_join_settings: {
+        Args: { p_group_id: string }
+        Returns: {
+          join_policy: string
+          join_question: string
+          pending_count: number
+          searchable: boolean
+        }[]
       }
       has_locked_scorecard: { Args: { p_session_id: string }; Returns: boolean }
       has_rated_title: { Args: { p_title_id: string }; Returns: boolean }
@@ -1902,8 +1982,30 @@ export type Database = {
           unread_count: number
         }[]
       }
+      my_join_requests: {
+        Args: never
+        Returns: {
+          answer: string
+          created_at: string
+          group_name: string
+          question: string
+          status: string
+        }[]
+      }
       my_onboarding: { Args: never; Returns: Json }
       my_rewards: { Args: { p_history_limit?: number }; Returns: Json }
+      pending_join_requests: {
+        Args: { p_group_id: string }
+        Returns: {
+          answer: string
+          avatar_key: string
+          created_at: string
+          display_name: string
+          id: string
+          question: string
+          user_id: string
+        }[]
+      }
       poll_group_id: { Args: { p_poll_id: string }; Returns: string }
       poll_is_open: { Args: { p_poll_id: string }; Returns: boolean }
       post_comment: {
@@ -1929,6 +2031,10 @@ export type Database = {
       report_message: {
         Args: { p_message_id: string; p_reason: string }
         Returns: undefined
+      }
+      request_to_join: {
+        Args: { p_answer: string; p_group_id: string }
+        Returns: string
       }
       resolve_report: {
         Args: {
@@ -2007,6 +2113,10 @@ export type Database = {
         Args: { p_enabled: boolean; p_group_id: string }
         Returns: undefined
       }
+      set_group_join_policy: {
+        Args: { p_group_id: string; p_policy: string; p_question: string }
+        Returns: undefined
+      }
       set_group_visibility: {
         Args: { p_group_id: string; p_public: boolean }
         Returns: undefined
@@ -2063,6 +2173,10 @@ export type Database = {
         Returns: undefined
       }
       unblock_user: { Args: { p_user_id: string }; Returns: undefined }
+      withdraw_join_request: {
+        Args: { p_group_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       media_type: "movie" | "tv"

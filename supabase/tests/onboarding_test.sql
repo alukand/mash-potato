@@ -20,7 +20,8 @@ reset role;
 update public.group_discovery set suggested=true where group_id='99999999-9999-9999-9999-999999999999';
 set local role anon;
 set local request.jwt.claims = '{"role":"anon"}';
-select is((select count(*)::int from public.browse_open_groups('',false)),1,'only open groups are browsable');
+-- scoped to this test's two groups, so a dev database's own open groups do not count
+select is((select count(*)::int from public.browse_open_groups('',false) where id in ('99999999-9999-9999-9999-999999999999','88888888-8888-8888-8888-888888888888')),1,'only open groups are browsable');
 select is((select count(*)::int from public.browse_open_groups('test group',true)),1,'suggestions are explicitly curated');
 select is((select count(*)::int from public.browse_open_groups('%',false)),0,'search treats wildcard as literal');
 set local role authenticated;

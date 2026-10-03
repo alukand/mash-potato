@@ -42,24 +42,121 @@ export interface MemberInfo {
   role: 'owner' | 'member'
 }
 
-export interface OpenGroup { id: string; name: string; tasteMode: TasteMode; memberCount: number }
+export interface OpenGroup {
+  id: string
+  name: string
+  tasteMode: TasteMode
+  memberCount: number
+  /** 'open': anyone joins at once. 'approval': people ask and the owner decides. */
+  joinPolicy: 'open' | 'approval'
+  /** An approval group's question for everyone who asks; null if none. */
+  joinQuestion: string | null
+  /** Signed in: already in the group, or already asked. Null otherwise. */
+  myStatus: 'member' | 'pending' | null
+}
 export interface OnboardingProgress { completed: boolean; displayName: string; rubricId: string | null; rows: GroupRubricRow[] | null }
 
 export async function browseOpenGroups(query = '', suggestedOnly = false): Promise<OpenGroup[]> {
   const { data, error } = await supabase.rpc('browse_open_groups', { p_query: query, p_suggested_only: suggestedOnly })
   if (error) throw new Error('Groups could not load. Please try again.')
-  return (data ?? []).map((g) => ({ id: g.id, name: g.name, tasteMode: g.taste_mode === 'casual' ? 'casual' : 'buff', memberCount: g.member_count }))
+  // A database from before join requests (20261002120000) sends no policy:
+  // every searchable group was open then.
+  return (data ?? []).map((g) => ({
+    id: g.id,
+    name: g.name,
+    tasteMode: g.taste_mode === 'casual' ? 'casual' : 'buff',
+    memberCount: g.member_count,
+    joinPolicy: g.join_policy === 'approval' ? 'approval' : 'open',
+    joinQuestion: g.join_policy === 'approval' ? (g.join_question ?? null) : null,
+    myStatus: g.my_status === 'member' || g.my_status === 'pending' ? g.my_status : null,
+  }))
+}
+
+// ---- join requests (20261002120000): groups that review who joins ----
+
+/** Ask to join an approval group; the answer is required when it has a question. */
+export async function requestToJoin(groupId: string, answer: string): Promise<void> {
+  const { error } = await supabase.rpc('request_to_join', { p_group_id: groupId, p_answer: answer })
+  if (error) throw new Error(error.message)
+}
+
+export async function withdrawJoinRequest(groupId: string): Promise<void> {
+  const { error } = await supabase.rpc('withdraw_join_request', { p_group_id: groupId })
+  if (error) throw new Error(error.message)
+}
+
+export interface JoinSettings {
+  searchable: boolean
+  joinPolicy: 'open' | 'approval'
+  joinQuestion: string | null
+  pendingCount: number
+}
+
+/** Who can find and join a group, for its owner. */
+export async function fetchJoinSettings(groupId: string): Promise<JoinSettings> {
+  const { data, error } = await supabase.rpc('group_join_settings', { p_group_id: groupId })
+  if (error) throw new Error(error.message)
+  const row = data?.[0]
+  return {
+    searchable: row?.searchable === true,
+    joinPolicy: row?.join_policy === 'approval' ? 'approval' : 'open',
+    joinQuestion: row?.join_question ?? null,
+    pendingCount: Number(row?.pending_count ?? 0),
+  }
+}
+
+/** Owner only. A question is kept only for an approval group. */
+export async function setJoinPolicy(
+  groupId: string,
+  policy: 'open' | 'approval',
+  question: string | null,
+): Promise<void> {
+  const { error } = await supabase.rpc('set_group_join_policy', {
+    p_group_id: groupId,
+    p_policy: policy,
+    p_question: (question ?? '') as string,
+  })
+  if (error) throw new Error(error.message)
+}
+
+export interface JoinRequest {
+  id: string
+  userId: string
+  displayName: string
+  avatarKey: string | null
+  /** The question as it was asked, and their answer; both null if none was asked. */
+  question: string | null
+  answer: string | null
+  createdAt: string
+}
+
+/** The requests waiting on an owner, oldest first. */
+export async function fetchPendingJoinRequests(groupId: string): Promise<JoinRequest[]> {
+  const { data, error } = await supabase.rpc('pending_join_requests', { p_group_id: groupId })
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    userId: r.user_id,
+    displayName: r.display_name ?? 'Member',
+    avatarKey: r.avatar_key ?? null,
+    question: r.question ?? null,
+    answer: r.answer ?? null,
+    createdAt: r.created_at,
+  }))
+}
+
+/** Approve (they become a member) or decline (they can ask again in a week). */
+export async function decideJoinRequest(requestId: string, approve: boolean): Promise<void> {
+  const { error } = await supabase.rpc('decide_join_request', {
+    p_request_id: requestId,
+    p_approve: approve,
+  })
+  if (error) throw new Error(error.message)
 }
 
 export async function joinOpenGroup(groupId: string): Promise<void> {
   const { error } = await supabase.rpc('join_open_group', { p_group_id: groupId })
   if (error) throw new Error(error.message)
-}
-
-export async function fetchGroupDiscoverable(groupId: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc('group_discovery_settings', { p_group_id: groupId })
-  if (error) throw new Error(error.message)
-  return data
 }
 
 export async function setGroupDiscoverable(groupId: string, enabled: boolean): Promise<void> {
@@ -2055,7 +2152,7 @@ export async function setGroupVisibility(groupId: string, isPublic: boolean): Pr
  *  theirs), your comments, your playlists, your rubric. RLS already scopes
  *  every query to self. */
 export async function fetchMyExport(userId: string): Promise<Record<string, unknown>> {
-  const [ratings, saved, cards, comments, playlists, rubrics, tokens] = await Promise.all([
+  const [ratings, saved, cards, comments, playlists, rubrics, tokens, joinRequests] = await Promise.all([
     supabase
       .from('global_ratings')
       .select('updated_at, scores, titles(tmdb_id, media_type, name, year)')
@@ -2085,8 +2182,10 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
       .eq('user_id', userId),
     // every token entry, not just the screen's newest 50
     supabase.rpc('my_rewards', { p_history_limit: 5000 }),
+    // what you asked groups, and what you answered their questions
+    supabase.rpc('my_join_requests'),
   ])
-  for (const q of [ratings, cards, comments, playlists, rubrics, tokens]) {
+  for (const q of [ratings, cards, comments, playlists, rubrics, tokens, joinRequests]) {
     if (q.error) throw new Error(q.error.message)
   }
   return {
@@ -2164,6 +2263,13 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
         })),
       }
     })(),
+    joinRequests: (joinRequests.data ?? []).map((r) => ({
+      group: r.group_name,
+      question: r.question,
+      answer: r.answer,
+      status: r.status,
+      at: r.created_at,
+    })),
   }
 }
 

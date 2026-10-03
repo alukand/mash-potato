@@ -25,7 +25,9 @@ export function GuidedSetup({ userId, progress, onDone }: { userId: string; prog
     setJoining(true); setError(null)
     void (async () => {
       try {
-        const [group] = await browseOpenGroups('', true)
+        // A starter group has to take people at once: one that reviews
+        // requests would stall setup on an owner's decision.
+        const group = (await browseOpenGroups('', true)).find((g) => g.joinPolicy === 'open')
         if (stale) return
         if (!group) throw new Error('Our starter group is not available right now. Try again, or explore the app below.')
         await joinOpenGroup(group.id)

@@ -84,6 +84,9 @@ revoke insert, update, delete, truncate on public.feature_flags from authenticat
 revoke all on public.token_rules, public.token_program, public.token_accounts,
               public.token_ledger, public.token_ineligible
   from public, anon, authenticated;
+-- join requests (20261002120000): what an applicant sent the owner is read
+-- and written only through the definer RPCs.
+revoke all on public.group_join_requests from public, anon, authenticated;
 -- ...and the migration's per-function anon revokes, mirrored (the CLAUDE.md
 -- law: every revoke a migration makes is re-applied here, so the twin never
 -- tests a posture looser than hosted).
@@ -97,7 +100,11 @@ begin
       -- tokens (20261001120000): the three client RPCs
       'my_rewards', 'claim_daily_tokens', 'take_reward_open',
       -- seasons and episodes (20261001180000)
-      'ensure_tv_part'])
+      'ensure_tv_part',
+      -- join requests (20261002120000)
+      'set_group_join_policy', 'group_join_settings', 'pending_join_requests',
+      'decide_join_request', 'request_to_join', 'withdraw_join_request',
+      'my_join_requests'])
   loop
     execute format('revoke all on function %s from public, anon', f.sig);
   end loop;

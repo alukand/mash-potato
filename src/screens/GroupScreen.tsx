@@ -51,6 +51,7 @@ import { StartRound } from '../components/StartRound'
 import { AddGroupMembers } from '../components/AddGroupMembers'
 import { RubricRowsEditor } from '../components/RubricRowsEditor'
 import { GroupDiscoverySettings } from '../components/GroupDiscoverySettings'
+import { JoinRequests } from '../components/JoinRequests'
 import type { OpenTitle } from '../lib/urlState'
 
 interface GroupScreenProps {
@@ -460,6 +461,9 @@ export function GroupScreen({
         {!isOwner && <p className="mt-2 px-1 text-[12px] text-muted">Ask {members.find((m) => m.role === 'owner')?.displayName ?? 'the group owner'} to add friends.</p>}
         {showAdd && isOwner && <div id="group-add-friends" className="mp-card mt-3 rounded-[22px] p-4"><AddGroupMembers key={group.id} group={group} userId={userId} onAdded={onMembersChanged} /></div>}
       </section>
+
+      {/* People asking to join (an approval group's owner only; empty = nothing) */}
+      {isOwner && <JoinRequests key={group.id} groupId={group.id} userId={userId} onApproved={onMembersChanged} />}
 
       {/* The settings control lives in the app header's top-right slot, the
           same place on every screen. It used to be an unlabelled cog pinned
