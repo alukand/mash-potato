@@ -74,8 +74,11 @@ alone passed pgTAP AND the twin locally, then shipped two functions that
 answered 200 to the anon key on hosted: default privileges differ between a
 local `db reset` and a hosted `db push`. After deploying any function
 migration, probe hosted directly — an anon-key POST to
-`/rest/v1/rpc/<fn>` with valid params must return 401, and a known-good
-control (e.g. `public_profile`) confirms the probe itself is sound. The
+`/rest/v1/rpc/<fn>` with valid params must return 401, and two controls
+confirm the probe itself is sound: `browse_open_groups` answers 200 (the
+public catalogue, anon by design) and a made-up function name answers 404.
+(`public_profile` is NOT a control: it has been signed-in only since
+2026-07-13, so it answers 401 too.) The
 twin's `20-grants.sql` mirrors the internals list; `account_test.sql` +
 the twin's 98 file assert the local posture.
 

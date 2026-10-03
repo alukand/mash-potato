@@ -64,7 +64,8 @@ submit.
    Then probe the new functions the way CLAUDE.md asks (the test suites cannot
    catch a missing `anon` revoke): an anon-key POST to
    `/rest/v1/rpc/round_game_state`, `cast_round_vote` and `group_trophies`
-   must answer 401, while `public_profile` answers 200.
+   must answer 401, while `browse_open_groups` (the public catalogue)
+   answers 200 and a made-up function name answers 404.
 
 2. **Functions.** Both changed:
 
