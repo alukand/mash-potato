@@ -46,6 +46,8 @@ export const RUBRIC_CATALOG: CatalogCategory[] = [
   { key: 'ending', label: 'Ending', blurb: 'Payoff and final act', kind: 'optional' },
   { key: 'themes', label: 'Themes', blurb: 'Depth and ideas underneath', kind: 'optional' },
   { key: 'productionDesign', label: 'Production Design', blurb: 'Sets, costumes, the look', kind: 'optional' },
+  // A documentary's standard scores Editing in place of Writing (lib/genres.ts).
+  { key: 'editing', label: 'Editing', blurb: 'Cuts, structure, how it’s assembled', kind: 'optional' },
 
   // ---- genre: auto-included when the title's TMDB genres match ------------
   // Humor and Fear Factor define their nights: heavier than any base weight.
@@ -345,30 +347,34 @@ export function resolveSessionRubricTagged(
     }
   }
 
-  // Animated titles: Cinematography is REPLACED by Animation (same weight),
-  // and Acting becomes Voice Acting, slightly lighter. Keys stay unchanged
-  // so scores and history remain coherent; only labels and weights shift for
-  // this round. The auto-added animation category only stands in when the
-  // group carries no Cinematography row to relabel.
-  if (genreIds.includes(ANIMATION_GENRE_ID)) {
-    const hasCinematography = entries.some((e) => e.key === 'cinematography')
-    return entries
-      .filter((e) => !(e.key === 'animation' && hasCinematography))
-      .map((e) => {
-        if (e.key === 'acting') {
-          return {
-            ...e,
-            label: 'Voice Acting',
-            weight: Math.round(e.weight * VOICE_ACTING_WEIGHT_FACTOR * 10) / 10,
-          }
-        }
-        if (e.key === 'cinematography') {
-          return { ...e, label: 'Animation' }
-        }
-        return e
-      })
-  }
+  return relabelForAnimation(entries, genreIds)
+}
+
+/**
+ * Animated titles: Cinematography is REPLACED by Animation (same weight),
+ * and Acting becomes Voice Acting, slightly lighter. Keys stay unchanged so
+ * scores and history remain coherent; only labels and weights shift for the
+ * card. The animation category only stands in when there is no
+ * Cinematography to relabel. Used by rounds and by solo cards (lib/genres.ts).
+ */
+export function relabelForAnimation<T extends SessionRubricEntry>(entries: T[], genreIds: number[]): T[] {
+  if (!genreIds.includes(ANIMATION_GENRE_ID)) return entries
+  const hasCinematography = entries.some((e) => e.key === 'cinematography')
   return entries
+    .filter((e) => !(e.key === 'animation' && hasCinematography))
+    .map((e) => {
+      if (e.key === 'acting') {
+        return {
+          ...e,
+          label: 'Voice Acting',
+          weight: Math.round(e.weight * VOICE_ACTING_WEIGHT_FACTOR * 10) / 10,
+        }
+      }
+      if (e.key === 'cinematography') {
+        return { ...e, label: 'Animation' }
+      }
+      return e
+    })
 }
 
 /** resolveSessionRubricTagged without the provenance tags (snapshot shape). */

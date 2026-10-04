@@ -19,6 +19,8 @@ import type { TitlePart } from './titleParts'
 import { parseRoundGames, takesModeFrom } from './roundGames'
 import type { RoundGames, TakesMode } from './roundGames'
 import type { TrophyCount } from './trophies'
+import { genreRowsFromJson, genreRuleFrom, isGenreKey } from './genres'
+import type { GenreKey, GenreRule } from './genres'
 
 export type { SessionRubricEntry } from './mapping'
 export type { TitlePart } from './titleParts'
@@ -39,6 +41,8 @@ export interface GroupInfo {
   fights: boolean
   /** Best take: off, written 'blind' with the scorecard, or 'after' the reveal. */
   takesMode: TakesMode
+  /** Which genre leads a round: TMDB's first-listed, or our order (20261003150000). */
+  genreRule: GenreRule
 }
 
 export interface MemberInfo {
@@ -344,7 +348,7 @@ export async function removeDeviceToken(token: string): Promise<void> {
 export async function fetchMyGroups(userId: string): Promise<GroupInfo[]> {
   const { data, error } = await supabase
     .from('group_members')
-    .select('role, is_public, groups(id, name, taste_mode, fights, takes_mode)')
+    .select('role, is_public, groups(id, name, taste_mode, fights, takes_mode, genre_rule)')
     .eq('user_id', userId)
     .order('joined_at', { ascending: true })
   if (error) throw new Error(error.message)
@@ -358,6 +362,7 @@ export async function fetchMyGroups(userId: string): Promise<GroupInfo[]> {
       tasteMode: row.groups!.taste_mode === 'casual' ? 'casual' : 'buff',
       fights: row.groups!.fights,
       takesMode: takesModeFrom(row.groups!.takes_mode),
+      genreRule: genreRuleFrom(row.groups!.genre_rule),
     }))
 }
 
@@ -374,7 +379,7 @@ export async function createGroup(
   const { data, error } = await supabase
     .from('groups')
     .insert({ name, owner_id: userId, taste_mode: tasteMode })
-    .select('id, name, taste_mode, fights, takes_mode')
+    .select('id, name, taste_mode, fights, takes_mode, genre_rule')
     .single()
   if (error) throw new Error(error.message)
   return {
@@ -385,6 +390,7 @@ export async function createGroup(
     tasteMode: data.taste_mode === 'casual' ? 'casual' : 'buff',
     fights: data.fights,
     takesMode: takesModeFrom(data.takes_mode),
+    genreRule: genreRuleFrom(data.genre_rule),
   }
 }
 
@@ -418,6 +424,17 @@ export async function setGroupGames(
   const { data, error } = await supabase.from('groups').update(patch).eq('id', groupId).select('id')
   if (error) throw new Error(error.message)
   if (!data || data.length === 0) throw new Error('Only the group owner can change the games.')
+}
+
+/** Which genre leads this group's rounds (owner-only, like the games). */
+export async function setGroupGenreRule(groupId: string, rule: GenreRule): Promise<void> {
+  const { data, error } = await supabase
+    .from('groups')
+    .update({ genre_rule: rule })
+    .eq('id', groupId)
+    .select('id')
+  if (error) throw new Error(error.message)
+  if (!data || data.length === 0) throw new Error('Only the group owner can change this.')
 }
 
 export async function fetchMembers(groupId: string): Promise<MemberInfo[]> {
@@ -588,6 +605,8 @@ export interface SessionInfo {
   rubric: SessionRubricEntry[] | null
   /** How this round plays the best take, fixed when it started. */
   takesMode: TakesMode
+  /** The genre the round was scored as ("Scored as Horror"); null before genre rubrics. */
+  genre: GenreKey | null
 }
 
 export interface NewTitle {
@@ -607,7 +626,7 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
   const { data, error } = await supabase
     .from('reveal_sessions')
     .select(
-      'id, state, created_by, created_at, rubric, takes_mode, titles(id, tmdb_id, show_tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
+      'id, state, created_by, created_at, rubric, takes_mode, genre, titles(id, tmdb_id, show_tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
     )
     .eq('group_id', groupId)
     .order('created_at', { ascending: false })
@@ -629,6 +648,7 @@ export async function fetchLatestSession(groupId: string): Promise<SessionInfo |
     posterPath: row.titles.poster_path,
     rubric: rubricFromJson(row.rubric),
     takesMode: takesModeFrom(row.takes_mode),
+    genre: isGenreKey(row.genre) ? row.genre : null,
   }
 }
 
@@ -637,7 +657,7 @@ export async function fetchSessionById(sessionId: string): Promise<SessionInfo |
   const { data, error } = await supabase
     .from('reveal_sessions')
     .select(
-      'id, state, created_by, created_at, rubric, takes_mode, titles(id, tmdb_id, show_tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
+      'id, state, created_by, created_at, rubric, takes_mode, genre, titles(id, tmdb_id, show_tmdb_id, name, year, media_type, poster_path, season_number, episode_number)',
     )
     .eq('id', sessionId)
     .maybeSingle()
@@ -657,6 +677,7 @@ export async function fetchSessionById(sessionId: string): Promise<SessionInfo |
     posterPath: data.titles.poster_path,
     rubric: rubricFromJson(data.rubric),
     takesMode: takesModeFrom(data.takes_mode),
+    genre: isGenreKey(data.genre) ? data.genre : null,
   }
 }
 
@@ -710,6 +731,8 @@ export async function createSession(
   userId: string,
   title: NewTitle,
   rubric: SessionRubricEntry[],
+  /** The genre the rubric was resolved for (lib/genres.ts), kept with the round. */
+  genre: GenreKey | null = null,
 ): Promise<SessionInfo> {
   const titleId = await ensureTitle(title)
 
@@ -722,8 +745,9 @@ export async function createSession(
       // plain-object snapshot for the jsonb column (interfaces lack the
       // index signature the generated Json type wants)
       rubric: rubric.map((e) => ({ key: e.key, label: e.label, weight: e.weight })),
+      genre,
     })
-    .select('id, state, created_by, created_at, takes_mode')
+    .select('id, state, created_by, created_at, takes_mode, genre')
     .single()
   if (error) throw new Error(error.message)
 
@@ -746,6 +770,7 @@ export async function createSession(
     rubric,
     // the server stamps the group's mode on the round; this reads it back
     takesMode: takesModeFrom(data.takes_mode),
+    genre: isGenreKey(data.genre) ? data.genre : null,
   }
 }
 
@@ -1738,6 +1763,8 @@ export async function fetchModeScores(
   tmdbId: number,
   mediaType: 'movie' | 'tv',
   part?: TitlePart | null,
+  /** Each mode's standard card for the title's genre (genres.ts communityWeights). */
+  weights?: { casual: Record<string, number>; buff: Record<string, number> },
 ): Promise<ModeScores> {
   const foundId = await findTitleId(tmdbId, mediaType, part)
   const title = foundId ? { id: foundId } : null
@@ -1745,8 +1772,8 @@ export async function fetchModeScores(
 
   const { data, error } = await supabase.rpc('title_mode_scores', {
     p_title_id: title.id,
-    p_casual_weights: CASUAL_WEIGHTS,
-    p_buff_weights: DEFAULT_WEIGHTS,
+    p_casual_weights: weights?.casual ?? CASUAL_WEIGHTS,
+    p_buff_weights: weights?.buff ?? DEFAULT_WEIGHTS,
   })
   if (error) throw new Error(error.message)
   const result: ModeScores = {
@@ -1772,6 +1799,7 @@ export async function fetchModeHistogram(
   mediaType: 'movie' | 'tv',
   mode: TasteMode | null,
   part?: TitlePart | null,
+  weights?: { casual: Record<string, number>; buff: Record<string, number> },
 ): Promise<number[]> {
   const empty = Array<number>(10).fill(0)
   const foundId = await findTitleId(tmdbId, mediaType, part)
@@ -1780,8 +1808,8 @@ export async function fetchModeHistogram(
 
   const { data, error } = await supabase.rpc('title_mode_histogram', {
     p_title_id: title.id,
-    p_casual_weights: CASUAL_WEIGHTS,
-    p_buff_weights: DEFAULT_WEIGHTS,
+    p_casual_weights: weights?.casual ?? CASUAL_WEIGHTS,
+    p_buff_weights: weights?.buff ?? DEFAULT_WEIGHTS,
     p_mode: mode ?? undefined,
   })
   if (error) throw new Error(error.message)
@@ -1793,24 +1821,30 @@ export async function fetchModeHistogram(
 }
 
 /** My own solo rating for a title (always self-readable), or null. */
+export interface MySoloRating {
+  scores: CategoryScores
+  /** The card it was given with; null for ratings from before genre rubrics. */
+  rubric: SessionRubricEntry[] | null
+}
+
 export async function fetchMyGlobalRating(
   userId: string,
   tmdbId: number,
   mediaType: 'movie' | 'tv',
   part?: TitlePart | null,
-): Promise<CategoryScores | null> {
+): Promise<MySoloRating | null> {
   const foundId = await findTitleId(tmdbId, mediaType, part)
   const title = foundId ? { id: foundId } : null
   if (!title) return null
 
   const { data, error } = await supabase
     .from('global_ratings')
-    .select('scores')
+    .select('scores, rubric')
     .eq('user_id', userId)
     .eq('title_id', title.id)
     .maybeSingle()
   if (error) throw new Error(error.message)
-  return data ? scoresFromJson(data.scores) : null
+  return data ? { scores: scoresFromJson(data.scores), rubric: rubricFromJson(data.rubric) } : null
 }
 
 /** Save (or update) my solo rating for a title, which feeds the community score. */
@@ -1818,11 +1852,21 @@ export async function saveGlobalRating(
   userId: string,
   title: NewTitle,
   scores: CategoryScores,
+  /** The card it is given with, kept with the rating (followers score it on this). */
+  rubric: SessionRubricEntry[] | null = null,
+  genre: GenreKey | null = null,
 ): Promise<void> {
   const titleId = await ensureTitle(title)
-  const { error } = await supabase
-    .from('global_ratings')
-    .upsert({ user_id: userId, title_id: titleId, scores }, { onConflict: 'user_id,title_id' })
+  const { error } = await supabase.from('global_ratings').upsert(
+    {
+      user_id: userId,
+      title_id: titleId,
+      scores,
+      rubric: rubric ? rubric.map((e) => ({ key: e.key, label: e.label, weight: e.weight })) : null,
+      genre,
+    },
+    { onConflict: 'user_id,title_id' },
+  )
   if (error) throw new Error(error.message)
 }
 
@@ -2284,7 +2328,7 @@ export interface FeedRating {
   titleName: string
   year: number | null
   posterPath: string | null
-  /** Their number, on their own taste mode's rubric (lib/scoring.ts). */
+  /** Their number, on the card they rated with (or, for older ratings, their mode's). */
   score: number | null
   ratedAt: string
 }
@@ -2310,9 +2354,25 @@ export async function fetchFollowingFeed(limit = 30, userId?: string): Promise<F
     titleName: r.title_name,
     year: r.year,
     posterPath: r.poster_path,
-    score: soloScore(scoresFromJson(r.scores), r.taste_mode === 'casual' ? 'casual' : 'buff'),
+    score: ratingScore(
+      scoresFromJson(r.scores),
+      rubricFromJson(r.rubric),
+      r.taste_mode === 'casual' ? 'casual' : 'buff',
+    ),
     ratedAt: r.rated_at,
   }))
+}
+
+/** A solo rating's number on the card it was given with, else on the mode card. */
+function ratingScore(
+  scores: CategoryScores,
+  rubric: SessionRubricEntry[] | null,
+  mode: TasteMode,
+): number | null {
+  if (rubric && rubric.some((e) => typeof scores[e.key] === 'number')) {
+    return memberWeightedScore(scores, weightsFromRubric(rubric))
+  }
+  return soloScore(scores, mode)
 }
 
 /**
@@ -2371,6 +2431,75 @@ export async function updateMyTasteMode(userId: string, mode: TasteMode): Promis
   if (error) throw new Error(error.message)
 }
 
+// ---- genre rubrics (20261003150000) -------------------------------------------
+
+/** Which genre leads YOUR solo ratings: TMDB's first-listed, or our order. */
+export async function fetchMyGenreRule(userId: string): Promise<GenreRule> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('genre_rule')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return genreRuleFrom(data?.genre_rule)
+}
+
+export async function setMyGenreRule(userId: string, rule: GenreRule): Promise<void> {
+  const { error } = await supabase.from('profiles').update({ genre_rule: rule }).eq('id', userId)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Every genre you have decided on: your own rows, or null for "the
+ * standard". A genre missing from the map has not been asked about yet.
+ */
+export async function fetchMyGenreRubrics(
+  userId: string,
+): Promise<Map<GenreKey, GroupRubricRow[] | null>> {
+  const { data, error } = await supabase
+    .from('genre_rubrics')
+    .select('genre, rows')
+    .eq('user_id', userId)
+  if (error) throw new Error(error.message)
+  const out = new Map<GenreKey, GroupRubricRow[] | null>()
+  for (const r of data ?? []) if (isGenreKey(r.genre)) out.set(r.genre, genreRowsFromJson(r.rows))
+  return out
+}
+
+/** Save your rubric for a genre; null means the standard (and stops the prompt). */
+export async function saveMyGenreRubric(
+  userId: string,
+  genre: GenreKey,
+  rows: GroupRubricRow[] | null,
+): Promise<void> {
+  const { error } = await supabase.from('genre_rubrics').upsert(
+    {
+      user_id: userId,
+      genre,
+      rows: rows
+        ? rows.map((r) => ({ key: r.key, label: r.label, weight: r.weight, enabled: r.enabled, sort: r.sort }))
+        : null,
+    },
+    { onConflict: 'user_id,genre' },
+  )
+  if (error) throw new Error(error.message)
+}
+
+/** These people's own rubrics for a genre (RLS: yours and your groupmates'). */
+export async function fetchGenreRubricsOf(
+  userIds: string[],
+  genre: GenreKey,
+): Promise<Map<string, GroupRubricRow[] | null>> {
+  if (userIds.length === 0) return new Map()
+  const { data, error } = await supabase
+    .from('genre_rubrics')
+    .select('user_id, rows')
+    .eq('genre', genre)
+    .in('user_id', userIds)
+  if (error) throw new Error(error.message)
+  return new Map((data ?? []).map((r) => [r.user_id, genreRowsFromJson(r.rows)]))
+}
+
 /** Show or hide one of YOUR group memberships on your public profile. */
 export async function setGroupVisibility(groupId: string, isPublic: boolean): Promise<void> {
   const { error } = await supabase.rpc('set_group_visibility', {
@@ -2389,10 +2518,10 @@ export async function setGroupVisibility(groupId: string, isPublic: boolean): Pr
  *  theirs), your comments, your playlists, your rubric. RLS already scopes
  *  every query to self. */
 export async function fetchMyExport(userId: string): Promise<Record<string, unknown>> {
-  const [ratings, saved, cards, comments, playlists, rubrics, tokens, joinRequests, following, roundPosts] = await Promise.all([
+  const [ratings, saved, cards, comments, playlists, rubrics, tokens, joinRequests, following, roundPosts, genreRubrics] = await Promise.all([
     supabase
       .from('global_ratings')
-      .select('updated_at, scores, titles(tmdb_id, media_type, name, year)')
+      .select('updated_at, scores, genre, titles(tmdb_id, media_type, name, year)')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false }),
     fetchMySavedTitles(userId),
@@ -2425,8 +2554,10 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
     supabase.rpc('my_following'),
     // your takes and fight arguments on group rounds
     supabase.rpc('my_round_posts'),
+    // your own rubric for each genre you set one for
+    supabase.from('genre_rubrics').select('genre, rows').eq('user_id', userId),
   ])
-  for (const q of [ratings, cards, comments, playlists, rubrics, tokens, joinRequests, following, roundPosts]) {
+  for (const q of [ratings, cards, comments, playlists, rubrics, tokens, joinRequests, following, roundPosts, genreRubrics]) {
     if (q.error) throw new Error(q.error.message)
   }
   return {
@@ -2440,6 +2571,7 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
         mediaType: r.titles!.media_type,
         tmdbId: r.titles!.tmdb_id,
         scores: scoresFromJson(r.scores),
+        genre: r.genre,
         ratedAt: r.updated_at,
       })),
     savedTitles: saved.map((s) => ({
@@ -2512,6 +2644,10 @@ export async function fetchMyExport(userId: string): Promise<Record<string, unkn
       at: r.created_at,
     })),
     following: (following.data ?? []).map((r) => ({ name: r.display_name, since: r.followed_at })),
+    genreRubrics: (genreRubrics.data ?? []).map((r) => ({
+      genre: r.genre,
+      rubric: r.rows ?? 'the standard',
+    })),
     roundTakesAndArguments: (roundPosts.data ?? []).map((r) => ({
       group: r.group_name,
       title: r.title_name,

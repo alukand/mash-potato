@@ -307,6 +307,41 @@ has the product rules and the reward-loop law's "Trophies" amendment. The laws:
   `GroupGamesSettings` and `TrophyShelf` live on the group page;
   `HouseRulesSheet` asks for the terms up front.
 
+## GENRE RUBRICS (2026-10-03)
+
+`supabase/migrations/20261003150000_genre_rubrics.sql` stores what people chose;
+`src/lib/genres.ts` (pure, tested) holds everything else; DESIGN.md "Rubric
+cadence" has the product law. The laws:
+
+- **The genre list lives in two places.** `GENRES` in lib/genres.ts and the
+  check constraints in the migration (genre_rubrics, reveal_sessions.genre,
+  global_ratings.genre). Change both together.
+- **A round's rubric is resolved once, when it starts,** by
+  `resolveGenreRound`: the group's rule picks the genre, each member brings
+  their own rubric for it or the standard on their usual rows, and the blend
+  plus the other genres' extras is frozen in `reveal_sessions.rubric` with
+  `reveal_sessions.genre`. `GroupInviteSheet.handleStart` and
+  `SessionPanel.handleRerate` are the only two starters; never re-resolve a
+  running round. `roundRowsFor` splits a card into yours and the extras.
+- **`genre_rubrics` is yours to write and your groupmates' to read**
+  (`shares_group_with`), because a round blends them. Rows null means "chose
+  the standard"; a missing row means "never asked". Labels are always the
+  catalog's (`genreRowsFromJson`): a row's label is never anyone's own text.
+- **The question asks once** (`needsGenrePrompt`): never Normies, only
+  genres whose standard changes something, and never again once there is a
+  row. In a round it counts from the next round; solo it applies at once.
+- **Formats follow the title, not the lead genre.** A documentary scores
+  Editing in place of Writing (`applyFormats`) and an animated title relabels
+  (`relabelForAnimation`), whatever genre leads.
+- **Numbers.** A solo rating saves its card (`global_ratings.rubric`,
+  `genre`) and is read with `ratingScore` (snapshot, else the mode card). The
+  community numbers pass `communityWeights` (each mode's standard card for
+  the title's first-listed genre) to `fetchModeScores` and
+  `fetchModeHistogram`, so they're the same for everyone.
+- Settings: `profiles.genre_rule` (yours, for solo; column-granted like
+  taste_mode) and `groups.genre_rule` (the owner's, for rounds); 'first' or
+  'order'.
+
 ## Commands
 
 - `npm run dev` — Vite on port 5180 (fixed; 5173/5174 belong to another project)
@@ -780,16 +815,17 @@ has the product rules and the reward-loop law's "Trophies" amendment. The laws:
     Web Analytics CSP, and the Save Image fix.
   - Added 2026-10-03 (built on `next`, then moved into `release-1.1`):
     seasons and episodes, the redrawn share card, join requests, follows,
-    round games, and the sliced-potato icon.
+    round games, the sliced-potato icon, and genre rubrics.
 - `master` still holds 1.1 without those additions; it deploys the website
   and the web app. The database and functions are ready for it, so it is
   fast-forwarded to `release-1.1` after the TestFlight check and before the
   review submission (App Review reads the privacy policy).
-- Hosted Supabase has every migration in this repo, through `20261003130000`.
-  The owner pushed the last five and deployed `tmdb-search` and `send-push` on
-  2026-10-03. The anon probe then passed: all 32 new functions answered 401,
+- Hosted Supabase has every migration through `20261003130000`. The owner
+  pushed those five and deployed `tmdb-search` and `send-push` on 2026-10-03.
+  The anon probe then passed: all 32 new functions answered 401,
   `browse_open_groups` 200 and a made-up name 404. The hosted `tmdb-search`
-  serves `seasonList` and the `season` op.
+  serves `seasonList` and the `season` op. NOT hosted yet:
+  `20261003150000` (genre rubrics).
 - Mash Potato Live (live shows, watch parties, giveaways) is parked, dormant,
   on branch `live-shows`. It is NOT in `master` or `release-1.1` in any form:
   no code, migrations, Edge Function, packages or docs. Its three migrations

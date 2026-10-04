@@ -32,6 +32,10 @@ New in this build:
 - **The sliced-potato app icon** (`assets/icon/mash-potato-icon.svg`), on the
   home screen and in the browser tab. The mascot stays the logo everywhere
   else.
+- **Genre rubrics.** Every genre has a standard rubric (horror adds Fear
+  Factor, documentaries score Editing in place of Writing), Cinephiles can make
+  their own per genre, and rounds say what genre they're scored as
+  (`20261003150000_genre_rubrics.sql`, CLAUDE.md "GENRE RUBRICS").
 
 ## The order matters
 
@@ -47,9 +51,10 @@ submit.
    npx supabase db push --linked
    ```
 
-   The list should show exactly five local-only migrations: `20261001180000`,
-   `20261002120000`, `20261002140000`, `20261003120000` and `20261003130000`.
-   If Live's migrations (`20260928...`) appear, you are on the wrong branch.
+   The first five went up on 2026-10-03 (`20261001180000` through
+   `20261003130000`), so the list should now show exactly one local-only
+   migration: `20261003150000` (genre rubrics). If Live's migrations
+   (`20260928...`) appear, you are on the wrong branch.
    `db push` can end with a "failed to cache migrations catalog" certificate
    error and exit 255 AFTER the migrations land: check with `migration list`
    and do not run it again.
@@ -63,11 +68,13 @@ submit.
 
    Then probe the new functions the way CLAUDE.md asks (the test suites cannot
    catch a missing `anon` revoke): an anon-key POST to
-   `/rest/v1/rpc/round_game_state`, `cast_round_vote` and `group_trophies`
-   must answer 401, while `browse_open_groups` (the public catalogue)
-   answers 200 and a made-up function name answers 404.
+   `/rest/v1/rpc/round_game_state`, `cast_round_vote`, `group_trophies` and
+   (recreated by the genre rubrics migration) `following_feed` must answer
+   401, while `browse_open_groups` (the public catalogue) answers 200 and a
+   made-up function name answers 404.
 
-2. **Functions.** Both changed:
+2. **Functions.** Already deployed on 2026-10-03; genre rubrics change
+   neither. For the record, both changed for 1.1:
 
    ```
    npx supabase functions deploy tmdb-search
@@ -96,6 +103,12 @@ submit.
 ## Checks on TestFlight
 
 - The home-screen icon is the sliced potato.
+- As a Cinephile, rate a horror film solo: "Your first Horror rating" asks
+  once, and "Make my Horror rubric" changes the card at once. A documentary
+  card scores Editing, not Writing.
+- Start a round on a horror film: the receipt and the card say "Scored as
+  Horror", and a member without a Horror rubric is asked, with the note that
+  theirs counts from the next Horror round.
 - A show page lists its seasons; a season lists its episodes; rating an
   episode creates a "Show S2E3" title, and the show's own page stays
   separate.
@@ -135,6 +148,9 @@ Share a bolder Reveal card, or save it to Photos.
 Searchable groups can ask a question and approve who joins.
 
 Follow friends and see the ratings they choose to share.
+
+Every genre gets its own rubric: horror nights add Fear Factor, documentaries
+score Editing, and Cinephiles can make their own for any genre.
 
 And a new look: meet the potato.
 ```

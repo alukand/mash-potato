@@ -3,8 +3,8 @@ import { pickActiveGroup } from './activeGroup'
 import type { GroupInfo } from './api'
 
 const groups: GroupInfo[] = [
-  { id: 'g1', name: 'First', role: 'owner', isPublic: false, tasteMode: 'buff', fights: true, takesMode: 'off' },
-  { id: 'g2', name: 'Second', role: 'member', isPublic: false, tasteMode: 'casual', fights: true, takesMode: 'off' },
+  { id: 'g1', name: 'First', role: 'owner', isPublic: false, tasteMode: 'buff', fights: true, takesMode: 'off', genreRule: 'first' },
+  { id: 'g2', name: 'Second', role: 'member', isPublic: false, tasteMode: 'casual', fights: true, takesMode: 'off', genreRule: 'first' },
 ]
 
 describe('pickActiveGroup', () => {

@@ -45,6 +45,7 @@ import { PlaylistCard } from '../components/PlaylistCard'
 import { PosterGrid } from '../components/PosterGrid'
 import { AddGroupMembers } from '../components/AddGroupMembers'
 import { PersonalRubrics } from '../components/PersonalRubrics'
+import { GenreRubrics } from '../components/GenreRubrics'
 import { OpenGroups } from '../components/OpenGroups'
 import { colorForUser } from '../lib/palette'
 import { AVATAR_CATALOG, Avatar } from '../components/avatars'
@@ -120,6 +121,7 @@ export function ProfileScreen({
   const [addFriendsOpen, setAddFriendsOpen] = useState(false)
   const [friendGroupId, setFriendGroupId] = useState('')
   const [rubricsOpen, setRubricsOpen] = useState(false)
+  const [genresOpen, setGenresOpen] = useState(false)
   const [findGroupsOpen, setFindGroupsOpen] = useState(false)
   const ownedGroups = groups.filter((g) => g.role === 'owner')
   const friendGroup = ownedGroups.find((g) => g.id === friendGroupId) ?? ownedGroups[0]
@@ -614,6 +616,19 @@ export function ProfileScreen({
         <div id="personal-rubrics-content" hidden={!rubricsOpen} className="mp-card mp-rise mt-3 rounded-[22px] p-4">
           <PersonalRubrics userId={userId} groups={groups} onOpenGroup={onSwitchGroup} />
         </div>
+      </section>
+
+      {/* ---- genre rubrics: which genre leads, and your own per genre ---- */}
+      <section id="profile-genres" className="mp-rise mt-7 scroll-mt-5">
+        <button type="button" aria-expanded={genresOpen} aria-controls="genre-rubrics-content" onClick={() => setGenresOpen((open) => !open)} className="flex min-h-11 w-full items-center justify-between gap-3 text-left">
+          <span><span className="block text-[15px] font-semibold">Genre rubrics</span><span className="mt-1 block text-[13px] text-muted">How you score horror, comedy, documentaries and the rest.</span></span>
+          <span className="shrink-0 text-[13px] font-semibold text-gold">{genresOpen ? 'Hide' : 'Manage'}</span>
+        </button>
+        {genresOpen && (
+          <div id="genre-rubrics-content" className="mp-card mp-rise mt-3 rounded-[22px] p-4">
+            <GenreRubrics userId={userId} mode={tasteMode} />
+          </div>
+        )}
       </section>
 
       {/* ---- groups ---- */}

@@ -54,6 +54,7 @@ import { RubricRowsEditor } from '../components/RubricRowsEditor'
 import { GroupDiscoverySettings } from '../components/GroupDiscoverySettings'
 import { JoinRequests } from '../components/JoinRequests'
 import { GroupGamesSettings } from '../components/GroupGamesSettings'
+import { GroupGenreRule } from '../components/GroupGenreRule'
 import { TrophyShelf } from '../components/TrophyShelf'
 import type { TrophyCount } from '../lib/trophies'
 import type { OpenTitle } from '../lib/urlState'
@@ -715,6 +716,7 @@ export function GroupScreen({
                 </div>
               </div>
             ))}
+          <GroupGenreRule key={`genre:${group.id}`} group={group} isOwner={isOwner} onChanged={onGroupsChanged} />
         </div>
       </section>
 

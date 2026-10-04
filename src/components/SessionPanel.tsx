@@ -8,25 +8,22 @@ import {
   backfillCategoryScore,
   createSession,
   fetchAllScorecards,
+  fetchGenreRubricsOf,
   fetchGroupRubrics,
   fetchLatestSession,
+  fetchMyGenreRubrics,
   fetchSessionById,
   fetchTitleDetail,
   lateScoreSession,
   onSessionChange,
   posterUrl,
 } from '../lib/api'
-import type { GroupInfo, MemberInfo, SessionInfo } from '../lib/api'
+import type { GroupInfo, GroupRubricRow, MemberInfo, SessionInfo } from '../lib/api'
 import { colorForMember } from '../lib/palette'
 import { touchRecentGroup } from '../lib/activeGroup'
-import {
-  catalogCategory,
-  configuredCategoryKeys,
-  defaultRubricRows,
-  mashRubrics,
-  resolveSessionRubric,
-  splitRubricForMember,
-} from '../lib/rubricCatalog'
+import { catalogCategory, mashRubrics, splitRubricForMember } from '../lib/rubricCatalog'
+import { genreDef, genreForTitle, resolveGenreRound, roundRowsFor } from '../lib/genres'
+import type { GenreKey } from '../lib/genres'
 import type { MemberRubric } from '../lib/rubricCatalog'
 import { Avatar } from './avatars'
 import { CtaButton, ExtraCategoryChips, ScoreSliderRow, fieldClassSm } from './ui'
@@ -149,6 +146,8 @@ export function SessionPanel({
   // flashes the seal card at every mount.
   const [scorecards, setScorecards] = useState<MemberScorecard[] | undefined>(undefined)
   const [memberRubrics, setMemberRubrics] = useState<MemberRubric[]>([])
+  // My own genre rubrics: which categories are "mine" on a genre's card.
+  const [myGenreRubrics, setMyGenreRubrics] = useState<Map<GenreKey, GroupRubricRow[] | null>>(new Map())
   const [error, setError] = useState<string | null>(null)
   // Every reload (realtime pings included) refreshes the round's games too.
   const [gamesKey, setGamesKey] = useState(0)
@@ -196,18 +195,20 @@ export function SessionPanel({
       setSession(s)
       if (!s) return
       if (s.state === 'revealed') {
-        const [cards, rubrics] = await Promise.all([
+        const [cards, rubrics, mine] = await Promise.all([
           fetchAllScorecards(s.id),
           fetchGroupRubrics(group.id).catch(() => []),
+          fetchMyGenreRubrics(userId).catch(() => new Map<GenreKey, GroupRubricRow[] | null>()),
         ])
         setScorecards(cards)
         setMemberRubrics(rubrics)
+        setMyGenreRubrics(mine)
         setGamesKey((k) => k + 1)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Load failed')
     }
-  }, [group.id, viewSessionId])
+  }, [group.id, viewSessionId, userId])
 
   async function handleLateScore(sessionId: string) {
     setLateBusy(true)
@@ -256,9 +257,17 @@ export function SessionPanel({
           ? ((await fetchTitleDetail(s.titleTmdbId, s.mediaType).catch(() => null))
               ?.genreIds ?? [])
           : []
-      const mashed = mashRubrics(memberRubrics)
-      const rows = mashed.length > 0 ? mashed : defaultRubricRows()
-      const rubric = resolveSessionRubric(rows, genreIds, configuredCategoryKeys(memberRubrics))
+      // Same as a new round: the group's rule picks the genre, and members'
+      // own rubrics for it blend in (lib/genres.ts).
+      const genre = genreForTitle(genreIds, group.genreRule)
+      const own =
+        genre && !isCasual
+          ? await fetchGenreRubricsOf(memberRubrics.map((m) => m.userId), genre).catch(
+              () => new Map<string, GroupRubricRow[] | null>(),
+            )
+          : new Map<string, GroupRubricRow[] | null>()
+      const rubric = resolveGenreRound({ memberRubrics, genreRubrics: own, genre, genreIds, casual: isCasual })
+        .map((e) => ({ key: e.key, label: e.label, weight: e.weight }))
       await createSession(
         group.id,
         userId,
@@ -268,8 +277,11 @@ export function SessionPanel({
           mediaType: s.mediaType,
           tmdbId: s.titleTmdbId,
           posterPath: s.posterPath,
+          // a season or an episode is rated again as itself, not as its show
+          part: s.titlePart ? { ...s.titlePart, partName: null } : null,
         },
         rubric,
+        genre,
       )
       touchRecentGroup(group.id)
       if (!viewSessionId) await load()
@@ -346,8 +358,15 @@ export function SessionPanel({
   // so those scores aren't silently replaced by flat 5s.
   const myDraft = scorecards.find((s) => s.memberId === userId && !s.locked)
   // Late scoring follows the same split as blind scoring: your own
-  // categories are the card; the rest are opt-in extras.
-  const myLateRows = memberRubrics.find((m) => m.userId === userId)?.rows ?? null
+  // categories are the card (your rubric for the round's genre); the rest
+  // are opt-in extras.
+  const myLateRows = roundRowsFor({
+    usual: memberRubrics.find((m) => m.userId === userId)?.rows ?? null,
+    own: session.genre ? myGenreRubrics.get(session.genre) : null,
+    genre: session.genre,
+    snapshot: session.rubric ?? [],
+    casual: isCasual,
+  })
   const toggleLateExtra = (key: string) =>
     setLateScores((prev) => {
       if (prev[key] !== undefined) {
@@ -384,6 +403,11 @@ export function SessionPanel({
         <h2 className="mt-2 font-display text-[27px] font-semibold leading-[1.05]">
           {session.titleName}
         </h2>
+        {session.genre && (
+          <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+            Scored as {genreDef(session.genre).label}
+          </p>
+        )}
         <p className="mt-3 text-[13px] leading-snug text-muted">
           The reveal is in, sealed for you until you score. Lock in your card and the
           group's scores open up, with yours folded into the Mashed.
@@ -575,6 +599,11 @@ export function SessionPanel({
             <h2 className="mt-1.5 font-display text-[27px] font-semibold leading-[1.05] transition-colors group-hover:text-teal">
               {session.titleName}
             </h2>
+            {session.genre && (
+              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                Scored as {genreDef(session.genre).label}
+              </p>
+            )}
           </div>
         </button>
 

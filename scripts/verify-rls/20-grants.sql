@@ -24,7 +24,7 @@ revoke update, delete on public.comment_reports from authenticated;
 revoke update on public.user_blocks from authenticated;
 revoke all on public.banned_terms from authenticated, anon;
 revoke update on public.profiles from authenticated;
-grant update (display_name, avatar_key, taste_mode) on public.profiles to authenticated;
+grant update (display_name, avatar_key, taste_mode, genre_rule) on public.profiles to authenticated;
 -- launch hardening (20260727120000): titles takes no direct client writes, the
 -- rate-limit ledger is definer-only, and profiles stops handing out `banned`.
 -- The profiles pair must stay in this order: a column revoke is a no-op while
@@ -32,7 +32,7 @@ grant update (display_name, avatar_key, taste_mode) on public.profiles to authen
 revoke insert, update, delete on public.titles from authenticated;
 revoke all on public.rate_limits from authenticated, anon;
 revoke select on public.profiles from authenticated, anon;
-grant select (id, display_name, avatar_key, taste_mode, accepted_terms_at)
+grant select (id, display_name, avatar_key, taste_mode, accepted_terms_at, genre_rule)
   on public.profiles to authenticated;
 -- messaging: every write is a definer RPC, so no table takes direct writes.
 revoke insert, update, delete on public.conversations             from authenticated;
@@ -99,6 +99,9 @@ revoke all on public.round_fights, public.round_posts, public.round_votes,
               public.round_post_reports
   from public, anon, authenticated;
 revoke update on public.reveal_sessions from authenticated, anon;
+-- genre rubrics (20261003150000): yours to write, groupmates' to read (RLS);
+-- anon has nothing, so the blanket anon grant above is taken back whole.
+revoke all on public.genre_rubrics from anon;
 -- ...and the migration's per-function anon revokes, mirrored (the CLAUDE.md
 -- law: every revoke a migration makes is re-applied here, so the twin never
 -- tests a posture looser than hosted).

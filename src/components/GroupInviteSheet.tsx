@@ -2,20 +2,15 @@ import { useMemo, useRef, useState } from 'react'
 import { Sheet } from './Sheet'
 import {
   createSession,
+  fetchGenreRubricsOf,
   fetchGroupRubrics,
   fetchLatestSession,
   hasGroupRatedTitle,
 } from '../lib/api'
-import type { GroupInfo, NewTitle } from '../lib/api'
+import type { GroupInfo, GroupRubricRow, NewTitle } from '../lib/api'
 import type { MemberRubric } from '../lib/rubricCatalog'
-import {
-  TASTE_MODES,
-  configuredCategoryKeys,
-  defaultRubricRows,
-  mashRubrics,
-  resolveSessionRubric,
-  resolveSessionRubricTagged,
-} from '../lib/rubricCatalog'
+import { TASTE_MODES } from '../lib/rubricCatalog'
+import { genreDef, genreForTitle, resolveGenreRound } from '../lib/genres'
 import { readRecentGroupIds, touchRecentGroup } from '../lib/activeGroup'
 import { partTitleName } from '../lib/titleParts'
 import { CtaButton, GroupMark, fieldClassSm } from './ui'
@@ -25,7 +20,7 @@ interface GroupInviteSheetProps {
   groups: GroupInfo[]
   userId: string
   title: NewTitle
-  /** TMDB genre ids for the rubric's genre add-ons ([] for manual entries). */
+  /** TMDB genre ids, in TMDB's order: they pick the round's genre ([] for manual entries). */
   genreIds: number[]
   /** A round was created for this group; the caller navigates to it. */
   onStarted: (groupId: string) => void
@@ -49,6 +44,8 @@ export function GroupInviteSheet({
   const selectionRequest = useRef(0)
   // null = the selected group's rubric + round state are still loading.
   const [rubrics, setRubrics] = useState<MemberRubric[] | null>(null)
+  // Each member's own rubric for the round's genre (absent: the standard).
+  const [genreRubrics, setGenreRubrics] = useState<Map<string, GroupRubricRow[] | null>>(new Map())
   const [blindLive, setBlindLive] = useState(false)
   // This group already revealed a round on this title: the CTA becomes
   // "Rate it again" and the copy promises the old night survives.
@@ -83,23 +80,45 @@ export function GroupInviteSheet({
         () => false,
       ),
     ])
+    // The round's genre follows the GROUP's rule; its members' own rubrics for
+    // that genre blend into the round (Normie groups use the standard).
+    const genre = genreForTitle(genreIds, g.genreRule)
+    const own =
+      genre && g.tasteMode !== 'casual'
+        ? await fetchGenreRubricsOf(rows.map((r) => r.userId), genre).catch(
+            () => new Map<string, GroupRubricRow[] | null>(),
+          )
+        : new Map<string, GroupRubricRow[] | null>()
     if (request !== selectionRequest.current) return
+    setGenreRubrics(own)
     setRubrics(rows)
     setBlindLive(latest?.state === 'blind')
     setRatedBefore(rated)
   }
+
+  // The round's genre (by the selected group's rule) and its resolved
+  // rubric: what the receipt shows is exactly what the round freezes.
+  const roundGenre = selected ? genreForTitle(genreIds, selected.genreRule) : null
+  const receiptEntries =
+    selected && rubrics !== null
+      ? resolveGenreRound({
+          memberRubrics: rubrics,
+          genreRubrics,
+          genre: roundGenre,
+          genreIds,
+          casual: selected.tasteMode === 'casual',
+        })
+      : []
 
   async function handleStart() {
     if (!selected || rubrics === null || starting) return
     setStarting(true)
     setError(null)
     try {
-      const mashed = mashRubrics(rubrics)
-      const rows = mashed.length > 0 ? mashed : defaultRubricRows()
-      // The full resolved rubric ships in the snapshot; whether to rate a
-      // genre add-on is each member's own call at scoring time.
-      const rubric = resolveSessionRubric(rows, genreIds, configuredCategoryKeys(rubrics))
-      await createSession(selected.id, userId, title, rubric)
+      // The full resolved rubric ships in the snapshot, with its genre;
+      // whether to rate another genre's extra is each member's own call.
+      const rubric = receiptEntries.map((e) => ({ key: e.key, label: e.label, weight: e.weight }))
+      await createSession(selected.id, userId, title, rubric, roundGenre)
       touchRecentGroup(selected.id)
       onStarted(selected.id)
     } catch (err) {
@@ -107,15 +126,6 @@ export function GroupInviteSheet({
       setStarting(false)
     }
   }
-
-  const receiptEntries =
-    selected && rubrics !== null
-      ? resolveSessionRubricTagged(
-          mashRubrics(rubrics).length > 0 ? mashRubrics(rubrics) : defaultRubricRows(),
-          genreIds,
-          configuredCategoryKeys(rubrics),
-        )
-      : []
 
   return (
     <Sheet label="Invite a group" onClose={onClose}>
@@ -211,6 +221,7 @@ export function GroupInviteSheet({
               </p>
               <RubricReceipt
                 className="mt-2"
+                title={roundGenre ? `Scored as ${genreDef(roundGenre).label}` : "Tonight's rubric"}
                 entries={receiptEntries}
                 extrasAreOptIn={selected.tasteMode !== 'casual'}
               />

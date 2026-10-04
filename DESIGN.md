@@ -250,6 +250,31 @@ genre add-ons marked teal with "everyone picks their own extras" copy.
 Scoring copy sets the intent-relative norm: "Score each part for what it's
 trying to be."
 
+**Genre rubrics (2026-10-03, the owner's call):** layer 2 grew from add-on
+categories into full genre rubrics, app-wide, solo and in groups. Every genre
+has a STANDARD: your usual rubric plus what the genre adds (the table is
+`lib/genres.ts`: Horror adds Fear Factor 35, Comedy Humor 35, Action &
+Adventure Spectacle, Fantasy & Sci-Fi Worldbuilding, Mystery & Thriller
+Tension, Romance Chemistry, Music Music & Numbers; a Documentary scores
+Editing in place of Writing and adds Insight; Animation relabels as before).
+Documentary and Animation are formats: they change the card whatever genre
+leads. Cinephiles can make their own rubric for any genre, used for their solo
+ratings and in every group they're in. Which genre leads a title is TMDB's
+first-listed by default, or our order: a personal setting for solo ratings,
+the owner's setting for a group's rounds. The law holds:
+- Rubrics are settled per genre ahead of time. A round blends its members'
+  rubrics for its genre when it STARTS and freezes that in its snapshot
+  ("Scored as Horror"). Nobody edits weights for one movie.
+- The once-per-genre question ("Your first Horror round") counts from your
+  NEXT round of that genre; solo, it applies at once, because nothing is
+  frozen there. Only genres whose standard changes something ask. Normies get
+  each standard automatically and are never asked.
+- The lead genre's categories are now on everyone's card; a film's OTHER
+  genres still offer theirs as opt-in extras (layer 3, unchanged).
+- Community numbers weigh every rating on each mode's standard card for the
+  title's first-listed genre. A solo rating keeps a snapshot of the card it was
+  given with, so followers see the number its rater sees.
+
 **One voice can't headline (2026-07-17):** THE REVEAL's most-united /
 most-contested pick only considers categories at least TWO members rated
 (`CategoryStat.raters`); a single-rater extra has range 0 by definition and
@@ -587,6 +612,19 @@ baseline function grant, which is exactly how an open endpoint shipped on
 2026-07-25.
 
 ## Changelog
+
+- 2026-10-03 (genre rubrics): every genre has a standard rubric, and
+  Cinephiles can make their own per genre (Profile > Genre rubrics, an editor
+  sheet on the one RubricRowsEditor). A gold first-time card asks once per
+  genre ("Use the standard" / "Make my Horror rubric"), on the solo card and on
+  a round's scorecard. Rounds, receipts and reveals say "Scored as Horror"; the
+  solo card says "Your Horror card" with an "Edit my Horror rubric" link. Which
+  genre leads is a two-pill setting in Profile and in a group's "How this group
+  scores". Documentaries score Editing (a new catalog category) in place of
+  Writing. No token, font, or layout-system changes.
+  Considered/rejected: blending every genre a film has (long cards, and no way
+  to say what you're scoring under); re-weighting a running round when someone
+  makes a rubric (breaks the frozen-snapshot law).
 
 - 2026-10-03 (round games): the fight over the biggest split and the
   best-take vote ("Round games" in group settings; owner switches, everyone

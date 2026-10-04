@@ -5,6 +5,7 @@ import {
   cancelSession,
   fetchGroupRubrics,
   fetchLockStatus,
+  fetchMyGenreRubrics,
   fetchMyScore,
   fetchRoundGames,
   fetchSessionRsvps,
@@ -12,6 +13,7 @@ import {
   posterUrl,
   respondToSession,
   revealSession,
+  saveMyGenreRubric,
   saveMyScore,
   saveRoundTake,
 } from '../lib/api'
@@ -27,6 +29,10 @@ import { LoadingCards, SuccessMark } from './Moments'
 import { refreshRewards } from '../lib/rewardsStore'
 import { TAKE_MAX } from '../lib/roundGames'
 import { HouseRulesSheet } from './HouseRulesSheet'
+import { GenrePrompt } from './GenrePrompt'
+import { GenreRubricSheet } from './GenreRubricSheet'
+import { genreDef, needsGenrePrompt, roundRowsFor } from '../lib/genres'
+import type { GenreKey } from '../lib/genres'
 
 interface RoundScorerProps {
   session: SessionInfo
@@ -66,6 +72,14 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
   const [savedTake, setSavedTake] = useState('')
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null)
   const [termsOpen, setTermsOpen] = useState(false)
+  // Genre rubrics. The question is asked once per genre; your answer counts
+  // from your NEXT round of it, so this card keeps splitting on the rubric
+  // you had when the round first loaded here.
+  const [myGenreRubrics, setMyGenreRubrics] = useState<Map<GenreKey, GroupRubricRow[] | null> | null>(null)
+  const ownAtStart = useRef<{ sessionId: string; rows: GroupRubricRow[] | null } | null>(null)
+  const [genreSheet, setGenreSheet] = useState(false)
+  const [genreBusy, setGenreBusy] = useState(false)
+  const [genreNote, setGenreNote] = useState<string | null>(null)
   const [lockStatus, setLockStatus] = useState<{ memberId: string; locked: boolean }[]>([])
   const [rsvps, setRsvps] = useState<{ memberId: string; status: 'in' | 'pass' }[]>([])
   // undefined = still loading; the split into core vs opt-in extras waits.
@@ -78,13 +92,28 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
 
   const load = useCallback(async () => {
     try {
-      const [mine, locks, answers, rubrics] = await Promise.all([
+      const [mine, locks, answers, rubrics, genreRubrics] = await Promise.all([
         fetchMyScore(session.id, userId),
         fetchLockStatus(session.id),
         fetchSessionRsvps(session.id).catch(() => []),
         fetchGroupRubrics(group.id).catch(() => []),
+        fetchMyGenreRubrics(userId).catch(() => new Map<GenreKey, GroupRubricRow[] | null>()),
       ])
-      const rows = rubrics.find((r) => r.userId === userId)?.rows ?? null
+      setMyGenreRubrics(genreRubrics)
+      if (ownAtStart.current?.sessionId !== session.id) {
+        ownAtStart.current = {
+          sessionId: session.id,
+          rows: session.genre ? (genreRubrics.get(session.genre) ?? null) : null,
+        }
+      }
+      // Your categories on this card: your rubric for the round's genre.
+      const rows = roundRowsFor({
+        usual: rubrics.find((r) => r.userId === userId)?.rows ?? null,
+        own: ownAtStart.current.rows,
+        genre: session.genre,
+        snapshot: session.rubric ?? [],
+        casual: isCasual,
+      })
       setMyRows(rows)
       // Only YOUR core categories pre-seed at the midpoint; extras join the
       // card when you add them (a drafted extra counts as added).
@@ -171,6 +200,19 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
       setError(err instanceof Error ? err.message : 'Could not unlock')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function keepStandardGenre(genre: GenreKey) {
+    setGenreBusy(true)
+    setError(null)
+    try {
+      await saveMyGenreRubric(userId, genre, null)
+      setMyGenreRubrics((prev) => new Map(prev ?? []).set(genre, null))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that')
+    } finally {
+      setGenreBusy(false)
     }
   }
 
@@ -313,6 +355,11 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
             <h2 className="mt-1.5 font-display text-[27px] font-semibold leading-[1.05]">
               {session.titleName}
             </h2>
+            {session.genre && (
+              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                Scored as {genreDef(session.genre).label}
+              </p>
+            )}
           </div>
         </div>
 
@@ -363,6 +410,24 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
 
       {locked && <button type="button" onClick={() => setReviewLocked((open) => !open)} aria-expanded={reviewLocked} aria-controls="my-locked-scorecard" className="mt-3 min-h-11 w-full rounded-full border border-line px-4 text-[13px] font-semibold text-muted hover:text-text">{reviewLocked ? 'Hide my scorecard' : 'Review my sealed scorecard'} <span aria-hidden>{reviewLocked ? '↑' : '↓'}</span></button>}
       <div id="my-locked-scorecard" hidden={locked && !reviewLocked}>
+      {/* ---- the once-per-genre question (never Normies, never mid-lock) ---- */}
+      {!locked && needsGenrePrompt(session.genre, myGenreRubrics, isCasual) && (
+        <div className="mp-rise mt-4">
+          <GenrePrompt
+            genre={session.genre}
+            where="round"
+            busy={genreBusy}
+            onKeepStandard={() => session.genre && void keepStandardGenre(session.genre)}
+            onMakeOwn={() => setGenreSheet(true)}
+          />
+        </div>
+      )}
+      {genreNote && (
+        <p role="status" className="mp-rise mt-3 px-2 text-[13px] leading-snug text-gold">
+          {genreNote}
+        </p>
+      )}
+
       {/* ---- The category sliders: your core + the extras you added ---- */}
       <section className="mp-rise mt-4" style={{ animationDelay: '80ms' }}>
         <p className="mb-2 px-1 text-[13px] leading-snug text-muted">
@@ -626,6 +691,28 @@ export function RoundScorer({ session, group, members, userId, onChanged }: Roun
             </button>
           ))}
       </section>
+
+      {genreSheet && session.genre && (
+        <GenreRubricSheet
+          userId={userId}
+          genre={session.genre}
+          initial={myGenreRubrics?.get(session.genre) ?? null}
+          note={`This round keeps the rubric it started with. Yours counts from your next ${genreDef(session.genre).label} round.`}
+          onSaved={(rows) => {
+            const genre = session.genre
+            if (genre) {
+              setMyGenreRubrics((prev) => new Map(prev ?? []).set(genre, rows))
+              setGenreNote(
+                rows
+                  ? `Saved. Your ${genreDef(genre).label} rubric counts from your next ${genreDef(genre).label} round.`
+                  : `You're on the standard ${genreDef(genre).label} rubric.`,
+              )
+            }
+            setGenreSheet(false)
+          }}
+          onClose={() => setGenreSheet(false)}
+        />
+      )}
 
       {termsOpen && (
         <HouseRulesSheet

@@ -61,6 +61,7 @@ Invoke-Sql "SEASONS + EPISODES TEST" (Join-Path $repo "scripts\verify-rls\99g-tv
 Invoke-Sql "JOIN REQUESTS TEST" (Join-Path $repo "scripts\verify-rls\99h-join-requests-test.sql")
 Invoke-Sql "FOLLOWS TEST" (Join-Path $repo "scripts\verify-rls\99i-follows-test.sql")
 Invoke-Sql "ROUND GAMES TEST" (Join-Path $repo "scripts\verify-rls\99j-round-games-test.sql")
+Invoke-Sql "GENRE RUBRICS TEST" (Join-Path $repo "scripts\verify-rls\99k-genre-rubrics-test.sql")
 
 Write-Host ""
 Write-Host "RLS verification complete - the blind rule holds." -ForegroundColor Green

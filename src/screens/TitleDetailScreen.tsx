@@ -6,6 +6,8 @@ import {
   deleteGlobalRating,
   fetchModeHistogram,
   fetchModeScores,
+  fetchMyGenreRubrics,
+  fetchMyGenreRule,
   fetchMyGlobalRating,
   fetchMyTasteMode,
   fetchAddablePlaylists,
@@ -19,16 +21,19 @@ import {
   ensureTitleRow,
   removeTitleFromPlaylist,
   saveGlobalRating,
+  saveMyGenreRubric,
   saveTitle,
   stillUrl,
   unsaveTitle,
 } from '../lib/api'
 import type {
   GroupInfo,
+  GroupRubricRow,
   ModeScores,
   NewTitle,
   PlaylistSummary,
   SeasonDetail,
+  SessionRubricEntry,
   TitleDetail,
   TitleHistoryEntry,
   TitlePart,
@@ -38,8 +43,12 @@ import { partLabel } from '../lib/titleParts'
 import type { CategoryScores } from '../lib/scoring'
 import { mashedScore, memberWeightedScore, formatScore } from '../lib/scoring'
 import { weightsFromRubric } from '../lib/mapping'
-import { soloRubricEntriesFor, soloWeightsFor, TASTE_MODES } from '../lib/rubricCatalog'
+import { soloWeightsFor, TASTE_MODES } from '../lib/rubricCatalog'
 import type { TasteMode } from '../lib/rubricCatalog'
+import { communityWeights, genreDef, genreForTitle, needsGenrePrompt, soloEntriesFor } from '../lib/genres'
+import type { GenreKey, GenreRule } from '../lib/genres'
+import { GenrePrompt } from '../components/GenrePrompt'
+import { GenreRubricSheet } from '../components/GenreRubricSheet'
 import { CategoryLegend } from '../components/CategoryLegend'
 import { CommunityHistogram } from '../components/CommunityHistogram'
 import { DiscussionSection } from '../components/DiscussionSection'
@@ -49,9 +58,12 @@ import { LoadingCards } from '../components/Moments'
 import { CtaButton, GroupMark, ScoreSliderRow, WhereToWatch, fieldClassSm } from '../components/ui'
 import { refreshRewards } from '../lib/rewardsStore'
 
-// Solo ratings follow YOUR taste mode: Normies score the enjoyment-heavy
-// three, Cinephiles the base-seven craft rubric. The community section shows
-// both crowds' numbers side by side.
+// Solo ratings follow YOUR taste mode AND the title's genre (lib/genres.ts):
+// Normies score the enjoyment-heavy three, Cinephiles the base-seven craft
+// rubric, each plus what the genre's standard adds, or a Cinephile's own
+// rubric for the genre. A rating keeps the card it was given with. The
+// community section shows both crowds' numbers, each on its standard card
+// for the title's genre.
 
 interface TitleDetailScreenProps {
   tmdbId: number
@@ -147,6 +159,13 @@ export function TitleDetailScreen({
   const [histFilter, setHistFilter] = useState<TasteMode | 'all'>('all')
   const [myMode, setMyMode] = useState<TasteMode | null>(null)
   const [myScores, setMyScores] = useState<CategoryScores | null>(null)
+  // The card my rating was given with (null: a rating from before genre rubrics).
+  const [myRubric, setMyRubric] = useState<SessionRubricEntry[] | null>(null)
+  const [myGenreRule, setMyGenreRule] = useState<GenreRule>('first')
+  // null until loaded: the genre prompt waits for it rather than flashing.
+  const [myGenreRubrics, setMyGenreRubrics] = useState<Map<GenreKey, GroupRubricRow[] | null> | null>(null)
+  const [genreSheet, setGenreSheet] = useState(false)
+  const [genreBusy, setGenreBusy] = useState(false)
   const [rating, setRating] = useState(false)
   const [soloScores, setSoloScores] = useState<CategoryScores>({})
   const [savingRating, setSavingRating] = useState(false)
@@ -311,13 +330,23 @@ export function TitleDetailScreen({
       }
     }
 
+    // The community numbers are weighed on each mode's standard card for the
+    // title's genre, so they start once the title's genres are in.
+    const detailLoad = fetchTitleDetail(tmdbId, mediaType)
+    const communityLoad = detailLoad.then((d) => {
+      const weights = communityWeights(d?.genreIds ?? [])
+      return Promise.all([
+        fetchModeScores(tmdbId, mediaType, part, weights),
+        fetchModeHistogram(tmdbId, mediaType, null, part, weights),
+      ])
+    })
     Promise.all([
-      fetchTitleDetail(tmdbId, mediaType),
+      detailLoad,
       fetchSavedTitleId(userId, tmdbId, mediaType, part),
       fetchTitleHistory(tmdbId, mediaType, part),
-      fetchModeScores(tmdbId, mediaType, part),
+      communityLoad.then(([comm]) => comm),
       fetchMyGlobalRating(userId, tmdbId, mediaType, part),
-      fetchModeHistogram(tmdbId, mediaType, null, part),
+      communityLoad.then(([, histogram]) => histogram),
       fetchMyTasteMode(userId),
       // playlists hold films and shows only
       part
@@ -327,8 +356,11 @@ export function TitleDetailScreen({
           ),
       fetchWatchProviders(tmdbId, mediaType).catch(() => null),
       seasonLoad,
+      // an older database has neither; the card then falls back to the standard
+      fetchMyGenreRule(userId).catch(() => 'first' as const),
+      fetchMyGenreRubrics(userId).catch(() => new Map<GenreKey, GroupRubricRow[] | null>()),
     ])
-      .then(([d, savedId, hist, comm, mine, histogram, mode, holds, providers, s]) => {
+      .then(([d, savedId, hist, comm, mine, histogram, mode, holds, providers, s, rule, genreRubrics]) => {
         if (cancelled) return
         setDetail(d)
         setSeason(s)
@@ -336,7 +368,10 @@ export function TitleDetailScreen({
         setSavedTitleId(savedId)
         setHistory(hist)
         setModeScores(comm)
-        setMyScores(mine)
+        setMyScores(mine?.scores ?? null)
+        setMyRubric(mine?.rubric ?? null)
+        setMyGenreRule(rule)
+        setMyGenreRubrics(genreRubrics)
         setCommunityBins(histogram)
         setMyMode(mode)
         setContaining(holds)
@@ -376,10 +411,48 @@ export function TitleDetailScreen({
     }
   }
 
-  // Your mode's card: what the solo sliders show and what your number weighs.
-  const soloRubric = soloRubricEntriesFor(myMode ?? 'buff')
-  const soloWeights = soloWeightsFor(myMode ?? 'buff')
+  // Your card for this title: your mode, the title's genre (by your rule),
+  // and your own rubric for that genre if you made one.
+  const mode = myMode ?? 'buff'
+  const titleGenreIds = detail?.genreIds ?? []
+  const soloGenre = genreForTitle(titleGenreIds, myGenreRule)
+  const soloCardFor = (rubrics: Map<GenreKey, GroupRubricRow[] | null> | null) =>
+    soloEntriesFor({
+      mode,
+      genre: soloGenre,
+      genreIds: titleGenreIds,
+      own: soloGenre ? rubrics?.get(soloGenre) : null,
+    })
+  const soloRubric = soloCardFor(myGenreRubrics)
+  const soloWeights = weightsFromRubric(soloRubric)
   const soloWeightTotal = soloRubric.reduce((sum, e) => sum + e.weight, 0)
+  // Your number reads on the card you rated with; older ratings, on your mode's card.
+  const myWeights = myRubric ? weightsFromRubric(myRubric) : soloWeightsFor(mode)
+  const commWeights = communityWeights(titleGenreIds)
+  const askGenre = needsGenrePrompt(soloGenre, myGenreRubrics, mode === 'casual')
+
+  // Your answer to the genre question, or a rubric you just made: the card
+  // changes at once (solo, nothing is frozen), keeping the scores you had.
+  function applyGenreChoice(genre: GenreKey, rows: GroupRubricRow[] | null) {
+    const next = new Map(myGenreRubrics ?? [])
+    next.set(genre, rows)
+    setMyGenreRubrics(next)
+    const card = soloCardFor(next)
+    setSoloScores((prev) => Object.fromEntries(card.map((e) => [e.key, prev[e.key] ?? myScores?.[e.key] ?? 5])))
+  }
+
+  async function keepStandard(genre: GenreKey) {
+    if (userId === null) return
+    setGenreBusy(true)
+    try {
+      await saveMyGenreRubric(userId, genre, null)
+      applyGenreChoice(genre, null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that')
+    } finally {
+      setGenreBusy(false)
+    }
+  }
 
   // The histogram's mean marker follows the active filter; Everyone is the
   // count-weighted blend of the two crowds.
@@ -405,7 +478,7 @@ export function TitleDetailScreen({
     setHistFilter(next)
     try {
       setCommunityBins(
-        await fetchModeHistogram(tmdbId, mediaType, next === 'all' ? null : next, part),
+        await fetchModeHistogram(tmdbId, mediaType, next === 'all' ? null : next, part, commWeights),
       )
     } catch {
       // leave the previous bins; the chips stay usable
@@ -425,11 +498,12 @@ export function TitleDetailScreen({
     setSavingRating(true)
     setError(null)
     try {
-      await saveGlobalRating(userId, titleInput(detail), soloScores)
+      await saveGlobalRating(userId, titleInput(detail), soloScores, soloRubric, soloGenre)
       setMyScores({ ...soloScores })
+      setMyRubric(soloRubric)
       const [comm, histogram] = await Promise.all([
-        fetchModeScores(tmdbId, mediaType, part),
-        fetchModeHistogram(tmdbId, mediaType, histFilter === 'all' ? null : histFilter, part),
+        fetchModeScores(tmdbId, mediaType, part, commWeights),
+        fetchModeHistogram(tmdbId, mediaType, histFilter === 'all' ? null : histFilter, part, commWeights),
       ])
       setModeScores(comm)
       setCommunityBins(histogram)
@@ -452,11 +526,12 @@ export function TitleDetailScreen({
     try {
       await deleteGlobalRating(userId, tmdbId, mediaType, part)
       setMyScores(null)
+      setMyRubric(null)
       setConfirmRemove(false)
       setRating(false)
       const [comm, histogram] = await Promise.all([
-        fetchModeScores(tmdbId, mediaType, part),
-        fetchModeHistogram(tmdbId, mediaType, histFilter === 'all' ? null : histFilter, part),
+        fetchModeScores(tmdbId, mediaType, part, commWeights),
+        fetchModeHistogram(tmdbId, mediaType, histFilter === 'all' ? null : histFilter, part, commWeights),
       ])
       setModeScores(comm)
       setCommunityBins(histogram)
@@ -685,7 +760,7 @@ export function TitleDetailScreen({
                 <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5Z" />
               </svg>
               {myScores
-                ? `Solo ${formatScore(memberWeightedScore(myScores, soloWeights))}, edit`
+                ? `Solo ${formatScore(memberWeightedScore(myScores, myWeights))}, edit`
                 : 'Rate it solo'}
             </button>
             {/* lists, playlists and chat cards hold films and shows, not their parts */}
@@ -1057,7 +1132,7 @@ export function TitleDetailScreen({
                   <p className="text-[13px] text-muted">
                     You rated it{' '}
                     <span className="font-semibold text-gold">
-                      {formatScore(memberWeightedScore(myScores, soloWeights))}
+                      {formatScore(memberWeightedScore(myScores, myWeights))}
                     </span>
                   </p>
                 ) : (
@@ -1113,7 +1188,32 @@ export function TitleDetailScreen({
 
             {rating && (
               <div className="mt-4 border-t border-line/60 pt-2">
-                <p className="pt-1.5 text-[13px] leading-snug text-muted">
+                {askGenre && soloGenre && (
+                  <div className="mt-2">
+                    <GenrePrompt
+                      genre={soloGenre}
+                      where="solo"
+                      busy={genreBusy}
+                      onKeepStandard={() => void keepStandard(soloGenre)}
+                      onMakeOwn={() => setGenreSheet(true)}
+                    />
+                  </div>
+                )}
+                <div className="flex items-baseline justify-between gap-3 pt-2.5">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+                    {soloGenre ? `Your ${genreDef(soloGenre).label} card` : 'Your card'}
+                  </p>
+                  {soloGenre && mode === 'buff' && !askGenre && (
+                    <button
+                      type="button"
+                      onClick={() => setGenreSheet(true)}
+                      className="min-h-9 shrink-0 rounded-full px-1 text-[12px] font-semibold text-teal"
+                    >
+                      Edit my {genreDef(soloGenre).label} rubric
+                    </button>
+                  )}
+                </div>
+                <p className="pt-1 text-[13px] leading-snug text-muted">
                   Score each part for what it's trying to be.
                 </p>
                 <CategoryLegend entries={soloRubric} className="mt-2" />
@@ -1160,6 +1260,19 @@ export function TitleDetailScreen({
             )}
           </div>
         </section>
+        )}
+
+        {genreSheet && soloGenre && userId !== null && (
+          <GenreRubricSheet
+            userId={userId}
+            genre={soloGenre}
+            initial={myGenreRubrics?.get(soloGenre) ?? null}
+            onSaved={(rows) => {
+              applyGenreChoice(soloGenre, rows)
+              setGenreSheet(false)
+            }}
+            onClose={() => setGenreSheet(false)}
+          />
         )}
 
         {/* ---- cast (the show's, so not repeated on its seasons and episodes) ---- */}

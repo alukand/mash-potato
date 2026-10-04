@@ -424,9 +424,40 @@ export type Database = {
           },
         ]
       }
+      genre_rubrics: {
+        Row: {
+          genre: string
+          rows: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          genre: string
+          rows?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          genre?: string
+          rows?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "genre_rubrics_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       global_ratings: {
         Row: {
           created_at: string
+          genre: string | null
+          rubric: Json | null
           scores: Json
           title_id: string
           updated_at: string
@@ -434,6 +465,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          genre?: string | null
+          rubric?: Json | null
           scores: Json
           title_id: string
           updated_at?: string
@@ -441,6 +474,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          genre?: string | null
+          rubric?: Json | null
           scores?: Json
           title_id?: string
           updated_at?: string
@@ -678,6 +713,7 @@ export type Database = {
         Row: {
           created_at: string
           fights: boolean
+          genre_rule: string
           id: string
           name: string
           owner_id: string
@@ -687,6 +723,7 @@ export type Database = {
         Insert: {
           created_at?: string
           fights?: boolean
+          genre_rule?: string
           id?: string
           name: string
           owner_id: string
@@ -696,6 +733,7 @@ export type Database = {
         Update: {
           created_at?: string
           fights?: boolean
+          genre_rule?: string
           id?: string
           name?: string
           owner_id?: string
@@ -1248,6 +1286,7 @@ export type Database = {
           banned: boolean
           created_at: string
           display_name: string
+          genre_rule: string
           id: string
           is_moderator: boolean
           share_ratings: boolean
@@ -1259,6 +1298,7 @@ export type Database = {
           banned?: boolean
           created_at?: string
           display_name: string
+          genre_rule?: string
           id: string
           is_moderator?: boolean
           share_ratings?: boolean
@@ -1270,6 +1310,7 @@ export type Database = {
           banned?: boolean
           created_at?: string
           display_name?: string
+          genre_rule?: string
           id?: string
           is_moderator?: boolean
           share_ratings?: boolean
@@ -1302,6 +1343,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          genre: string | null
           group_id: string
           id: string
           revealed_at: string | null
@@ -1314,6 +1356,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          genre?: string | null
           group_id: string
           id?: string
           revealed_at?: string | null
@@ -1326,6 +1369,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          genre?: string | null
           group_id?: string
           id?: string
           revealed_at?: string | null
@@ -2196,6 +2240,7 @@ export type Database = {
           media_type: string
           poster_path: string
           rated_at: string
+          rubric: Json
           scores: Json
           season_number: number
           taste_mode: string
@@ -2421,6 +2466,7 @@ export type Database = {
         Returns: {
           created_at: string
           created_by: string | null
+          genre: string | null
           group_id: string
           id: string
           revealed_at: string | null
