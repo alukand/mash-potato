@@ -3,7 +3,7 @@
 // this is not an open relay.
 //
 // One function, several ops (routed on `op`, default 'search' for back-compat):
-//   { op?: 'search', query, mediaType }         -> { results: TmdbResult[] }
+//   { op?: 'search', query, mediaType, streaming? } -> { results: TmdbResult[] }
 //   { op: 'detail', tmdbId, mediaType }          -> { detail: TitleDetail | null }
 //   { op: 'browse', feed, mediaType }            -> { results: TmdbResult[] }
 //   { op: 'genres', mediaType }                  -> { genres: {id,name}[] }
@@ -12,6 +12,7 @@
 //   { op: 'recommendations', tmdbId, mediaType } -> { results: TmdbResult[] }
 //   { op: 'providers', tmdbId, mediaType, region? } -> { providers: WatchProviders | null }
 //   { op: 'season', tmdbId, season }             -> { season: SeasonDetail | null }
+//   { op: 'services', region? }                  -> { services: {id,name,logoPath}[] }
 // A TV detail also carries `seasonList` (every season, specials last), and
 // 'season' returns one season with its episodes, so seasons and episodes can
 // be rated as titles of their own.
@@ -21,7 +22,10 @@
 // { genreIds?: number[]; personId?: number; year?: number;
 //   yearFrom?: number; yearTo?: number; sortBy?: 'rating' | 'newest';
 //   minVotes?: number; maxVotes?: number; minRating?: number;
-//   language?: string (ISO 639-1 original language — 'ja' + genre 16 = anime) }.
+//   language?: string (ISO 639-1 original language — 'ja' + genre 16 = anime);
+//   streaming?: StreamingFilter; onTheAir?: boolean (TV) }.
+// streaming is { providerIds: number[]; monetization: 'stream' | 'rent_buy';
+//   region } (the viewer's services; see "the streaming filter" below).
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -76,6 +80,68 @@ async function tmdbFetch(path: string, apiKey: string, params: Record<string, st
   return res
 }
 
+// ---- the streaming filter (JustWatch data via TMDB) ----------------------
+// Discover can narrow anything to the viewer's services: titles on ANY of
+// these providers in their region, to stream (a subscription, or free) or to
+// rent or buy. TMDB's discover takes that as query params. Its search has no
+// such filter, so a filtered search checks each hit's providers itself.
+type Monetization = 'stream' | 'rent_buy'
+
+interface StreamingFilter {
+  providerIds: number[]
+  monetization: Monetization
+  region: string
+}
+
+const MONETIZATION_TYPES: Record<Monetization, string[]> = {
+  stream: ['flatrate', 'free', 'ads'],
+  rent_buy: ['rent', 'buy'],
+}
+
+/** A storefront region ('US'); anything malformed is the US. */
+function regionOf(value: unknown): string {
+  return typeof value === 'string' && /^[A-Z]{2}$/.test(value) ? value : 'US'
+}
+
+/** The request's streaming filter, or null when it names no service. */
+function streamingOf(value: unknown): StreamingFilter | null {
+  if (!value || typeof value !== 'object') return null
+  const v = value as Record<string, unknown>
+  const ids = Array.isArray(v.providerIds)
+    ? v.providerIds.filter((id): id is number => Number.isInteger(id) && (id as number) > 0)
+    : []
+  const providerIds = [...new Set(ids)].slice(0, 30)
+  if (providerIds.length === 0) return null
+  return {
+    providerIds,
+    monetization: v.monetization === 'rent_buy' ? 'rent_buy' : 'stream',
+    region: regionOf(v.region),
+  }
+}
+
+/** Does this title stream (or rent, or sell) on one of the filter's services? */
+async function onServices(
+  mediaType: MediaType,
+  tmdbId: number,
+  filter: StreamingFilter,
+  apiKey: string,
+): Promise<boolean> {
+  const res = await tmdbFetch(`/${mediaType}/${tmdbId}/watch/providers`, apiKey)
+  if (!res.ok) return false
+  const data = (await res.json()) as { results?: Record<string, Record<string, unknown>> }
+  const forRegion = data.results?.[filter.region]
+  if (!forRegion) return false
+  const wanted = new Set(filter.providerIds)
+  return MONETIZATION_TYPES[filter.monetization].some((type) => {
+    const list = forRegion[type]
+    return Array.isArray(list) && (list as TmdbProvider[]).some((p) => wanted.has(p.provider_id ?? -1))
+  })
+}
+
+// A filtered search checks this many hits per side: one TMDB call each, all
+// inside this one edge call (so the caller's rate limit counts it once).
+const STREAMING_SEARCH_CHECKS = 10
+
 // ---- op: search ----------------------------------------------------------
 async function handleSearch(body: Record<string, unknown>, apiKey: string): Promise<Response> {
   const query = String(body.query ?? '').trim()
@@ -89,7 +155,15 @@ async function handleSearch(body: Record<string, unknown>, apiKey: string): Prom
   })
   if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
   const data = (await res.json()) as { results?: TmdbListItem[] }
-  return json({ results: (data.results ?? []).slice(0, 8).map(mapListItem) })
+  const results = data.results ?? []
+  const streaming = streamingOf(body.streaming)
+  if (!streaming) return json({ results: results.slice(0, 8).map(mapListItem) })
+
+  const candidates = results.slice(0, STREAMING_SEARCH_CHECKS)
+  const keep = await Promise.all(
+    candidates.map((r) => onServices(mediaType, r.id, streaming, apiKey).catch(() => false)),
+  )
+  return json({ results: candidates.filter((_, i) => keep[i]).slice(0, 8).map(mapListItem) })
 }
 
 // ---- op: browse (list shelves: trending / popular / top rated / new) ------
@@ -310,6 +384,10 @@ interface DiscoverFilters {
   minRating?: number
   /** ISO 639-1 original language ('ja' + genre 16 is the anime recipe). */
   language?: string
+  /** Only titles on the viewer's services (see the streaming filter). */
+  streaming?: unknown
+  /** TV only: an episode airs in the coming week (TMDB's "on the air"). */
+  onTheAir?: boolean
 }
 
 const intOrNull = (v: unknown): number | null =>
@@ -356,6 +434,17 @@ async function handleDiscover(body: Record<string, unknown>, apiKey: string): Pr
   if (typeof filters.language === 'string' && /^[a-z]{2}$/.test(filters.language)) {
     params.with_original_language = filters.language
   }
+  const streaming = streamingOf(filters.streaming)
+  if (streaming) {
+    params.watch_region = streaming.region
+    params.with_watch_providers = streaming.providerIds.join('|')
+    params.with_watch_monetization_types = MONETIZATION_TYPES[streaming.monetization].join('|')
+  }
+  if (filters.onTheAir === true && mediaType === 'tv') {
+    const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10)
+    params['air_date.gte'] = day(0)
+    params['air_date.lte'] = day(7)
+  }
 
   const res = await tmdbFetch(`/discover/${mediaType}`, apiKey, params)
   if (!res.ok) return json({ error: `TMDB responded ${res.status}` }, 502)
@@ -381,6 +470,7 @@ async function handleRecommendations(
 
 // ---- op: providers (where to stream / rent / buy; JustWatch data) ---------
 interface TmdbProvider {
+  provider_id?: number
   provider_name?: string
   logo_path?: string | null
   display_priority?: number
@@ -417,6 +507,56 @@ async function handleProviders(body: Record<string, unknown>, apiKey: string): P
       buy: mapProviders(forRegion.buy),
     },
   })
+}
+
+// ---- op: services (a region's streaming services, for the filter) --------
+interface TmdbService {
+  provider_id?: number
+  provider_name?: string
+  logo_path?: string | null
+  display_priority?: number
+  display_priorities?: Record<string, number>
+}
+
+// Ad tiers and resold channels repeat a service the list already has
+// ("Netflix Standard with Ads", "Max Amazon Channel"), and filtering on the
+// service itself already finds their titles.
+const REPEAT_SERVICE = /with ads|amazon channel|apple tv channel|roku premium channel/i
+
+// The whole region, best ranked first: the app picks which to lead with
+// (lib/streaming.ts), since TMDB's ranking buries some big services.
+const SERVICES_LISTED = 300
+
+async function handleServices(body: Record<string, unknown>, apiKey: string): Promise<Response> {
+  const region = regionOf(body.region)
+  const lists = await Promise.all(
+    (['movie', 'tv'] as const).map(async (m) => {
+      const res = await tmdbFetch(`/watch/providers/${m}`, apiKey, { watch_region: region })
+      if (!res.ok) return null
+      const data = (await res.json()) as { results?: TmdbService[] }
+      return data.results ?? []
+    }),
+  )
+  if (lists.every((l) => l === null)) return json({ error: 'TMDB did not answer' }, 502)
+
+  // One list across films and shows, in TMDB's order for this region.
+  const byId = new Map<number, { id: number; name: string; logoPath: string | null; rank: number }>()
+  for (const list of lists) {
+    for (const p of list ?? []) {
+      const id = p.provider_id
+      if (!Number.isInteger(id) || !p.provider_name || REPEAT_SERVICE.test(p.provider_name)) continue
+      const rank = p.display_priorities?.[region] ?? p.display_priority ?? 999
+      const seen = byId.get(id as number)
+      if (!seen || rank < seen.rank) {
+        byId.set(id as number, { id: id as number, name: p.provider_name, logoPath: p.logo_path ?? null, rank })
+      }
+    }
+  }
+  const services = [...byId.values()]
+    .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name))
+    .slice(0, SERVICES_LISTED)
+    .map(({ id, name, logoPath }) => ({ id, name, logoPath }))
+  return json({ services })
 }
 
 /** Requests one caller may make in a minute. Well above real browsing. */
@@ -510,6 +650,8 @@ Deno.serve(async (req) => {
       return handleProviders(body, apiKey)
     case 'season':
       return handleSeason(body, apiKey)
+    case 'services':
+      return handleServices(body, apiKey)
     default:
       return json({ error: `unknown op: ${String(op)}` }, 400)
   }

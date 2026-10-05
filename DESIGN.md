@@ -365,7 +365,7 @@ Fight argument.
 
 Persist by default (localStorage, `mp.*` keys): active tab (`mp.activeTab`),
 active group (`mp.activeGroupId`), Discover films/TV switch
-(`mp.discoverMedia`). Ephemeral on purpose: unsaved rubric edits, open
+(`mp.discoverMedia`), Discover's Where to watch picks (`mp.discoverStreaming`). Ephemeral on purpose: unsaved rubric edits, open
 disclosures, in-flight flags.
 
 ## Tried / rejected log
@@ -612,6 +612,19 @@ baseline function grant, which is exactly how an open endpoint shipped on
 2026-07-25.
 
 ## Changelog
+
+- 2026-10-04 (where to watch filter): Discover's filter panel gained "Where to
+  watch", right under Type: a Stream / Rent or buy pill pair, a line saying
+  what each shows, then the region's services as chips (the genre chip with
+  the provider's logo at 26px), twelve shown and "More services" for the
+  rest, and the JustWatch credit under them. A line under Filters says what
+  is on. With a filter on, every shelf narrows to those services, the theater
+  rows drop out and "Trending" reads "New and popular". No token, font, or
+  layout-system changes.
+  Considered/rejected: one service list under a separate Stream / Rent toggle
+  (TMDB applies rent-or-buy to the title, so "Netflix + rent" listed Netflix
+  titles other stores rent); availability badges on every poster (N titles is
+  N lookups).
 
 - 2026-10-03 (genre rubrics): every genre has a standard rubric, and
   Cinephiles can make their own per genre (Profile > Genre rubrics, an editor

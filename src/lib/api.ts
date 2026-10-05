@@ -21,6 +21,7 @@ import type { RoundGames, TakesMode } from './roundGames'
 import type { TrophyCount } from './trophies'
 import { genreRowsFromJson, genreRuleFrom, isGenreKey } from './genres'
 import type { GenreKey, GenreRule } from './genres'
+import type { StreamingFilter, StreamingService } from './streaming'
 
 export type { SessionRubricEntry } from './mapping'
 export type { TitlePart } from './titleParts'
@@ -878,9 +879,11 @@ export interface TmdbResult {
 export async function searchTitles(
   query: string,
   mediaType: 'movie' | 'tv',
+  /** Only hits on these services (Discover's "Where to watch"). */
+  streaming: StreamingFilter | null = null,
 ): Promise<TmdbResult[]> {
   const { data, error } = await supabase.functions.invoke('tmdb-search', {
-    body: { op: 'search', query, mediaType },
+    body: { op: 'search', query, mediaType, streaming: streamingBody(streaming) },
   })
   if (error) throw new Error(error.message)
   return (data as { results: TmdbResult[] }).results ?? []
@@ -953,6 +956,28 @@ function watchRegion(): string {
 }
 
 const providersCache = new Map<string, WatchProviders | null>()
+
+/** A streaming filter as tmdb-search takes it: with the viewer's region. */
+function streamingBody(streaming: StreamingFilter | null | undefined) {
+  return streaming && streaming.providerIds.length > 0 ? { ...streaming, region: watchRegion() } : undefined
+}
+
+// A region's services barely change: one list per region per app session.
+const servicesCache = new Map<string, StreamingService[]>()
+
+/** The streaming services in the viewer's region, in TMDB's order. */
+export async function fetchStreamingServices(): Promise<StreamingService[]> {
+  const region = watchRegion()
+  const hit = servicesCache.get(region)
+  if (hit) return hit
+  const { data, error } = await supabase.functions.invoke('tmdb-search', {
+    body: { op: 'services', region },
+  })
+  if (error) throw new Error(error.message)
+  const services = (data as { services?: StreamingService[] }).services ?? []
+  servicesCache.set(region, services)
+  return services
+}
 
 export async function fetchWatchProviders(
   tmdbId: number,
@@ -1154,6 +1179,10 @@ export interface DiscoverFilters {
   minRating?: number
   /** ISO 639-1 original language ('ja' + genre 16 is the anime recipe). */
   language?: string
+  /** Only titles on these services (Discover's "Where to watch"). */
+  streaming?: StreamingFilter
+  /** TV: an episode airs in the coming week (TMDB's "on the air"). */
+  onTheAir?: boolean
 }
 
 /** Filtered discovery by genre / person / year (TMDB /discover). */
@@ -1162,7 +1191,11 @@ export async function fetchDiscover(
   mediaType: 'movie' | 'tv',
 ): Promise<TmdbResult[]> {
   const { data, error } = await supabase.functions.invoke('tmdb-search', {
-    body: { op: 'discover', filters, mediaType },
+    body: {
+      op: 'discover',
+      filters: { ...filters, streaming: streamingBody(filters.streaming) },
+      mediaType,
+    },
   })
   if (error) throw new Error(error.message)
   return (data as { results: TmdbResult[] }).results ?? []

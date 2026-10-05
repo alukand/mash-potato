@@ -342,6 +342,39 @@ cadence" has the product law. The laws:
   taste_mode) and `groups.genre_rule` (the owner's, for rounds); 'first' or
   'order'.
 
+## WHERE TO WATCH FILTER (2026-10-04)
+
+Discover's filter panel has "Where to watch": pick services, then Stream (a
+subscription, or free) or Rent or buy. It narrows all three of Discover's
+surfaces: search, the filtered grid, and every shelf. `src/lib/streaming.ts`
+(pure, tested) holds the choices; `tmdb-search` does the filtering (the
+`services` op lists a region's services, and `streaming` filters `search` and
+`discover`). The laws:
+
+- **The services you pick carry the meaning, not the mode.** TMDB's discover
+  applies `with_watch_monetization_types` to the TITLE, not to the provider:
+  Netflix + rent finds Netflix titles that someone else rents (checked
+  2026-10-04). So `KNOWN_SERVICES` says how each well-known service sells,
+  and each mode offers only its own kind (Netflix only under Stream, Apple TV
+  Store only under Rent or buy). The two modes keep separate picks.
+- **`KNOWN_SERVICES` also sets the order**, because TMDB's ranking buries big
+  services (HBO Max is 119th in the US) and Prime Video is id 9 in some
+  regions and 119 in others. Its ids were read from TMDB's lists for 13
+  regions; add a service only with an id read from such a list.
+- **Search checks its own hits.** TMDB's search takes no provider filter, so a
+  filtered search checks the top 10 hits per side against their providers,
+  all inside ONE edge call (the caller's rate limit counts it once). Shelves
+  become discover queries on the services: list feeds map to their nearest
+  recipe (trending becomes "New and popular"), the theater rows drop out, and
+  "Because you rated" rests while a filter is on (TMDB's recommendations take
+  no filter).
+- **No list, no filter.** Until the region's list arrives, the stored picks
+  apply. If there is none (an older `tmdb-search`, or it failed) the section
+  hides and nothing filters unseen. A pick the region doesn't list drops out.
+- The picks persist per device (`mp.discoverStreaming`), like the Type filter,
+  and a line under Filters always says what is on ("Only titles you can
+  stream on Netflix or HBO Max."). It works signed out: it reads no one's data.
+
 ## Commands
 
 - `npm run dev` — Vite on port 5180 (fixed; 5173/5174 belong to another project)
@@ -662,7 +695,8 @@ cadence" has the product law. The laws:
   would be N calls, and a tile already leads to TitleDetail). The line leads
   with streaming and only falls back to rent/buy, because the question at a
   decision point is "can we put this on tonight". The JustWatch attribution is
-  a provider REQUIREMENT and lives in the one recipe — never re-typed.
+  a provider REQUIREMENT and lives in the one recipe (`JustWatchCredit`, which
+  Discover's Where to watch filter shows too) — never re-typed.
 - Push notifications (APNs-direct; FCM slots in when Android ships):
   `device_tokens` (self-only RLS; `register_device_token` RPC handles device
   hand-me-downs), `notification_config` (service-only singleton; EMPTY row =
@@ -805,7 +839,7 @@ cadence" has the product law. The laws:
 
 ## Current state
 
-**2026-10-03**
+**2026-10-04**
 
 - 1.0 is live on the App Store (Apple ID 6788610092). 1.1.0 has not been
   submitted. It ships EVERYTHING since 1.0 except Live, from branch
@@ -815,7 +849,8 @@ cadence" has the product law. The laws:
     Web Analytics CSP, and the Save Image fix.
   - Added 2026-10-03 (built on `next`, then moved into `release-1.1`):
     seasons and episodes, the redrawn share card, join requests, follows,
-    round games, the sliced-potato icon, and genre rubrics.
+    round games, the sliced-potato icon, and genre rubrics. Added
+    2026-10-04: Discover's Where to watch filter.
 - `master` still holds 1.1 without those additions; it deploys the website
   and the web app. The database and functions are ready for it, so it is
   fast-forwarded to `release-1.1` after the TestFlight check and before the
@@ -825,7 +860,8 @@ cadence" has the product law. The laws:
   The anon probe then passed: all 32 new functions answered 401,
   `browse_open_groups` 200 and a made-up name 404. The hosted `tmdb-search`
   serves `seasonList` and the `season` op. NOT hosted yet:
-  `20261003150000` (genre rubrics).
+  `20261003150000` (genre rubrics), and the `tmdb-search` with the Where to
+  watch filter (its `services` op).
 - Mash Potato Live (live shows, watch parties, giveaways) is parked, dormant,
   on branch `live-shows`. It is NOT in `master` or `release-1.1` in any form:
   no code, migrations, Edge Function, packages or docs. Its three migrations

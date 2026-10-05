@@ -523,7 +523,7 @@ export function SettingsButton({
 // data-provider REQUIREMENT: re-typing this markup per screen is how a surface
 // eventually ships without it.
 
-function ProviderLogo({ provider, size = 32 }: { provider: WatchProvider; size?: number }) {
+export function ProviderLogo({ provider, size = 32 }: { provider: WatchProvider; size?: number }) {
   return provider.logoPath ? (
     <img
       src={posterUrl(provider.logoPath, 'w92')}
@@ -541,6 +541,15 @@ function ProviderLogo({ provider, size = 32 }: { provider: WatchProvider; size?:
     >
       {provider.name.charAt(0)}
     </span>
+  )
+}
+
+/** The credit every surface that shows provider data carries. */
+export function JustWatchCredit({ className = '' }: { className?: string }) {
+  return (
+    <p className={`font-mono text-[9px] uppercase tracking-[0.14em] text-muted ${className}`}>
+      Streaming data by JustWatch
+    </p>
   )
 }
 
@@ -572,9 +581,7 @@ export function WhereToWatch({ providers }: { providers: WatchProviders }) {
           </div>
         </div>
       ))}
-      <p className="border-t border-line/50 py-2 font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
-        Streaming data by JustWatch
-      </p>
+      <JustWatchCredit className="border-t border-line/50 py-2" />
     </div>
   )
 }

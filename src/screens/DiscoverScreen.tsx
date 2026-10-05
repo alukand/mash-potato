@@ -7,12 +7,22 @@ import {
   fetchMyReviewedTitles,
   fetchRecommendations,
   fetchShelf,
+  fetchStreamingServices,
   searchPeople,
 } from '../lib/api'
 import type { BrowseFeed, DiscoverFilters, TmdbGenre, TmdbPerson, TmdbResult } from '../lib/api'
 import { useTmdbSearch } from '../hooks/useTmdbSearch'
 import type { TaggedResult } from '../hooks/useTmdbSearch'
-import { fieldClass } from '../components/ui'
+import { JustWatchCredit, ProviderLogo, fieldClass } from '../components/ui'
+import {
+  NO_STREAMING,
+  parseStreamingPrefs,
+  servicesFor,
+  streamingFilterOf,
+  streamingKey,
+  streamingPhrase,
+} from '../lib/streaming'
+import type { StreamingFilter, StreamingPrefs, StreamingService } from '../lib/streaming'
 import { PosterShelf } from '../components/PosterShelf'
 import { PosterResultGrid } from '../components/PosterResultGrid'
 import { Sticker } from '../components/Sticker'
@@ -25,6 +35,7 @@ interface DiscoverScreenProps {
 }
 
 const MEDIA_KEY = 'mp.discoverMedia'
+const STREAMING_KEY = 'mp.discoverStreaming'
 type TypeFilter = 'both' | 'movie' | 'tv'
 
 // Anime is not a TMDB genre: the chip is synthetic (negative id) and expands
@@ -133,6 +144,34 @@ const SHELVES: ShelfDef[] = [
 const loadShelf = (spec: ShelfSpec, media: 'movie' | 'tv') =>
   spec.kind === 'browse' ? fetchBrowse(spec.feed, media) : fetchShelf(spec.filters, media)
 
+const THIS_YEAR = new Date().getFullYear()
+
+// With "Where to watch" on, every row becomes a discover query on those
+// services. TMDB's list feeds take no such filter, so each maps to its nearest
+// recipe: trending becomes new and popular, and the theater rows drop out
+// (nothing in theaters streams yet).
+function onServices(shelf: ShelfDef, streaming: StreamingFilter): ShelfDef | null {
+  const { spec, media } = shelf
+  const row = (filters: DiscoverFilters, heading = shelf.heading): ShelfDef => ({
+    ...shelf,
+    heading,
+    spec: { kind: 'discover', filters: { ...filters, streaming } },
+  })
+  if (spec.kind === 'discover') return row(spec.filters)
+  switch (spec.feed) {
+    case 'trending':
+      return row({ yearFrom: THIS_YEAR - 1 }, media === 'movie' ? 'New and popular films' : 'New and popular shows')
+    case 'popular':
+      return row({})
+    case 'top_rated':
+      return row({ sortBy: 'rating', minVotes: media === 'movie' ? 1000 : 300 })
+    case 'now_playing':
+      return media === 'tv' ? row({ onTheAir: true }) : null
+    case 'upcoming':
+      return null
+  }
+}
+
 // A shelf that waits to fetch until it's near the viewport (streaming-home
 // pattern: the lineup is long, the network cost is per-row). Empty rows
 // collapse; the placeholder holds the row's height so the page doesn't jump.
@@ -210,9 +249,10 @@ function LazyShelf({
   )
 }
 
-// Discover: one search box for films AND shows, filters (type, genre, people,
-// year), and a streaming-style shelf stack mixing both sides of TMDB. Every
-// result opens that title's detail page.
+// Discover: one search box for films AND shows, filters (type, where to
+// watch, genre, people, year), and a streaming-style shelf stack mixing both
+// sides of TMDB. Where to watch narrows all three: search, the filtered grid
+// and the shelves. Every result opens that title's detail page.
 export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
   const [query, setQuery] = useState('')
   // The type filter persists: coming back lands where you were browsing.
@@ -232,7 +272,34 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
       // ignore
     }
   }
-  const { results, searching } = useTmdbSearch(query, typeFilter)
+  // Where to watch persists too (your services rarely change); each mode
+  // keeps its own picks. streamingFilterOf decides what actually filters:
+  // the stored picks while the region's list loads, the ones it lists once
+  // it's in, and nothing when there is no list.
+  const [streamingPrefs, setStreamingPrefsState] = useState<StreamingPrefs>(() => {
+    try {
+      return parseStreamingPrefs(localStorage.getItem(STREAMING_KEY))
+    } catch {
+      return NO_STREAMING
+    }
+  })
+  const setStreamingPrefs = (next: StreamingPrefs) => {
+    setStreamingPrefsState(next)
+    try {
+      localStorage.setItem(STREAMING_KEY, JSON.stringify(next))
+    } catch {
+      // ignore
+    }
+  }
+  // The region's services: null until in, [] when tmdb-search has no list.
+  const [services, setServices] = useState<StreamingService[] | null>(null)
+  const [moreServices, setMoreServices] = useState(false)
+  const streaming = streamingFilterOf(streamingPrefs, services)
+  const streamKey = streamingKey(streaming)
+  const picked = streamingPrefs[streamingPrefs.mode]
+  const serviceChips = services ? servicesFor(services, streamingPrefs.mode, picked) : { main: [], more: [] }
+
+  const { results, searching } = useTmdbSearch(query, typeFilter, true, streaming)
 
   // filters
   const [showFilters, setShowFilters] = useState(false)
@@ -279,6 +346,18 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
     }
   }, [typeFilter])
 
+  // The region's services, for the chips and the summary line. Without a list
+  // (an older tmdb-search) the section stays hidden.
+  useEffect(() => {
+    let cancelled = false
+    fetchStreamingServices()
+      .then((list) => !cancelled && setServices(list))
+      .catch(() => !cancelled && setServices([]))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Debounced people search for the person picker.
   useEffect(() => {
     const q = personQuery.trim()
@@ -314,6 +393,7 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
         personId: selectedPerson?.id,
         year: yearNum,
         language: anime ? 'ja' : undefined,
+        streaming: streaming ?? undefined,
       }
       const want: ('movie' | 'tv')[] = typeFilter === 'both' ? ['movie', 'tv'] : [typeFilter]
       Promise.all(
@@ -341,7 +421,7 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
       clearTimeout(t)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [genreKey, selectedPerson, yearNum, typeFilter, textActive, hasFilters])
+  }, [genreKey, selectedPerson, yearNum, typeFilter, textActive, hasFilters, streamKey])
 
   // Resolve the "Because you rated" seeds (latest rating on each side).
   useEffect(() => {
@@ -374,22 +454,44 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
     )
   }
 
+  function toggleService(id: number) {
+    const list = streamingPrefs[streamingPrefs.mode]
+    const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
+    setStreamingPrefs(
+      streamingPrefs.mode === 'stream'
+        ? { ...streamingPrefs, stream: next }
+        : { ...streamingPrefs, rent_buy: next },
+    )
+  }
+
   function clearFilters() {
     setSelectedGenreIds([])
     setSelectedPerson(null)
     setPersonQuery('')
     setYear('')
     setTypeFilter('both')
+    setStreamingPrefs({ ...NO_STREAMING, mode: streamingPrefs.mode })
   }
 
   const activeFilterCount =
     selectedGenreIds.length +
     (selectedPerson ? 1 : 0) +
     (yearNum !== undefined ? 1 : 0) +
-    (typeFilter !== 'both' ? 1 : 0)
+    (typeFilter !== 'both' ? 1 : 0) +
+    (streaming ? 1 : 0)
 
-  const shelves = SHELVES.filter((s) => typeFilter === 'both' || s.media === typeFilter)
-  const visibleSeeds = recSeeds.filter((s) => typeFilter === 'both' || s.media === typeFilter)
+  const shelves = SHELVES.filter((s) => typeFilter === 'both' || s.media === typeFilter).flatMap(
+    (s) => {
+      if (!streaming) return [s]
+      const row = onServices(s, streaming)
+      return row ? [row] : []
+    },
+  )
+  // TMDB's "more like this" takes no streaming filter, so those rows rest
+  // while one is on.
+  const visibleSeeds = streaming
+    ? []
+    : recSeeds.filter((s) => typeFilter === 'both' || s.media === typeFilter)
 
   return (
     <div className="flex flex-col gap-6">
@@ -432,10 +534,15 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
             </button>
           )}
         </div>
+        {streaming && (
+          <p className="mt-1 px-1 text-[12px] leading-snug text-muted">
+            Only titles you can {streamingPhrase(streaming, services)}.
+          </p>
+        )}
         {searching && <p role="status" className="mt-2 px-1 text-[13px] text-muted">Finding matching titles…</p>}
         {textActive && hasFilters && (
           <p className="mt-1 px-1 text-[12px] leading-snug text-muted">
-            Showing text matches. Clear the search box to browse by filters.
+            Search skips the genre, people and year filters. Clear the search box to browse by them.
           </p>
         )}
 
@@ -470,6 +577,73 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
                 ))}
               </div>
             </div>
+
+            {services && services.length > 0 && (
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+                  Where to watch
+                </p>
+                <div className="flex gap-1.5">
+                  {(
+                    [
+                      ['stream', 'Stream'],
+                      ['rent_buy', 'Rent or buy'],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setStreamingPrefs({ ...streamingPrefs, mode: value })}
+                      aria-pressed={streamingPrefs.mode === value}
+                      className={`min-h-11 rounded-full border px-4 py-1 text-[13px] font-semibold transition-colors ${
+                        streamingPrefs.mode === value
+                          ? 'border-teal/40 bg-teal/10 text-teal'
+                          : 'border-line text-muted hover:text-text'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 px-1 text-[12px] leading-snug text-muted">
+                  {streamingPrefs.mode === 'stream'
+                    ? 'Pick your services to see what’s included with them, or free.'
+                    : 'Pick where you rent or buy to see what they sell.'}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {[...serviceChips.main, ...(moreServices ? serviceChips.more : [])].map((s) => {
+                    const on = picked.includes(s.id)
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => toggleService(s.id)}
+                        aria-pressed={on}
+                        className={`flex min-h-11 items-center gap-2 rounded-full border py-1 pl-1.5 pr-3 text-[12px] transition-colors ${
+                          on
+                            ? 'border-teal/40 bg-teal/10 text-teal'
+                            : 'border-line text-muted hover:text-text'
+                        }`}
+                      >
+                        <ProviderLogo provider={s} size={26} />
+                        {s.name}
+                      </button>
+                    )
+                  })}
+                </div>
+                {serviceChips.more.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setMoreServices((open) => !open)}
+                    aria-expanded={moreServices}
+                    className="mt-1 min-h-11 px-1 text-[12px] font-semibold text-teal"
+                  >
+                    {moreServices ? 'Fewer services' : 'More services'}
+                  </button>
+                )}
+                <JustWatchCredit className="mt-1 px-1" />
+              </div>
+            )}
 
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
@@ -589,7 +763,10 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
             !searching && (
               <div className="flex items-center gap-3 px-1">
                 <Sticker name="skeptical" className="h-16" />
-                <p className="text-[13px] text-muted">No matches for “{query.trim()}”.</p>
+                <p className="text-[13px] text-muted">
+                  No matches for “{query.trim()}”
+                  {streaming && ` you can ${streamingPhrase(streaming, services)}`}.
+                </p>
               </div>
             )
           )}
@@ -609,7 +786,7 @@ export function DiscoverScreen({ userId, onOpenTitle }: DiscoverScreenProps) {
           {/* films and shows in one stack; the Type filter narrows it.
               Rows load as you scroll and empty rows collapse. */}
           {shelves.map((shelf, i) => (
-            <div key={`${typeFilter}:${shelf.key}`} className="contents">
+            <div key={`${typeFilter}:${streamKey}:${shelf.key}`} className="contents">
               <LazyShelf
                 heading={shelf.heading}
                 eager={i < 3}

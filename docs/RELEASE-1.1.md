@@ -36,6 +36,9 @@ New in this build:
   Factor, documentaries score Editing in place of Writing), Cinephiles can make
   their own per genre, and rounds say what genre they're scored as
   (`20261003150000_genre_rubrics.sql`, CLAUDE.md "GENRE RUBRICS").
+- **Where to watch, in Discover.** Filter search, results and every shelf by
+  the services you have, to stream or to rent or buy (`tmdb-search`'s
+  `services` op and `streaming` filter, CLAUDE.md "WHERE TO WATCH FILTER").
 
 ## The order matters
 
@@ -73,22 +76,26 @@ submit.
    401, while `browse_open_groups` (the public catalogue) answers 200 and a
    made-up function name answers 404.
 
-2. **Functions.** Already deployed on 2026-10-03; genre rubrics change
-   neither. For the record, both changed for 1.1:
+2. **Functions.** Both went up on 2026-10-03. `tmdb-search` changed again on
+   2026-10-04 (the Where to watch filter), so deploy it once more:
 
    ```
    npx supabase functions deploy tmdb-search
-   npx supabase functions deploy send-push
    ```
 
-   `tmdb-search` serves the seasons list and the `season` op; `send-push`
+   What 1.1 needs from them: `tmdb-search` serves the seasons list, the
+   `season` op, the `services` op and the `streaming` filter; `send-push`
    learns `join_requested` and `fight_started`, and opens a reply on an
-   episode at its show. Deploy them after the database: `send-push` reads a
-   column the migrations add.
+   episode at its show (it reads a column the migrations add, so it always
+   goes after the database). An app that meets an older `tmdb-search` hides
+   the Where to watch filter rather than failing.
 
-3. **Build** in Codemagic from `release-1.1`. `MARKETING_VERSION` is already
-   1.1.0 and Codemagic numbers the build. Test it on TestFlight (the checks
-   below).
+3. **Build** in Codemagic from `release-1.1`: pick that branch when you start
+   the build, not `master`, which has none of the above. Build only after
+   step 1: this build reads the genre rubrics columns, so against a database
+   without them it stops at "Could not load your setup". `MARKETING_VERSION`
+   is already 1.1.0 and Codemagic numbers the build. Test it on TestFlight
+   (the checks below).
 
 4. **Merge.** Set the Effective date in `web/privacy.html` and
    `web/terms.html` to the day, fast-forward `master` to `release-1.1`, and
@@ -112,6 +119,9 @@ submit.
 - A show page lists its seasons; a season lists its episodes; rating an
   episode creates a "Show S2E3" title, and the show's own page stays
   separate.
+- In Discover, open Filters and pick a service under Where to watch: the line
+  under Filters names it, every shelf narrows to it (no "In theaters now"),
+  and a search finds only titles on it. Rent or buy offers only the stores.
 - In a group set to "I approve each one", a request reaches the owner (push
   and the "Asking to join" card) and approving adds the member.
 - Following someone who shares shows their ratings under "Recently rated by
@@ -151,6 +161,9 @@ Follow friends and see the ratings they choose to share.
 
 Every genre gets its own rubric: horror nights add Fear Factor, documentaries
 score Editing, and Cinephiles can make their own for any genre.
+
+Find what's on your services: filter Discover by where you stream, rent or
+buy.
 
 And a new look: meet the potato.
 ```
